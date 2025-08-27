@@ -8,6 +8,7 @@ export function signaliumAsyncTransform(opts?: SignaliumAsyncTransformOptions): 
   const transformedImports: Record<string, [string | RegExp]> = {
     callback: ['signalium'],
     reactive: ['signalium'],
+    reactiveMethod: ['signalium'],
     relay: ['signalium'],
     task: ['signalium'],
   };

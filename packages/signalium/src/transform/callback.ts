@@ -8,6 +8,7 @@ export function signaliumCallbackTransform(opts?: SignaliumCallbackTransformOpti
   const transformedImports: Record<string, [string | RegExp]> = {
     component: ['signalium/react'],
     reactive: ['signalium'],
+    reactiveMethod: ['signalium'],
     relay: ['signalium'],
     task: ['signalium'],
   };

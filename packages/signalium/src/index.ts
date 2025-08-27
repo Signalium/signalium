@@ -1,6 +1,6 @@
 export type * from './types.js';
 
-export { reactive, relay, task, watcher } from './hooks.js';
+export { reactive, reactiveMethod, relay, task, watcher } from './core-api.js';
 
 export { signal } from './internals/signal.js';
 
@@ -9,11 +9,11 @@ export { isAsyncSignal, isTaskSignal, isRelaySignal } from './internals/async.js
 export { callback } from './internals/callback.js';
 
 export {
-  context as createContext,
+  context,
   getContext,
   withContexts,
-  setRootContexts,
-  clearRootContexts,
+  setGlobalContexts,
+  clearGlobalContexts,
   SignalScope,
 } from './internals/contexts.js';
 

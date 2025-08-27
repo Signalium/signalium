@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/rules-of-hooks */
 import { useCallback, useSyncExternalStore } from 'react';
 import { RelaySignal, AsyncSignal, SignalValue, Signal } from '../types.js';
-import { DERIVED_DEFINITION_MAP } from '../hooks.js';
+import { DERIVED_DEFINITION_MAP } from '../core-api.js';
 import { expect } from '../type-utils.js';
 import { isRelaySignal } from '../internals/async.js';
 import { CURRENT_CONSUMER } from '../internals/consumer.js';
@@ -10,7 +10,7 @@ import { isAsyncSignalImpl } from '../internals/utils/type-utils.js';
 import { AsyncSignalImpl } from '../internals/async.js';
 import { StateSignal } from '../internals/signal.js';
 import { useScope } from './context.js';
-import { ROOT_SCOPE } from '../internals/contexts.js';
+import { GLOBAL_SCOPE } from '../internals/contexts.js';
 
 const useStateSignal = <T>(signal: StateSignal<T>): T => {
   return useSyncExternalStore(
@@ -41,7 +41,7 @@ const useAsyncSignal = <R>(promise: AsyncSignalImpl<R>): AsyncSignalImpl<R> => {
 const useReactiveFn = <R, Args extends readonly Narrowable[]>(fn: (...args: Args) => R, ...args: Args): R => {
   const def = expect(DERIVED_DEFINITION_MAP.get(fn), 'Expected to find a derived definition for the function');
 
-  const scope = useScope() ?? ROOT_SCOPE;
+  const scope = useScope() ?? GLOBAL_SCOPE;
 
   const signal = scope.get(def, args);
   const value = useReactiveFnSignal(signal);

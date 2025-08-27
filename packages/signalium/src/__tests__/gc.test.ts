@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { reactive, createContext, withContexts, watcher, signal } from '../index.js';
-import { SignalScope, ROOT_SCOPE, forceGc, clearRootContexts } from '../internals/contexts.js';
+import { reactive, context, withContexts, watcher, signal } from '../index.js';
+import { SignalScope, GLOBAL_SCOPE, forceGc, clearGlobalContexts } from '../internals/contexts.js';
 import { nextTick, sleep } from './utils/async.js';
 
 // Helper to access private properties for testing
@@ -14,7 +14,7 @@ const getGCCandidates = (scope: SignalScope) => {
 
 describe('Garbage Collection', () => {
   beforeEach(() => {
-    clearRootContexts();
+    clearGlobalContexts();
   });
 
   it('should automatically garbage collect unwatched signals', async () => {
@@ -30,7 +30,7 @@ describe('Garbage Collection', () => {
     await nextTick();
 
     // Signal should be in the scope
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(1);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(1);
 
     // Unwatch the signal
     unwatch();
@@ -38,7 +38,7 @@ describe('Garbage Collection', () => {
     await sleep(50);
 
     // Signal should be garbage collected
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(0);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(0);
   });
 
   it('should not garbage collect signals with shouldGC returning false', async () => {
@@ -57,7 +57,7 @@ describe('Garbage Collection', () => {
     await nextTick();
 
     // Signal should be in the scope
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(1);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(1);
 
     // Unwatch the signal
     unwatch();
@@ -65,7 +65,7 @@ describe('Garbage Collection', () => {
     await sleep(50);
 
     // Signal should still be in the scope
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(1);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(1);
   });
 
   it('should support conditional GC based on signal state', async () => {
@@ -89,7 +89,7 @@ describe('Garbage Collection', () => {
     await nextTick();
 
     // Signal should be in the scope
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(1);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(1);
 
     // Unwatch the signal
     unwatch();
@@ -97,7 +97,7 @@ describe('Garbage Collection', () => {
     await sleep(50);
 
     // Signal should still be in the scope because shouldGC returns false
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(1);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(1);
 
     // Now allow GC
     shouldAllowGC.value = true;
@@ -110,14 +110,14 @@ describe('Garbage Collection', () => {
     await nextTick();
 
     // Signal should be in GC candidates
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(1);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(1);
 
     unwatch2();
 
     await sleep(50);
 
     // Signal should be garbage collected
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(0);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(0);
   });
 
   it('should support manual garbage collection', async () => {
@@ -146,7 +146,7 @@ describe('Garbage Collection', () => {
     await nextTick();
 
     // Both signals should be in the scope
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(2);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(2);
 
     // Unwatch both signals
     unwatch1();
@@ -155,17 +155,17 @@ describe('Garbage Collection', () => {
     await sleep(50);
 
     // Only signal1 should be garbage collected
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(1);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(1);
 
     // The remaining signal should be signal2
-    const remainingSignal = Array.from(getSignalsMap(ROOT_SCOPE).values())[0];
+    const remainingSignal = Array.from(getSignalsMap(GLOBAL_SCOPE).values())[0];
     expect(remainingSignal.value).toBe('signal2');
 
     forceGc(signalObj!);
 
     await sleep(50);
 
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(0);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(0);
   });
 
   it('should not garbage collect signals that are still being watched', async () => {
@@ -182,17 +182,17 @@ describe('Garbage Collection', () => {
     await nextTick();
 
     // Signal should be in the scope
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(1);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(1);
 
     await sleep(50);
 
     // Signal should still be in the scope because it's being watched
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(1);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(1);
   });
 
   it('should handle context-scoped signals correctly', async () => {
     // Create a context
-    const TestContext = createContext('test');
+    const TestContext = context('test');
 
     // Create signals in context
     let contextSignal: any;
@@ -213,7 +213,7 @@ describe('Garbage Collection', () => {
     await nextTick();
 
     // Get the context scope (this is a bit hacky for testing)
-    const contextScope = (ROOT_SCOPE as any).children.values().next().value;
+    const contextScope = (GLOBAL_SCOPE as any).children.values().next().value;
 
     await sleep(50);
 
@@ -235,13 +235,13 @@ describe('Garbage Collection', () => {
     await nextTick();
 
     // Signal should be in the scope
-    expect(getSignalsMap(ROOT_SCOPE).size).toBe(1);
+    expect(getSignalsMap(GLOBAL_SCOPE).size).toBe(1);
 
     unwatch();
     await nextTick();
 
     // Signal should be in GC candidates
-    expect(getGCCandidates(ROOT_SCOPE).size).toBe(1);
+    expect(getGCCandidates(GLOBAL_SCOPE).size).toBe(1);
 
     // Watch again
     w.addListener(() => {
@@ -251,6 +251,6 @@ describe('Garbage Collection', () => {
     await nextTick();
 
     // Signal should be removed from GC candidates
-    expect(getGCCandidates(ROOT_SCOPE).size).toBe(0);
+    expect(getGCCandidates(GLOBAL_SCOPE).size).toBe(0);
   });
 });

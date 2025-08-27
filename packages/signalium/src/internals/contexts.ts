@@ -76,6 +76,10 @@ export class SignalScope {
   setContexts(contexts: [ContextImpl<unknown>, unknown][]) {
     for (const [context, value] of contexts) {
       this.contexts[context._key] = value;
+
+      if (typeof value === 'object' && value !== null) {
+        OWNER_SCOPE_MAP.set(value, this);
+      }
     }
 
     this.signals.clear();
@@ -143,14 +147,14 @@ export class SignalScope {
   }
 }
 
-export let ROOT_SCOPE = new SignalScope([]);
+export let GLOBAL_SCOPE = new SignalScope([]);
 
-export function setRootContexts<C extends unknown[], U>(contexts: [...ContextPair<C>]): void {
-  ROOT_SCOPE.setContexts(contexts as [ContextImpl<unknown>, unknown][]);
+export function setGlobalContexts<C extends unknown[], U>(contexts: [...ContextPair<C>]): void {
+  GLOBAL_SCOPE.setContexts(contexts as [ContextImpl<unknown>, unknown][]);
 }
 
-export const clearRootContexts = () => {
-  ROOT_SCOPE = new SignalScope([]);
+export const clearGlobalContexts = () => {
+  GLOBAL_SCOPE = new SignalScope([]);
 };
 
 export let CURRENT_SCOPE: SignalScope | undefined;
@@ -160,7 +164,15 @@ export const setCurrentScope = (scope: SignalScope | undefined) => {
 };
 
 export const getCurrentScope = (): SignalScope => {
-  return CURRENT_SCOPE ?? CURRENT_CONSUMER?.scope ?? ROOT_SCOPE;
+  return CURRENT_SCOPE ?? CURRENT_CONSUMER?.scope ?? GLOBAL_SCOPE;
+};
+
+// ======= Owner =======
+
+const OWNER_SCOPE_MAP = new Map<object, SignalScope>();
+
+export const getOwner = (owner: object): SignalScope | undefined => {
+  return OWNER_SCOPE_MAP.get(owner);
 };
 
 // ======= Test Helper =======

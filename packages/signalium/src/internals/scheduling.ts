@@ -6,7 +6,7 @@ import { runListeners as runStateListeners } from './signal.js';
 import { Tracer } from '../trace.js';
 import { unwatchSignal } from './watch.js';
 import { StateSignal } from './signal.js';
-import { ROOT_SCOPE, SignalScope } from './contexts.js';
+import { SignalScope } from './contexts.js';
 
 // Determine once at startup which scheduling function to use for GC
 const scheduleIdleCallback =
