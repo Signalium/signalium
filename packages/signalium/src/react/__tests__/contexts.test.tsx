@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
-import { signal, reactive, createContext, setRootContexts } from '../../index.js';
+import { signal, reactive, context, setGlobalContexts } from '../../index.js';
 import { ContextProvider, useReactive, useContext } from '../index.js';
 import React from 'react';
 import { useScope } from '../context.js';
@@ -8,9 +8,9 @@ import { useScope } from '../context.js';
 describe('React > contexts', () => {
   test('useContext works inside computed with default value', async () => {
     const value = signal('Hello');
-    const context = createContext(value);
+    const ctx = context(value);
 
-    const derived = reactive(() => `${useContext(context).value}, World`);
+    const derived = reactive(() => `${useContext(ctx).value}, World`);
 
     function Component(): React.ReactNode {
       return <div>{useReactive(derived)}</div>;
@@ -27,10 +27,10 @@ describe('React > contexts', () => {
 
   test('useContext works at root level with default value', async () => {
     const value = signal('Hello');
-    const context = createContext(value);
+    const ctx = context(value);
 
     function Component(): React.ReactNode {
-      const v = useContext(context);
+      const v = useContext(ctx);
 
       return <div>{useReactive(v)}, World</div>;
     }
@@ -51,13 +51,13 @@ describe('React > contexts', () => {
   test('provider inherits from root scope', async () => {
     const defaultValue1 = signal('default1');
     const defaultValue2 = signal('default2');
-    const ctx1 = createContext(defaultValue1);
-    const ctx2 = createContext(defaultValue2);
+    const ctx1 = context(defaultValue1);
+    const ctx2 = context(defaultValue2);
     const rootOverride1 = signal('root1');
     const rootOverride2 = signal('root2');
 
     // Set root contexts
-    setRootContexts([
+    setGlobalContexts([
       [ctx1, rootOverride1],
       [ctx2, rootOverride2],
     ]);
@@ -114,16 +114,16 @@ describe('React > contexts', () => {
   test('useContext works inside computed value passed via context provider', async () => {
     const value = signal('Hello');
     const override = signal('Hey');
-    const context = createContext(value);
+    const ctx = context(value);
 
-    const derived = reactive(() => `${useContext(context).value}, World`);
+    const derived = reactive(() => `${useContext(ctx).value}, World`);
 
     function Component(): React.ReactNode {
       return <div>{useReactive(derived)}</div>;
     }
 
     const { getByText } = render(
-      <ContextProvider contexts={[[context, override]]}>
+      <ContextProvider contexts={[[ctx, override]]}>
         <Component />
       </ContextProvider>,
     );
@@ -138,16 +138,16 @@ describe('React > contexts', () => {
   test('useContext works at root level with default value', async () => {
     const value = signal('Hello');
     const override = signal('Hey');
-    const context = createContext(value);
+    const ctx = context(value);
 
     function Component(): React.ReactNode {
-      const v = useContext(context);
+      const v = useContext(ctx);
 
       return <div>{useReactive(v)}, World</div>;
     }
 
     const { getByText } = render(
-      <ContextProvider contexts={[[context, override]]}>
+      <ContextProvider contexts={[[ctx, override]]}>
         <Component />
       </ContextProvider>,
     );

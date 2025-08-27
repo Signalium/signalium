@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { createContext, getContext, withContexts, signal } from '../index.js';
+import { context, getContext, withContexts, signal } from '../index.js';
 import { reactive } from './utils/instrumented-hooks.js';
 import { nextTick } from './utils/async.js';
 
 describe('callback + reactive scope/identity', () => {
   test('reactive called in a callback defined in a reactive function has the correct scope (via contexts)', async () => {
-    const ctx = createContext('default');
+    const ctx = context('default');
 
     const inner = reactive(() => {
       return getContext(ctx);
@@ -31,7 +31,7 @@ describe('callback + reactive scope/identity', () => {
   });
 
   test('reactive called via nested callbacks maintains correct scope across multiple levels', async () => {
-    const ctx = createContext('default');
+    const ctx = context('default');
 
     const inner = reactive(() => getContext(ctx));
 
@@ -127,7 +127,7 @@ describe('callback + reactive scope/identity', () => {
   });
 
   test('async callbacks maintain their captured scope across await boundaries', async () => {
-    const ctx = createContext('default');
+    const ctx = context('default');
 
     const makeAsyncCb = reactive(() => {
       return async () => {

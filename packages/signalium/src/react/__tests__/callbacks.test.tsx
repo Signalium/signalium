@@ -2,15 +2,14 @@ import { describe, expect, test } from 'vitest';
 import React, { useCallback, useState } from 'react';
 import { render } from 'vitest-browser-react';
 import { userEvent } from '@vitest/browser/context';
-import { signal, reactive, createContext, getContext } from 'signalium';
-import { ContextProvider, useSignal } from '../index.js';
-import { component } from 'signalium/react';
+import { signal, reactive, context, getContext } from 'signalium';
+import { component, useSignal, ContextProvider } from 'signalium/react';
 import { createRenderCounter } from './utils.js';
 import { sleep } from '../../__tests__/utils/async.js';
 
 describe('React > callbacks inside component()', () => {
   test('callback created in component has correct scope with contexts', async () => {
-    const ctx = createContext('default');
+    const ctx = context('default');
 
     const Show = component(() => {
       const [ctxValue, setCtxValue] = useState('default');
@@ -32,7 +31,7 @@ describe('React > callbacks inside component()', () => {
   });
 
   test('callback created in component has correct scope with contexts', async () => {
-    const ctx = createContext('default');
+    const ctx = context('default');
 
     const inner = reactive(() => getContext(ctx));
 
@@ -67,7 +66,7 @@ describe('React > callbacks inside component()', () => {
   });
 
   test('callback created in component reactive compute has correct scope with contexts', async () => {
-    const ctx = createContext('default');
+    const ctx = context('default');
 
     const inner = reactive(() => getContext(ctx));
     const makeCb = reactive(() => () => inner());
@@ -92,7 +91,7 @@ describe('React > callbacks inside component()', () => {
   });
 
   test('nested callbacks in reactives maintain scope across levels in component', async () => {
-    const ctx = createContext('default');
+    const ctx = context('default');
 
     const inner = reactive(() => getContext(ctx));
 
@@ -162,7 +161,7 @@ describe('React > callbacks inside component()', () => {
   });
 
   test('async callback maintains captured scope after await in component', async () => {
-    const ctx = createContext('default');
+    const ctx = context('default');
 
     const makeAsyncCb = reactive(() => async () => {
       await sleep(10);

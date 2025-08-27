@@ -8,7 +8,7 @@ import {
   SignalActivate,
   type SignalOptionsWithInit,
 } from './types.js';
-import { getCurrentScope, SignalScope } from './internals/contexts.js';
+import { getCurrentScope, getOwner, SignalScope } from './internals/contexts.js';
 import { createReactiveFnSignal, ReactiveFnDefinition } from './internals/reactive.js';
 import { AsyncSignalImpl } from './internals/async.js';
 import { Tracer } from './trace.js';
@@ -51,6 +51,39 @@ export function reactive<T, Args extends unknown[]>(
 
   return reactiveFn;
 }
+
+export const reactiveMethod = <T, Args extends unknown[]>(
+  owner: object,
+  fn: (...args: Args) => T,
+  opts?: Partial<SignalOptionsWithInit<T, Args>>,
+): ((...args: Args) => SignalValue<T>) => {
+  const def: ReactiveFnDefinition<T, Args> = {
+    compute: fn,
+    equals: equalsFrom(opts?.equals),
+    isRelay: false,
+    id: opts?.id,
+    desc: opts?.desc,
+    paramKey: opts?.paramKey,
+    shouldGC: opts?.shouldGC,
+    initValue: opts?.initValue,
+  };
+
+  const reactiveFn: (...args: Args) => SignalValue<T> = (...args) => {
+    const scope = getOwner(owner);
+
+    if (scope === undefined) {
+      throw new Error('reactiveMethods must be attached to an owned context object');
+    }
+
+    const signal = scope.get(def, args);
+
+    return signal.value;
+  };
+
+  DERIVED_DEFINITION_MAP.set(reactiveFn, def);
+
+  return reactiveFn;
+};
 
 export function relay<T>(activate: SignalActivate<T>, opts?: SignalOptions<T, unknown[]>): AsyncSignalImpl<T>;
 export function relay<T>(activate: SignalActivate<T>, opts: SignalOptionsWithInit<T, unknown[]>): ReadyAsyncSignal<T>;
