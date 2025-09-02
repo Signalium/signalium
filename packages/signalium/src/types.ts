@@ -76,3 +76,7 @@ export type ReactiveValue<T> =
       : T extends Generator<any, infer U>
         ? DiscriminatedReactivePromise<U>
         : T;
+
+export interface Context<T> {
+  readonly defaultValue: T;
+}

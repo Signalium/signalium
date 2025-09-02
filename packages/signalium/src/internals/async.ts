@@ -5,7 +5,6 @@ import {
   ReactiveOptions,
   RelayActivate,
   RelayHooks,
-  DiscriminatedReactivePromise,
   RelayState,
 } from '../types.js';
 import { createReactiveFnSignal, ReactiveFnSignal, ReactiveFnDefinition, ReactiveFnState } from './reactive.js';
