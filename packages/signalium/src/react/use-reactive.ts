@@ -4,7 +4,7 @@ import { ReactiveValue, Signal, ReactivePromise } from '../types.js';
 import { getReactiveFnAndDefinition } from '../internals/core-api.js';
 import { getCurrentConsumer } from '../internals/consumer.js';
 import { ReactiveFnSignal } from '../internals/reactive.js';
-import { isReactivePromise, isRelay, ReactivePromise as ReactivePromiseImpl } from '../internals/async.js';
+import { isReactivePromise, isRelay, ReactivePromiseImpl } from '../internals/async.js';
 import { StateSignal } from '../internals/signal.js';
 import { useScope } from './context.js';
 import { getGlobalScope } from '../internals/contexts.js';

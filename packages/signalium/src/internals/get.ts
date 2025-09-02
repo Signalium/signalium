@@ -3,7 +3,7 @@ import { SignalType, getTracerProxy, TracerEventType } from './trace.js';
 import { ReactiveFnSignal, ReactiveFnState, isRelay } from './reactive.js';
 import { createEdge, Edge, EdgeType } from './edge.js';
 import { watchSignal } from './watch.js';
-import { createPromise, isReactivePromise, ReactivePromise } from './async.js';
+import { createPromise, isReactivePromise, ReactivePromiseImpl } from './async.js';
 import { ReactiveValue } from '../types.js';
 import { isGeneratorResult, isPromise } from './utils/type-utils.js';
 import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
@@ -38,6 +38,12 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveFnSignal<T,
 
       signal.subs.set(ref, newEdge);
       deps.set(signal, newEdge);
+    } else {
+      const updatedAt = checkSignal(signal);
+
+      if (prevEdge !== undefined) {
+        prevEdge.updatedAt = updatedAt;
+      }
     }
   } else {
     checkSignal(signal);
@@ -69,7 +75,7 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
           dep['_awaitSubs'].set(ref, edge);
 
           // Propagate the pending state to the parent signal
-          (value as ReactivePromise<unknown>)._setPending();
+          (value as ReactivePromiseImpl<unknown>)._setPending();
           signal._state = ReactiveFnState.Pending;
           signal.dirtyHead = edge;
 
@@ -108,7 +114,7 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
       runSignal(signal);
     }
   } else if (newState === ReactiveFnState.PendingDirty) {
-    (signal._value as ReactivePromise<unknown>)._clearPending();
+    (signal._value as ReactivePromiseImpl<unknown>)._clearPending();
   }
 
   signal._state = ReactiveFnState.Clean;

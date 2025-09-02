@@ -5,7 +5,6 @@ import {
   ReactiveOptions,
   RelayActivate,
   RelayHooks,
-  DiscriminatedReactivePromise,
   RelayState,
 } from '../types.js';
 import { createReactiveFnSignal, ReactiveFnSignal, ReactiveFnDefinition, ReactiveFnState } from './reactive.js';
@@ -62,7 +61,7 @@ function thenLoop(v: unknown, onFulfill: (value: unknown) => void, onReject: (re
   }
 }
 
-export class ReactivePromise<T> implements IReactivePromise<T> {
+export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
   private _value: T | undefined = undefined;
 
   private _error: unknown | undefined = undefined;
@@ -85,9 +84,11 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
 
   // Private but exposed for the ReactiveTask interface so we don't have to create a new
   // class and make all this code polypmorphic
-  private run: ((...args: unknown[]) => ReactivePromise<T>) | undefined = undefined;
+  private run: ((...args: unknown[]) => ReactivePromiseImpl<T>) | undefined = undefined;
 
   constructor(executor?: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason: unknown) => void) => void) {
+    setReactivePromise(this);
+
     // If an executor is provided, behave like Promise constructor
     if (executor) {
       const resolve = (value: T | PromiseLike<T>) => {
@@ -110,13 +111,13 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
 
   static all<T extends readonly unknown[] | []>(
     values: T,
-  ): ReactivePromise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
-    const p = new ReactivePromise();
+  ): ReactivePromiseImpl<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
+    const p = new ReactivePromiseImpl();
     const arr = arrayFrom(values);
     const len = arr.length;
     if (len === 0) {
       p._setValue([] as any);
-      return p as unknown as ReactivePromise<any>;
+      return p as unknown as ReactivePromiseImpl<any>;
     }
     const results: unknown[] = new Array(len);
     let remaining = len;
@@ -134,14 +135,14 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
     for (let i = 0; i < len; i++) {
       thenLoop(arr[i], onFulfillAt(i), onReject);
     }
-    return p as unknown as ReactivePromise<any>;
+    return p as unknown as ReactivePromiseImpl<any>;
   }
 
-  static race<T extends readonly unknown[] | []>(values: T): ReactivePromise<Awaited<T[number]>> {
-    const p = new ReactivePromise();
+  static race<T extends readonly unknown[] | []>(values: T): ReactivePromiseImpl<Awaited<T[number]>> {
+    const p = new ReactivePromiseImpl();
     const arr = arrayFrom(values);
     const len = arr.length;
-    if (len === 0) return p as unknown as ReactivePromise<any>;
+    if (len === 0) return p as unknown as ReactivePromiseImpl<any>;
     let settled = false;
     const onFulfill = (v: unknown) => {
       if (settled) return;
@@ -156,19 +157,19 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
     for (let i = 0; i < len; i++) {
       thenLoop(arr[i], onFulfill, onReject);
     }
-    return p as unknown as ReactivePromise<any>;
+    return p as unknown as ReactivePromiseImpl<any>;
   }
 
-  static any<T>(values: Iterable<T | PromiseLike<T>>): ReactivePromise<Awaited<T>>;
-  static any<T extends readonly unknown[] | []>(values: T): ReactivePromise<Awaited<T[number]>> {
-    const p = new ReactivePromise();
+  static any<T>(values: Iterable<T | PromiseLike<T>>): ReactivePromiseImpl<Awaited<T>>;
+  static any<T extends readonly unknown[] | []>(values: T): ReactivePromiseImpl<Awaited<T[number]>> {
+    const p = new ReactivePromiseImpl();
     const arr = arrayFrom(values);
     const len = arr.length;
 
     if (len === 0) {
       // Like native Promise.any([]): reject with AggregateError
       p._setError(new AggregateError([], 'No promises were provided to ReactivePromise.any'));
-      return p as unknown as ReactivePromise<any>;
+      return p as unknown as ReactivePromiseImpl<any>;
     }
 
     let pending = len;
@@ -192,14 +193,14 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
       thenLoop(arr[i], onFulfill, onRejectAt(i));
     }
 
-    return p as unknown as ReactivePromise<any>;
+    return p as unknown as ReactivePromiseImpl<any>;
   }
 
   static allSettled<T>(values: Iterable<T | PromiseLike<T>>): Promise<PromiseSettledResult<Awaited<T>>[]>;
   static allSettled<T extends readonly unknown[] | []>(
     values: T,
   ): Promise<{ -readonly [P in keyof T]: PromiseSettledResult<Awaited<T[P]>> }> {
-    const p = new ReactivePromise();
+    const p = new ReactivePromiseImpl();
     const arr = arrayFrom(values);
     const len = arr.length;
 
@@ -227,17 +228,17 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
     return p as unknown as Promise<any>;
   }
 
-  static resolve<T>(value: T): ReactivePromise<T> {
-    if (value instanceof ReactivePromise) return value as unknown as ReactivePromise<T>;
-    return new ReactivePromise<T>(resolve => resolve(value)) as unknown as ReactivePromise<T>;
+  static resolve<T>(value: T): ReactivePromiseImpl<T> {
+    if (value instanceof ReactivePromiseImpl) return value as unknown as ReactivePromiseImpl<T>;
+    return new ReactivePromiseImpl<T>(resolve => resolve(value)) as unknown as ReactivePromiseImpl<T>;
   }
 
-  static reject<T = never>(reason: any): ReactivePromise<T> {
-    return new ReactivePromise<T>((_resolve, reject) => reject(reason)) as unknown as ReactivePromise<T>;
+  static reject<T = never>(reason: any): ReactivePromiseImpl<T> {
+    return new ReactivePromiseImpl<T>((_resolve, reject) => reject(reason)) as unknown as ReactivePromiseImpl<T>;
   }
 
   static withResolvers<T>() {
-    const p = new ReactivePromise<T>();
+    const p = new ReactivePromiseImpl<T>();
     p._equals = DEFAULT_EQUALS as Equals<T>;
     p._initFlags(AsyncFlags.Pending);
 
@@ -252,7 +253,7 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
       p._setError(reason);
     };
 
-    return { promise: p as unknown as ReactivePromise<T>, resolve, reject } as const;
+    return { promise: p as unknown as ReactivePromiseImpl<T>, resolve, reject } as const;
   }
 
   private _initFlags(baseFlags: number) {
@@ -409,15 +410,16 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
 
     this._setFlags(AsyncFlags.Resolved | AsyncFlags.Ready, AsyncFlags.Pending | AsyncFlags.Rejected, notifyFlags);
 
-    for (const { ref, edge, resolve } of this._pending) {
+    const pending = this._pending;
+    this._pending = [];
+
+    for (const { ref, edge, resolve } of pending) {
       resolve?.(value!);
 
       if (ref !== undefined) {
         awaitSubs.set(ref, edge!);
       }
     }
-
-    this._pending = [];
   }
 
   private _setError(nextError: unknown, awaitSubs = this._awaitSubs) {
@@ -531,9 +533,16 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
 
         ref = currentConsumer.ref;
 
-        const prevEdge = this._awaitSubs.get(ref!) ?? findAndRemoveDirty(currentConsumer, this as ReactivePromise<any>);
+        const prevEdge =
+          this._awaitSubs.get(ref!) ?? findAndRemoveDirty(currentConsumer, this as ReactivePromiseImpl<any>);
 
-        edge = createEdge(prevEdge, EdgeType.Promise, this as ReactivePromise<any>, -1, currentConsumer.computedCount);
+        edge = createEdge(
+          prevEdge,
+          EdgeType.Promise,
+          this as ReactivePromiseImpl<any>,
+          -1,
+          currentConsumer.computedCount,
+        );
       }
       // Create wrapper functions that will call the original callbacks and then resolve/reject the new Promise
       const wrappedFulfilled = onfulfilled
@@ -598,16 +607,26 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
   }
 }
 
-export function isReactivePromise(value: object): value is ReactivePromise<unknown> {
-  return value.constructor === ReactivePromise;
+const REACTIVE_PROMISE_SET = new WeakSet<object>();
+
+/**
+ * This is a utility function to mark a value as a ReactivePromise, primarily to enable _proxy_
+ * wrapping of ReactivePromises to add additional functionality (see: Signalium Query)
+ */
+export function setReactivePromise(value: object) {
+  REACTIVE_PROMISE_SET.add(value);
 }
 
-export function isRelay<T>(obj: unknown): obj is ReactivePromise<T> {
-  return obj instanceof ReactivePromise && (obj['_flags'] & AsyncFlags.isRelay) !== 0;
+export function isReactivePromise(value: object): value is ReactivePromiseImpl<unknown> {
+  return REACTIVE_PROMISE_SET.has(value);
+}
+
+export function isRelay<T>(obj: object): obj is ReactivePromiseImpl<T> {
+  return isReactivePromise(obj) && (obj['_flags'] & AsyncFlags.isRelay) !== 0;
 }
 
 export function createPromise<T>(promise: Promise<T>, signal: ReactiveFnSignal<T, unknown[]>) {
-  const p = new ReactivePromise<T>();
+  const p = new ReactivePromiseImpl<T>();
 
   p['_signal'] = signal;
   p['_equals'] = signal.def.equals;
@@ -618,7 +637,7 @@ export function createPromise<T>(promise: Promise<T>, signal: ReactiveFnSignal<T
 }
 
 export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, opts?: ReactiveOptions<T, unknown[]>) {
-  const p = new ReactivePromise<T>();
+  const p = new ReactivePromiseImpl<T>();
 
   let active = false;
   let currentSub: RelayHooks | (() => void) | undefined | void;
@@ -693,7 +712,7 @@ export function createTask<T, Args extends unknown[]>(
   scope: SignalScope,
   opts?: ReactiveOptions<T, Args>,
 ): ReactiveTask<T, Args> {
-  const p = new ReactivePromise<T>();
+  const p = new ReactivePromiseImpl<T>();
 
   const { fn } = createCallback(task, scope);
 
@@ -708,3 +727,9 @@ export function createTask<T, Args extends unknown[]>(
 
   return p as unknown as ReactiveTask<T, Args>;
 }
+
+// Type-cast to make sure we don't expose any internal properties
+export const ReactivePromise = ReactivePromiseImpl;
+
+// Export the instance type separately to avoid the "value used as type" error
+export type ReactivePromise<T> = IReactivePromise<T>;

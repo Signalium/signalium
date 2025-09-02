@@ -616,7 +616,7 @@ describe('React > async', () => {
         });
       });
 
-      const Child = component(({ promise }: { promise: AsyncSignal<string> }): React.ReactNode => {
+      const Child = component(({ promise }: { promise: ReactivePromise<string> }): React.ReactNode => {
         childRenderCount++;
         return <span data-testid="child">{promise.value}</span>;
       });

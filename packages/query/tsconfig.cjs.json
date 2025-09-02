@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist/cjs",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": true,
+    "jsx": "react-jsx",
+    "module": "commonjs",
+    "moduleResolution": "node"
+  },
+  "include": ["src"],
+  "exclude": ["**/__tests__"]
+}

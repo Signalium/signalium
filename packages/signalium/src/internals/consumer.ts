@@ -19,3 +19,13 @@ export const getCurrentConsumer = () => {
 export const getIsWatching = () => {
   return IS_WATCHING;
 };
+
+export const untrack = <T>(fn: () => T): T => {
+  const prevConsumer = CURRENT_CONSUMER;
+  CURRENT_CONSUMER = undefined;
+  try {
+    return fn();
+  } finally {
+    CURRENT_CONSUMER = prevConsumer;
+  }
+};
