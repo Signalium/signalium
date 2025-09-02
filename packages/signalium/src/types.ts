@@ -104,3 +104,7 @@ export type ReadySignalValue<T> =
       : T extends Generator<any, infer U>
         ? ReadyAsyncSignal<U>
         : T;
+
+export type Context<T> = {
+  defaultValue: T;
+};
