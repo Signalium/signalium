@@ -47,10 +47,9 @@ interface ValidationConfig {
   getEntityKey: (entity: Record<string, unknown>) => string;
 }
 
-interface ValidationContext {
+interface ParseContext {
   errors: ValidationError[];
-  entityStore: EntityStore;
-  formatRegistry: FormatRegistry;
+  entityStore?: EntityStore;
   config: ValidationConfig;
 }
 
@@ -58,10 +57,11 @@ interface FormatRegistry {
   get: <Name extends string, Backup>(name: Name, backup: Validator<Backup>) => Validator<ResolveType<Name, Backup>>;
 }
 
+declare const formatRegistry: FormatRegistry;
+
 interface Entity<T extends Record<string, unknown>> {
   proxy: T;
   signal: Signal<T>;
-  validator: Validator<T>;
 }
 
 interface EntityStore {
@@ -77,8 +77,8 @@ interface EntityStore {
 //   validations: (validations: Validations) => Validator<T>;
 // }
 
-type Parse<T> = (value: unknown, context: ValidationContext) => T;
-type Serialize<T> = (value: T, context: ValidationContext) => unknown;
+type Parse<T> = (value: unknown, context: ParseContext) => T;
+type Serialize<T> = (value: T, context: ParseContext) => unknown;
 
 class Validator<T> {
   parse: Parse<T>;
@@ -140,6 +140,27 @@ class Validator<T> {
   format<Name extends string>(formatName: Name): Validator<ResolveType<Name, T>> {
     return formatRegistry.get(formatName, this);
   }
+}
+
+function entity<T extends Record<string, unknown>>(
+  validatorBuilder: (t: APITypes) => { [K in keyof T]: Validator<T[K]> },
+): Validator<T> {
+  let validator: Validator<T> | undefined = undefined;
+
+  const getValidator = () => {
+    if (!validator) {
+      validator = object(validatorBuilder(t));
+    }
+    return validator;
+  };
+
+  const parse: Parse<T> = (value, context) => {
+    return getValidator().parse(value, context);
+  };
+
+  const serialize: Serialize<T> | undefined = getValidator().serialize;
+
+  return new Validator<T>(parse, serialize);
 }
 
 function object<T extends Record<string, unknown>>(validator: { [K in keyof T]: Validator<T[K]> }) {
@@ -366,9 +387,6 @@ type UrlParamsFromPath<S extends string> =
 declare const t: APITypes;
 
 declare function schema<T>(validatorBuilder: (t: APITypes) => Validator<T>): Validator<T>;
-declare function entity<T extends Record<string, unknown>>(
-  validatorBuilder: (t: APITypes) => { [K in keyof T]: Validator<T[K]> },
-): Validator<T>;
 
 interface QueryDefinition {
   readonly path: string;
