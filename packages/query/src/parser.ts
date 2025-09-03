@@ -1,4 +1,7 @@
 import { context, Signal } from 'signalium';
+import { EntityStore, Entity } from './entity-store.js';
+import type { EntityRef, JSONValue } from './persistence.js';
+import { TypeFlags } from 'typescript';
 
 interface Validations {
   // Number validations
@@ -44,13 +47,15 @@ export type ResolveType<Name extends string, BackupType> = Name extends keyof Si
   : BackupType;
 
 interface ValidationConfig {
-  getEntityKey: (entity: Record<string, unknown>) => string;
+  getEntityKey?: (entity: Record<string, unknown>) => string;
 }
 
 interface ParseContext {
   errors: ValidationError[];
-  entityStore?: EntityStore;
+  entityStore: EntityStore;
   config: ValidationConfig;
+  _childrenStack?: EntityRef[][];
+  _queryRootRefs?: EntityRef[];
 }
 
 interface FormatRegistry {
@@ -58,24 +63,6 @@ interface FormatRegistry {
 }
 
 declare const formatRegistry: FormatRegistry;
-
-interface Entity<T extends Record<string, unknown>> {
-  proxy: T;
-  signal: Signal<T>;
-}
-
-interface EntityStore {
-  get: (key: string) => unknown;
-  set: (key: string, value: unknown) => void;
-}
-
-// interface IValidator<T> {
-//   nullable: Validator<T | null>;
-//   optional: Validator<T | undefined>;
-//   nullish: Validator<T | null | undefined>;
-//   format: <Name extends string>(formatName: Name) => Validator<ResolveType<Name, T>>;
-//   validations: (validations: Validations) => Validator<T>;
-// }
 
 type Parse<T> = (value: unknown, context: ParseContext) => T;
 type Serialize<T> = (value: T, context: ParseContext) => unknown;
@@ -140,6 +127,10 @@ class Validator<T> {
   format<Name extends string>(formatName: Name): Validator<ResolveType<Name, T>> {
     return formatRegistry.get(formatName, this);
   }
+
+  validations(validations: Partial<Validations>): Validator<T> {
+    throw new Error('Validations not implemented');
+  }
 }
 
 function entity<T extends Record<string, unknown>>(
@@ -155,7 +146,34 @@ function entity<T extends Record<string, unknown>>(
   };
 
   const parse: Parse<T> = (value, context) => {
-    return getValidator().parse(value, context);
+    const ctx = context as ParseContext;
+    const currentRef = getEntityRefFromValue(ctx, value as Record<string, unknown>);
+    ctx._childrenStack ??= [];
+    const isRootEntity = ctx._childrenStack.length === 0;
+    const parentChildren =
+      ctx._childrenStack.length > 0 ? ctx._childrenStack[ctx._childrenStack.length - 1] : undefined;
+    ctx._childrenStack.push([]);
+    try {
+      const parsed = getValidator().parse(value, context) as unknown as Record<string, unknown>;
+      const myChildren = ctx._childrenStack.pop() ?? [];
+
+      if (parentChildren) {
+        // register this entity as a child of the parent
+        parentChildren.push(currentRef);
+      } else if (isRootEntity) {
+        ctx._queryRootRefs ??= [];
+        ctx._queryRootRefs.push(currentRef);
+      }
+
+      const ent: Entity<Record<string, unknown>> = { proxy: parsed, childrenRefs: myChildren };
+      void ctx.entityStore.setEntity(ent);
+
+      return parsed as unknown as T;
+    } catch (e) {
+      // on error, unwind the stack for this frame
+      ctx._childrenStack.pop();
+      throw e;
+    }
   };
 
   const serialize: Serialize<T> | undefined = getValidator().serialize;
@@ -228,7 +246,7 @@ function array<T>(validator: Validator<T>) {
   return new Validator<T[]>(parseArray, serializeArray);
 }
 
-function tuple<T extends readonly Validator<unknown>[]>(validators: T) {
+function tuple<T extends readonly Validator<any>[]>(validators: T) {
   const parsers = validators.map(v => v.parse);
   const serializers = validators.map(v => v.serialize);
 
@@ -248,7 +266,11 @@ function tuple<T extends readonly Validator<unknown>[]>(validators: T) {
 
       return value as [...ValidatorOutputs<T>];
     },
-    (value, context) => value.map((v, index) => serializers[index](v, context)),
+    (value, context) =>
+      value.map((v, index) => {
+        const s = serializers[index];
+        return s ? s(v, context) : (v as unknown);
+      }) as unknown,
   );
 }
 
@@ -263,9 +285,21 @@ function record<V>(validator: Validator<V>) {
         throw new Error('Invalid record');
       }
 
-      return Object.entries(value).map(([key, v]) => [key, parse(v, context)]);
+      const out: Record<string, V> = {};
+      for (const [key, v] of Object.entries(value)) {
+        out[key] = parse(v, context);
+      }
+      return out;
     },
-    (value, context) => {},
+    serialize
+      ? (value, context) => {
+          const out: Record<string, unknown> = {};
+          for (const [key, v] of Object.entries(value)) {
+            out[key] = (serialize as Serialize<V>)(v as V, context);
+          }
+          return out as unknown;
+        }
+      : undefined,
   );
 }
 
@@ -312,19 +346,19 @@ declare global {
 
 type ValidatorOutput<V> = V extends Validator<infer T> ? T : never;
 
-type UnionOfValidators<VS extends readonly Validator<unknown>[]> = Validator<ValidatorOutput<VS[number]>>;
+type UnionOfValidators<VS extends readonly Validator<any>[]> = Validator<ValidatorOutput<VS[number]>>;
 
 type UnionToIntersection<U> = (U extends unknown ? (x: U) => void : never) extends (x: infer I) => void ? I : never;
 
-type IntersectionOfValidators<VS extends readonly Validator<unknown>[]> = Validator<
+type IntersectionOfValidators<VS extends readonly Validator<any>[]> = Validator<
   UnionToIntersection<ValidatorOutput<VS[number]>>
 >;
 
-type ValidatorOutputs<VS extends readonly Validator<unknown>[]> = {
-  [I in keyof VS]: VS[I] extends Validator<unknown> ? ValidatorOutput<VS[I]> : never;
+type ValidatorOutputs<VS extends readonly Validator<any>[]> = {
+  [I in keyof VS]: VS[I] extends Validator<any> ? ValidatorOutput<VS[I]> : never;
 };
 
-type CommonKeys<VS extends readonly Validator<unknown>[]> = keyof UnionToIntersection<ValidatorOutputs<VS>[number]>;
+type CommonKeys<VS extends readonly Validator<any>[]> = UnionToIntersection<keyof ValidatorOutputs<VS>[number]>;
 
 type JsonPrimitive = string | number | boolean | null;
 
@@ -337,41 +371,44 @@ interface APITypes {
   null: Validator<null>;
 
   array: (<T>(validator: Validator<T>) => Validator<T[]>) & {
-    prefixed: <const VS extends readonly Validator<unknown>[], R>(
+    prefixed: <const VS extends readonly Validator<any>[], R>(
       prefixValidators: VS,
       validator: Validator<R>,
     ) => Validator<[...ValidatorOutputs<VS>, ...R[]]>;
   };
-  tuple: <const VS extends readonly Validator<unknown>[]>(validators: VS) => Validator<[...ValidatorOutputs<VS>]>;
+  tuple: <const VS extends readonly Validator<any>[]>(validators: VS) => Validator<[...ValidatorOutputs<VS>]>;
 
   object: <T extends Record<string, unknown>>(validator: { [K in keyof T]: Validator<T[K]> }) => Validator<T>;
   record: <V>(validator: Validator<V>) => Validator<Record<string, V>>;
 
-  oneOf: (<VS extends readonly Validator<unknown>[]>(validators: VS) => UnionOfValidators<VS>) & {
-    discriminated: <const VS extends readonly Validator<object>[], const K extends CommonKeys<VS> & string>(
+  oneOf: (<VS extends readonly Validator<any>[]>(validators: VS) => UnionOfValidators<VS>) & {
+    discriminated: <const VS extends readonly Validator<object>[], const K extends CommonKeys<VS>>(
       key: K,
       validators: VS,
     ) => Validator<ValidatorOutputs<VS>[number]>;
   };
-  anyOf: (<VS extends readonly Validator<unknown>[]>(validators: VS) => UnionOfValidators<VS>) & {
-    discriminated: <const VS extends readonly Validator<object>[], const K extends CommonKeys<VS> & string>(
+  anyOf: (<VS extends readonly Validator<any>[]>(validators: VS) => UnionOfValidators<VS>) & {
+    discriminated: <const VS extends readonly Validator<any>[], const K extends CommonKeys<VS>>(
       key: K,
       validators: VS,
     ) => Validator<ValidatorOutputs<VS>[number]>;
   };
-  allOf: <VS extends readonly Validator<unknown>[]>(validators: VS) => IntersectionOfValidators<VS>;
+  allOf: <VS extends readonly Validator<any>[]>(validators: VS) => IntersectionOfValidators<VS>;
 }
 
-type ExtractValidatorsFromRecord<T extends Record<string, Validator<unknown>>> = {
+export type Item = ValidatorOutput<typeof Item>;
+export const Item = schema(t => t.anyOf.discriminated('type', [TextItem, ImageItem, VideoItem]));
+
+type ExtractValidatorsFromRecord<T extends Record<string, Validator<any>>> = {
   [K in keyof T as undefined extends ValidatorOutput<T[K]> ? never : K]: ValidatorOutput<T[K]>;
 } & {
   [K in keyof T as undefined extends ValidatorOutput<T[K]> ? K : never]?: Exclude<ValidatorOutput<T[K]>, undefined>;
 };
 
-type ExtractValidators<T extends Validator<unknown> | Record<string, Validator<unknown>> | undefined> =
+type ExtractValidators<T extends Validator<any> | Record<string, Validator<any>> | undefined> =
   T extends Validator<infer U>
     ? U
-    : T extends Record<string, Validator<unknown>>
+    : T extends Record<string, Validator<any>>
       ? ExtractValidatorsFromRecord<T>
       : Record<never, never>;
 
@@ -390,8 +427,8 @@ declare function schema<T>(validatorBuilder: (t: APITypes) => Validator<T>): Val
 
 interface QueryDefinition {
   readonly path: string;
-  readonly searchParams?: Record<string, Validator<unknown>>;
-  readonly response: Validator<unknown> | Record<string, Validator<unknown>>;
+  readonly searchParams?: Record<string, Validator<any>>;
+  readonly response: Validator<any> | Record<string, Validator<any>>;
 }
 
 type QueryParams<QDef extends QueryDefinition> = UrlParamsFromPath<QDef['path']> &
@@ -413,7 +450,7 @@ declare function mutation<
     method: 'POST' | 'PATCH' | 'PUT' | 'DELETE';
     path: string;
     url: string;
-    searchParams?: Record<string, Validator<unknown>>;
+    searchParams?: Record<string, Validator<any>>;
     body: Validator<unknown>;
     response: Validator<unknown> | Record<string, Validator<unknown>>;
   },
@@ -424,10 +461,59 @@ declare function mutation<
   body: ExtractValidators<Def['body']>,
 ) => Promise<ExtractValidators<Def['response']>>;
 
-const Items = schema(t => t.array(Item));
+// Example validators and query/mutation declarations were removed from this module to keep it focused
+// on parsing infrastructure. See design doc for examples if needed.
 
-export type Item = ValidatorOutput<typeof Item>;
-export const Item = schema(t => t.anyOf.discriminated('type', [TextItem, ImageItem, VideoItem]));
+interface ValidationError {
+  path: string;
+  message: string;
+}
+
+export async function parseAndStoreQuery<T>(
+  queryRef: EntityRef,
+  validator: Validator<T>,
+  value: unknown,
+  options: {
+    store: EntityStore;
+    shouldStoreEntities?: boolean;
+    config: ValidationConfig;
+  },
+): Promise<T> {
+  const ctx: ParseContext = {
+    errors: [],
+    entityStore: options.store,
+    config: options.config,
+  };
+
+  const parsed = validator.parse(value, ctx);
+
+  if (ctx.errors.length > 0) {
+    const first = ctx.errors[0];
+    throw new Error(`Validation failed at ${first.path}: ${first.message}`);
+  }
+
+  if (ctx.entityStore && ctx.shouldStoreEntities) {
+    const store = ctx.entityStore;
+    await store.setQuery(queryRef, parsed as unknown as JSONValue);
+  }
+
+  return parsed;
+}
+
+function getEntityRefFromValue(ctx: ParseContext, value: Record<string, unknown>): EntityRef {
+  if (ctx.config.getEntityRef) {
+    return ctx.config.getEntityRef(value);
+  } else if (ctx.config.getEntityKey) {
+    const key = ctx.config.getEntityKey(value);
+    const idx = key.indexOf(':');
+    if (idx === -1) throw new Error('getEntityKey must return "type:id"');
+    return { type: key.slice(0, idx), id: key.slice(idx + 1) };
+  }
+  throw new Error('No getEntityRef or getEntityKey provided in parser config');
+}
+
+// Example usage (commented out to keep parser module type-clean)
+const Items = schema(t => t.array(Item));
 
 export type TextItem = ValidatorOutput<typeof TextItem>;
 export const TextItem = entity(t => ({
@@ -437,8 +523,11 @@ export const TextItem = entity(t => ({
 
 const ImageItem = entity(t => ({
   type: t.const('image'),
-  url: t.string,
-  alt: t.string,
+  url: t.string.nullable,
+  alt: t.string.format('date-time').validations({
+    minLength: 1,
+    maxLength: 100,
+  }),
 }));
 
 const VideoItem = entity(t => ({
@@ -466,6 +555,14 @@ const getItem = query(t => ({
   },
 }));
 
+const getItemQDef = {
+  path: '/items/{id}',
+  response: t.array(Item),
+  searchParams: {
+    page: t.number.optional,
+  },
+} as const;
+
 const result = getItem({ id: '1', page: 1 });
 
 const createItem = mutation({
@@ -476,9 +573,4 @@ const createItem = mutation({
   response: Item,
 });
 
-interface ValidationError {
-  path: string;
-  message: string;
-}
-
-const result = parse(Item, { type: 'text', text: 'Hello' });
+const result2 = parse(Item, { type: 'text', text: 'Hello' });
