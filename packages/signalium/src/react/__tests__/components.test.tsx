@@ -318,4 +318,31 @@ describe('React > Components', () => {
     await expect.element(getByText('Loading...')).toBeInTheDocument();
     await expect.element(getByText('Hello, Universe')).toBeInTheDocument();
   });
+
+  test('callbacks can be used to create reactive closures', async () => {
+    const Component = component(() => {
+      const count = useSignal(0);
+
+      const doubled = reactive(() => count.value * 2);
+
+      return (
+        <div>
+          {doubled()}
+          <button onClick={() => count.value++}>Increment</button>
+        </div>
+      );
+    });
+
+    const { getByText } = render(<Component />);
+
+    await expect.element(getByText('0')).toBeInTheDocument();
+
+    await userEvent.click(getByText('Increment'));
+
+    await expect.element(getByText('2')).toBeInTheDocument();
+
+    await userEvent.click(getByText('Increment'));
+
+    await expect.element(getByText('4')).toBeInTheDocument();
+  });
 });

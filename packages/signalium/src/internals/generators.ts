@@ -14,41 +14,36 @@ export function generatorResultToPromiseWithConsumer<T, Args extends unknown[]>(
   }
 
   return new Promise((resolve, reject) => {
-    function step(result: any) {
-      if (result.done) {
-        resolve(result.value);
-      } else {
-        adopt(result.value).then(fulfilled, rejected);
-      }
-    }
-
-    function fulfilled(value: any) {
+    function step(fn: (value: any) => IteratorResult<any, any>, value?: any) {
       const prevConsumer = CURRENT_CONSUMER;
 
       try {
         setCurrentConsumer(savedConsumer);
-        step(generator.next(value));
+        const result = fn(value);
+        if (result.done) {
+          resolve(result.value);
+        } else {
+          adopt(result.value).then(fulfilled, rejected);
+        }
       } catch (e) {
         reject(e);
       } finally {
         setCurrentConsumer(prevConsumer);
       }
+    }
+
+    const nextFn = generator.next.bind(generator);
+    const throwFn = generator.throw.bind(generator);
+
+    function fulfilled(value: any) {
+      step(nextFn, value);
     }
 
     function rejected(value: any) {
-      const prevConsumer = CURRENT_CONSUMER;
-
-      try {
-        setCurrentConsumer(savedConsumer);
-        step(generator['throw'](value));
-      } catch (e) {
-        reject(e);
-      } finally {
-        setCurrentConsumer(prevConsumer);
-      }
+      step(throwFn, value);
     }
 
-    step(generator.next());
+    step(nextFn);
   });
 }
 

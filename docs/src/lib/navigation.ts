@@ -89,8 +89,8 @@ export const navigation: GroupNavigationItem[] = [
       },
       {
         type: 'link',
-        title: 'Async Signals',
-        href: '/core/async-signals',
+        title: 'Reactive Promises',
+        href: '/core/reactive-promises',
       },
       {
         type: 'link',
@@ -102,21 +102,26 @@ export const navigation: GroupNavigationItem[] = [
         title: 'Contexts',
         href: '/core/contexts',
       },
+      {
+        type: 'link',
+        title: 'Usage with React',
+        href: '/core/react',
+      },
     ],
   },
   {
-    title: 'Guides',
+    title: 'Guides & Articles',
     type: 'group',
     items: [
       {
         type: 'link',
-        title: 'Usage with React',
-        href: '/guides/react',
+        title: 'Advanced Reactive Techniques & Behaviors',
+        href: '/advanced/reactive-function-behaviors',
       },
       {
         type: 'link',
-        title: 'A Signals Deep Dive',
-        href: '/signals-deep-dive',
+        title: 'Signals as Monads',
+        href: '/advanced/signals-as-monads',
       },
     ],
   },

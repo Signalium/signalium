@@ -1,13 +1,11 @@
 /* eslint-disable react-hooks/rules-of-hooks */
 import { useCallback, useSyncExternalStore } from 'react';
-import { RelaySignal, AsyncSignal, SignalValue, Signal } from '../types.js';
-import { DERIVED_DEFINITION_MAP } from '../core-api.js';
-import { expect } from '../type-utils.js';
-import { isRelaySignal } from '../internals/async.js';
+import { SignalValue, Signal, ReactivePromise } from '../types.js';
+import { getReactiveFnAndDefinition } from '../core-api.js';
 import { CURRENT_CONSUMER } from '../internals/consumer.js';
 import { ReactiveFnSignal } from '../internals/reactive.js';
 import { isAsyncSignalImpl } from '../internals/utils/type-utils.js';
-import { AsyncSignalImpl } from '../internals/async.js';
+import { isRelay, ReactivePromise as ReactivePromiseImpl } from '../internals/async.js';
 import { StateSignal } from '../internals/signal.js';
 import { useScope } from './context.js';
 import { GLOBAL_SCOPE } from '../internals/contexts.js';
@@ -28,22 +26,22 @@ const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveFnSignal
   );
 };
 
-const useAsyncSignal = <R>(promise: AsyncSignalImpl<R>): AsyncSignalImpl<R> => {
-  if (isRelaySignal(promise)) {
+const useReactivePromise = <R>(promise: ReactivePromiseImpl<R>): ReactivePromise<R> => {
+  if (isRelay(promise)) {
     useReactiveFnSignal(promise['_signal'] as ReactiveFnSignal<any, unknown[]>);
   }
 
   useStateSignal(promise['_version']);
 
-  return promise;
+  return promise as ReactivePromise<R>;
 };
 
 const useReactiveFn = <R, Args extends readonly Narrowable[]>(fn: (...args: Args) => R, ...args: Args): R => {
-  const def = expect(DERIVED_DEFINITION_MAP.get(fn), 'Expected to find a derived definition for the function');
+  const [, def] = getReactiveFnAndDefinition(fn as any);
 
   const scope = useScope() ?? GLOBAL_SCOPE;
 
-  const signal = scope.get(def, args);
+  const signal = scope.get(def, args as any);
   const value = useReactiveFnSignal(signal);
 
   // Reactive promises can update their value independently of the signal, since
@@ -55,13 +53,13 @@ const useReactiveFn = <R, Args extends readonly Narrowable[]>(fn: (...args: Args
   // could entangle the promise when it is used. But, because that is not the
   // case, we need to eagerly entangle.
   if (typeof value === 'object' && value !== null && isAsyncSignalImpl(value)) {
-    return useAsyncSignal(value) as R;
+    return useReactivePromise(value) as R;
   }
 
-  return value;
+  return value as R;
 };
 
-const isNonNullishAsyncSignal = (value: unknown): value is AsyncSignalImpl<unknown> => {
+const isNonNullishAsyncSignal = (value: unknown): value is ReactivePromise<unknown> => {
   return typeof value === 'object' && value !== null && isAsyncSignalImpl(value);
 };
 
@@ -69,18 +67,17 @@ const isNonNullishAsyncSignal = (value: unknown): value is AsyncSignalImpl<unkno
 type Narrowable = string | number | boolean | null | undefined | bigint | symbol | {};
 
 export function useReactive<R>(signal: Signal<R>): R;
-export function useReactive<R>(signal: RelaySignal<R>): RelaySignal<R>;
-export function useReactive<R>(signal: AsyncSignal<R>): AsyncSignal<R>;
+export function useReactive<R>(signal: ReactivePromise<R>): ReactivePromise<R>;
 export function useReactive<R, Args extends readonly Narrowable[]>(fn: (...args: Args) => R, ...args: Args): R;
 export function useReactive<R, Args extends readonly Narrowable[]>(
-  signal: Signal<R> | RelaySignal<R> | AsyncSignal<R> | ((...args: Args) => R),
+  signal: Signal<R> | ReactivePromise<R> | ((...args: Args) => R),
   ...args: Args
-): R | AsyncSignal<R> | RelaySignal<R> {
+): R | ReactivePromise<R> {
   if (CURRENT_CONSUMER) {
     if (typeof signal === 'function') {
       return signal(...args);
     } else if (isNonNullishAsyncSignal(signal)) {
-      return signal as AsyncSignalImpl<R>;
+      return signal as ReactivePromise<R>;
     } else {
       return (signal as Signal<R>).value;
     }
@@ -89,7 +86,7 @@ export function useReactive<R, Args extends readonly Narrowable[]>(
   if (typeof signal === 'function') {
     return useReactiveFn(signal, ...args);
   } else if (typeof signal === 'object' && signal !== null && isAsyncSignalImpl(signal)) {
-    return useAsyncSignal(signal) as AsyncSignalImpl<R>;
+    return useReactivePromise(signal) as ReactivePromise<R>;
   } else {
     return useStateSignal(signal as StateSignal<R>);
   }

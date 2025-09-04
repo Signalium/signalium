@@ -4,8 +4,21 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import babel from 'vite-plugin-babel';
 import { signaliumPreset } from './src/transform/index.js';
+import { fileURLToPath } from 'url';
 
 export default defineConfig({
+  resolve: {
+    // custom resolves for vitest so we don't need to use the main entry point
+    alias: [
+      { find: /^signalium$/, replacement: fileURLToPath(new URL('./src/index.ts', import.meta.url)) },
+      { find: /^signalium\/debug$/, replacement: fileURLToPath(new URL('./src/debug.ts', import.meta.url)) },
+      { find: /^signalium\/react$/, replacement: fileURLToPath(new URL('./src/react/index.ts', import.meta.url)) },
+      {
+        find: /^signalium\/transform$/,
+        replacement: fileURLToPath(new URL('./src/transform/index.ts', import.meta.url)),
+      },
+    ],
+  },
   test: {
     projects: [
       {

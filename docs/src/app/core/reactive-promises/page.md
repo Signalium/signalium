@@ -1,17 +1,17 @@
 ---
-title: Async Signals
+title: Reactive Promises
 nextjs:
   metadata:
-    title: Async Signals
-    description: Working with async signals in Signalium
+    title: Reactive Promises
+    description: Working with reactive promises in Signalium
 ---
 
-If JavaScript was a completely synchronous language, then we would be able to get away with _just_ normal reactive functions. But alas, we do need to handle all kinds of async tasks. Data fetching is the most common one, but there are others - waiting for animations to finish, waiting for the DOM to render, waiting for the operating system to finish a task, and so on.
+Normal reactive functions cover all use cases for _synchronous_ computation, but what about _asynchronous_ computation?
 
-JavaScript has a few ways of dealing with async, but by far the most common one is with _promises_. Signalium extends promises to add reactivity to them in a _declarative_ way, enabling functional programming patterns alongside traditional imperative ones.
+JavaScript has a few ways of dealing with async, but by far the most common one is with _promises_ and _async functions_. Signalium extends promises to add reactivity to them in a declarative way, enabling functional programming patterns alongside traditional imperative ones.
 
 ```js
-const fetchJson = reactive(async (url) => {
+const fetchJson = reactive(async (url: string) => {
   const response = await fetch(url);
   const result = await response.json();
 
@@ -19,14 +19,14 @@ const fetchJson = reactive(async (url) => {
 });
 
 // Using async/await
-const getUserName = reactive(async (id) => {
+const getUserName = reactive(async (id: string) => {
   const user = await fetchJson(`https://example.com/users/${id}`);
 
   return user.fullName;
 });
 
 // Using declarative properties
-const getUserName = reactive((id) => {
+const getUserNameOrLoading = reactive((id: string) => {
   const user = fetchJson(`https://example.com/users/${id}`);
 
   return user.isPending ? 'Loading user...' : user.value.fullName;
@@ -51,7 +51,7 @@ However, we want a _declarative_ way of representing this data, one that derives
 The way Signalium handles this is by exposing the various states of a promise as properties:
 
 ```ts
-interface AsyncSignal<T> extends Promise<T> {
+interface ReactivePromise<T> extends Promise<T> {
   value: T | undefined;
   error: unknown;
   isPending: boolean;
@@ -59,8 +59,6 @@ interface AsyncSignal<T> extends Promise<T> {
   isRejected: boolean;
   isSettled: boolean;
   isReady: boolean;
-
-  rerun(): void;
 }
 ```
 
@@ -88,6 +86,7 @@ export const getText = reactive(() => {
 The properties and flags represent the following states:
 
 - `value`: The most recent result of the promise. This will remain the latest result until the next successful rerun of the promise, allowing you to show the previous state while the next state is loading.
+- `error`: The most recent error of the promise. This will remain the latest error until the next run, allowing you to show the current error state.
 - `isPending`: True when the reactive promise is currently running (e.g. the promise has not yet resolved).
 - `isResolved`: True when the reactive promise resolved successfully.
 - `isRejected`: True when the reactive promise rejected.
@@ -98,13 +97,13 @@ This mirrors popular libraries such as [TanStack Query](https://tanstack.com/que
 
 ### Awaiting results
 
-You can _await_ reactive promises using standard async/await syntax:
+In addition to the declarative properties, you can also _await_ reactive promises using standard async/await syntax:
 
 ```js {% visualize=true %}
-let value = signal(0);
+let count = signal(0);
 
 const getInnerLoader = reactive(async () => {
-  const v = value.value;
+  const v = count.value;
   await sleep(3000);
   return v;
 });
@@ -122,26 +121,110 @@ export const getText = reactive(() => {
 });
 ```
 
-Await unwraps the result and returns it, so it's guaranteed to have a value. The function stops execution at that point, and resumes it again once it's resolved.
+Execution pauses at await until the awaited Promise settles (resolves or rejects). This guarantees a value or an error before proceeding, eliminating the need for undefined checks and simplifying state management.
 
-When you await values like this, it also _stops propagation_ of changes until every async request has resolved. This allows your fetch to fully resolve _before_ notifying the view layer, meaning fewer rerenders and more performant behavior by default.
+### Composing promises
 
-### Manual invalidation
+You can compose promises using the standard promise methods like `Promise.all`, `Promise.race`, etc.
 
-Sometimes you may need to rerun a reactive promise even though its inputs haven't changed. For instance, you might have a manual refresh button to let users get the latest data. You can call `rerun` on a reactive promise that was generated _by_ a reactive function, and it will invalidate that function and rerun it the _next time it is used_.
+```js {% visualize=true %}
+let countA = signal(0);
+let countB = signal(0);
+let countC = signal(0);
 
-```js
-const getAsyncValue = reactive(async () => {
-  // ...
+const loadA = reactive(async () => {
+  const v = countA.value;
+  await sleep(1000);
+  return v;
 });
 
-const result = getAsyncValue();
+const loadB = reactive(async () => {
+  const v = countB.value;
+  await sleep(3000);
+  return v;
+});
 
-// Later...
-result.rerun(); // invalidates `getAsyncValue()`
+const loadC = reactive(async () => {
+  const v = countC.value;
+  await sleep(6000);
+  return v;
+});
+
+const loadABC = reactive(async () => {
+  const [a, b, c] = await Promise.all([loadA(), loadB(), loadC()]);
+
+  return a + b + c;
+});
+
+export const getText = reactive(() => {
+  const { isPending, value } = loadABC();
+
+  return isPending ? 'Loading...' : value;
+});
 ```
 
-## The `task` helper
+This allows you to chain promises together and ensure that all promises are settled before continuing the computation, and it allows you to do so with familiar APIs that users already know and understand.
+
+### Handling errors
+
+You can also handle errors using the semantics of standard `try/catch` syntax in async functions:
+
+```js {% visualize=true %}
+let countA = signal(0);
+
+const loadA = reactive(async () => {
+  const v = countA.value;
+
+  if (v % 2 === 0) {
+    throw new Error('Even number');
+  }
+
+  await sleep(2500);
+  return v;
+});
+
+const loadWithCatch = reactive(async () => {
+  try {
+    return await loadA();
+  } catch (error) {
+    return 'Whoops! Something went wrong.';
+  }
+});
+
+export const getText = reactive(() => {
+  const { isPending, value } = loadWithCatch();
+
+  return isPending ? 'Loading...' : value;
+});
+```
+
+This allows you to handle errors and continue the computation like you would with standard promises. You can also use the `isRejected` and `error` properties to handle errors directly:
+
+```js {% visualize=true %}
+let countA = signal(0);
+
+const loadA = reactive(async () => {
+  const v = countA.value;
+
+  if (v % 2 === 0) {
+    throw new Error('Even number');
+  }
+
+  await sleep(2500);
+  return v;
+});
+export const getText = reactive(() => {
+  const { isPending, value, isRejected, error } = loadA();
+
+  return isPending
+    ? 'Loading...'
+    : isRejected
+      ? `Error: ${error.message}`
+      : value;
+});
+```
+
+## Reactive Tasks
 
 Async signals are meant to represent _data_, values fetched or generated based on some input (e.g. a URL). In many cases, however, we have an _asynchronous task_ which triggers based on some action or event. For example, you might have a save button that sends a `PATCH` request to the server. You _could_ just handle that in an event handler and not bother with hooks or signals, but you'll likely want to show a loading spinner, or some other indicator that the action is happening.
 
@@ -166,7 +249,7 @@ The signature for a `TaskSignal` is:
 
 ```ts
 export interface TaskSignal<T, Args extends unknown[] = unknown[]>
-  extends AsyncSignal<T> {
+  extends ReactivePromise<T> {
   run(...args: Args): Promise<T>;
 }
 ```
@@ -222,14 +305,16 @@ Like with updating state, there is no blanket prohibition on running tasks in yo
 
 ## Summary
 
-Async signals (created via reactive async functions) and tasks are the go-to solutions when dealing with standard, promise-based async in Signalium. To sum up the main points:
+Reactive promises (created via reactive async functions) and tasks are the go-to solutions when dealing with standard, promise-based async in Signalium. To sum up the main points:
 
-- Async Signals
+- Reactive Promises
   - Superset of standard promises with declarative state for `isPending`, `isResolved`, `value`, etc.
   - Promises returned by reactive functions are converted into reactive promises
   - Only propagate changes when they are fully resolved
   - Can be awaited with `async`/`await` syntax
-- Task Signals
+  - Can be composed with standard promise methods like `Promise.all`, `Promise.race`, etc.
+  - Can be used with `try/catch` syntax to handle errors
+- Reactive Tasks
   - Used for running an async operation on command
   - Exposes the same state properties as reactive promises
   - Should not be used _reactively_ (e.g. in response to changes in other signals)

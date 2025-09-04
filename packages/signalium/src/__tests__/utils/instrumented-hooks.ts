@@ -7,10 +7,10 @@ import {
   task as _task,
   watcher,
 } from '../../index.js';
-import { TaskSignal, SignalValue, SignalOptionsWithInit, RelayHooks } from '../../types.js';
+import { ReactiveTask, SignalValue, SignalOptionsWithInit, RelayHooks } from '../../types.js';
 import { Context, ContextImpl, getCurrentScope, GLOBAL_SCOPE, SignalScope } from '../../internals/contexts.js';
 import { ReactiveFnSignal } from '../../internals/reactive.js';
-import { AsyncSignalImpl } from '../../internals/async.js';
+import { ReactivePromise } from '../../internals/async.js';
 import { hashValue } from '../../internals/utils/hash.js';
 
 class SignalHookCounts {
@@ -78,7 +78,7 @@ function getWatcherForHook(hook: Function) {
       () => {
         let result = hook();
 
-        if (result instanceof AsyncSignalImpl) {
+        if (result instanceof ReactivePromise) {
           result = result.value;
         }
 
@@ -101,7 +101,7 @@ function toHaveSignalValue(
   hook: Function,
   value: any,
 ) {
-  if (hook instanceof AsyncSignalImpl) {
+  if (hook instanceof ReactivePromise) {
     return {
       pass: this.equals(hook.value, value),
       message: () => `Expected relay value to be ${JSON.stringify(value)}, but got ${JSON.stringify(hook.value)}`,
@@ -226,11 +226,11 @@ function getCountsFor(name: string, map: Map<number, SignalHookCounts>, scope: S
 
 const COUNTS = Symbol('counts');
 
-export type RelayWithCounts<T> = AsyncSignalImpl<T> & {
+export type RelayWithCounts<T> = ReactivePromise<T> & {
   [COUNTS]: SignalHookCounts;
 };
 
-export type TaskWithCounts<T, Args extends unknown[]> = TaskSignal<T, Args> & {
+export type TaskWithCounts<T, Args extends unknown[]> = ReactiveTask<T, Args> & {
   [COUNTS]: SignalHookCounts;
 };
 

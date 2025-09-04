@@ -17,13 +17,13 @@ Asymmetric async refers to any async operation where you may send _one or more r
 - Adding a listener to an external library, like Tanstack Query
 - Setting up a regular polling job or other interval based task
 
-**Relays** are a type of signal that specifically handles these sorts of operations. When combined with **Watchers**, they allow you to setup and manage the full lifecycle of long-live effects and resources.
+**Relays** are a type of reactive promise that specifically handles these sorts of operations. When combined with **Watchers**, they allow you to setup and manage the full lifecycle of long-live effects and resources.
 
 ---
 
 ## What are Relays?
 
-The core idea for relays comes from the observation that the following combination of hooks in React is a very common pattern:
+The core idea for relays comes from the observation that it is a very common pattern to use a _managed effect_ paired with some _state_ that is only accessible internally. For example, in React you might have something like this:
 
 ```js
 const useCounter = (ms) => {
@@ -41,7 +41,7 @@ const useCounter = (ms) => {
 };
 ```
 
-What we have here is an _effect_ paired with some _state_, where the effect controls and manages the state entirely internally. To callers of `useCounter`, this is a completely opaque process. They just get the latest count, and they rerun when the count updates.
+To callers of `useCounter`, the management of the interval and the associated state is a completely opaque process. They just get the latest count, and they rerun when the count updates.
 
 This is notable because it preserves functional purity for everything _outside_ of `useCounter`. While `useCounter` is managing and mutating state regularly, any hook calling it is just getting the latest value and using it to derive the result. It could be a static value _or_ a dynamic one, and the code would be the same.
 
@@ -65,36 +65,18 @@ const counter = relay(
   { initValue: 0 },
 );
 
-const innerCounterWrapper = reactive(() => {
+export const counterWrapper = reactive(() => {
   return counter.value;
 });
-
-export const outerCounterWrapper = reactive(() => {
-  return getInnerCounterWrapper();
-});
-```
-
-Like reactive tasks and promises, relays are also a superset of promises and they have the same interface as promise signals:
-
-```ts
-interface RelaySignal<T> extends Promise<T> {
-  value: T | undefined;
-  error: unknown;
-  isPending: boolean;
-  isResolved: boolean;
-  isRejected: boolean;
-  isSettled: boolean;
-  isReady: boolean;
-}
 ```
 
 Relays define a constructor function that runs when they become watched (detailed below). The function receives a signal as the first parameter, and should setup a side-effect and (optionally) return a destructor. Like with reactive functions, any reactive state that is used during this constructor will become a dependency of the relay, and if that state updates, the destructor function will be called and the relay will be recreated.
 
 ### Relays as promises
 
-Relays implement the promise interface, but promises are modeled for _symmetric_ async - one request sent, one response received. So, why do relays act like promises, and how do they handle asymmetric async differently?
+As mentioned above, relays are really a type of reactive promise, but promises are modeled for _symmetric_ async - one request sent, one response received. So, why do relays act like promises, and how do they handle asymmetric async differently?
 
-The primary reason is that relays often have an _initialization_ step while they wait for the first event they want to receive. For instance, let's say you want to load a `Post` model and poll for real time updates for it as long as we're on that page. When we first load the page, we don't have any data, so we want to show a loading spinner. After the first message is received, we can show the cached data and continue polling in the background.
+The primary reason is that relays are promise-like is that they often have an _initialization_ step while they wait for the first event they want to receive. For instance, let's say you want to load a `Post` model and poll for real time updates for it as long as we're on that page. When we first load the page, we don't have any data, so we want to show a loading spinner. After the first message is received, we can show the cached data and continue polling in the background.
 
 ```ts
 const getPostData = reactive((id) => {
@@ -204,23 +186,26 @@ const w = watcher(() => {
   return plusOne();
 });
 
-const removeListener = w.addListener((val) => {
-  console.log(val);
+const removeListener = w.addListener(() => {
+  console.log(w.value);
 });
-// logs 1 after timeout
 
-count.value = 5;
-// logs 6 after timeout
+// logs 1 after timeout and initial run
 
+count.value = 5; // logs 6 after timeout
+
+// later...
 removeListener();
 
-count.value = 10;
-// no longer logs
+count.value = 10; // no longer logs
 ```
 
-Watchers are _typically_ handled by the framework integration that you are using. For instance, `@signalium/react` automatically detects if you are using a reactive value inside of a React component, and sets up a watcher if needed.
+Watchers are _typically_ handled by the framework integration that you are using. For instance, `signalium/react` provides the `component` helper, which sets up a watcher for your component and notifies React when that component needs to re-render.
 
 ```jsx
+import { signal, reactive } from 'signalium';
+import { component } from 'signalium/react';
+
 const count = signal(0);
 
 const plusOne = reactive(() => {
@@ -233,22 +218,20 @@ const plusTwo = reactive(() => {
   return plusOne() + 1;
 });
 
-export function Component() {
+export const Component = component(() => {
   // plusTwo() is called inside a React component,
   // sets up a watcher and synchronizes it with React
   // state so it rerenders whenever the watcher updates.
   const valuePlusTwo = plusTwo();
 
   return <div>{valuePlusTwo}</div>;
-}
+});
 ```
 
-In general, you shouldn't need to worry about managing watchers yourself because of this, but they are very important _conceptually_ which is why they are included in the core concepts. In addition, they'll be necessary if you ever _do_ need to create your own integration of some kind.
+In general, you shouldn't need to worry about managing watchers yourself because of this, but they are very important _conceptually_ which is why they are included in the core concepts.
 
 {% callout type="warning" title="Note" %}
 Watchers should never be created or managed _inside_ reactive functions or relays. They are meant to be _terminal nodes_ that pull on the graph of dependencies and make it "live". Relays generally work like "internal watchers" (i.e. they will also update automatically while they're live via an external watcher), so there should never be a reason to create a watcher inside of one.
-
-This is a very strong recommendation; Any current behavior is considered undefined, and it is not guaranteed or covered under semver.
 {% /callout %}
 
 ### Watcher scheduling
@@ -271,7 +254,7 @@ function handleClickEvent() {
 
 When we flush watchers, we do them together in the same task in a way that minimizes the number of scheduled tasks and any thrashing that might occur. They are automatically scheduled if they have any listeners, and if any value in their dependency tree has changed.
 
-That said, the call order for watchers is still from _changed state_ outward, toward the watcher. This means that the watcher will only rerun if any of its direct dependencies have _also_ changed, following the same rules discussed in the [Reactive Functions and State](/core/reactive-functions-and-state) section. In addition, listeners added with `addListener` will not run if the value returned from the watcher itself has not updated.
+That said, the call order for watchers is still from _changed state_ outward, toward the watcher. This means that the watcher will only rerun if any of its direct dependencies have _also_ changed, following the same rules discussed in the [reactive functions section](/core/signals-and-reactive-functions). In addition, listeners added with `addListener` will not run if the value returned from the watcher itself has not updated.
 
 ### Timing, caching, and immediacy
 
@@ -315,7 +298,7 @@ With standard and even async values, this is not really an issue because they _m
 
 Watchers conceptually represent the parts of the app that are _active_: They are "in use", and should be updating or running background tasks and so on. These are the exit points where your signals are writing to _something_ external, and that something is what is driving the lifecycle of your signal graph.
 
-This leads us to _active status_. Watchers become **active** when 1 or more event listeners are added to them. When a node (a state, reactive function, or relay) is connected directly OR indirectly to an active watcher, it also becomes active. It remains active until it is disconnected from _all_ active consumers, at which point it is said to be **inactive**. Essentially, if you're directly or indirectly connected to a watcher, you are active, and if you're not then you're inactive.
+This leads us to _active status_. Watchers become **active** when 1 or more event listeners are added to them. When a node (a state, reactive function, or relay) is connected directly OR indirectly to an active watcher, it also becomes active. It remains active until it is disconnected from _all_ active consumers, at which point it is said to be **inactive**. Essentially, if you're directly or indirectly connected to a watcher, you are active, and if not, then you're inactive.
 
 And last but not least: a relays _lifecycle_ is tied directly to whether or not its _active_. They run their setup upon activating, and run their deactivate function upon deactivating.
 
@@ -339,8 +322,8 @@ And that covers the last major types of signals in Signalium! To summarize:
 
 - Relays
   - Manage side-effects in a single, self-contained node with its own state
-  - Implementation details are hidden, externally it works just like any other state
-  - Primarily used for _asymmetric async_ (think UDP vs TCP), but also implement the `AsyncSignal` API for initial load and pending states
+  - Implementation details are hidden, externally it works just like any other reactive promise
+  - Primarily used for _asymmetric async_ (think UDP vs TCP)
   - Activate when _connected_ to an active watcher, and deactivate when _disconnected_ from all active watchers
 - Watchers
   - Represent the active parts of the app

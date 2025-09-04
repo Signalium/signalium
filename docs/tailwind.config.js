@@ -11,6 +11,21 @@ module.exports = {
             'blockquote p:last-of-type::after': {
               content: '',
             },
+            code: {
+              backgroundColor: 'var(--color-primary-1000)',
+              padding: '0.2rem 0.4rem 0.15rem',
+              marginTop: '-0.20rem',
+              marginBottom: '-0.15rem',
+              borderRadius: '0.25rem',
+              border: '1px solid var(--color-divider)',
+              color: 'var(--color-pink-400)',
+            },
+            'code::before': {
+              content: '""',
+            },
+            'code::after': {
+              content: '""',
+            },
           },
         },
       },

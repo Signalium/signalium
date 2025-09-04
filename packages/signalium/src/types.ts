@@ -52,7 +52,7 @@ export interface Thenable<T> {
   [Symbol.toStringTag]: string;
 }
 
-export interface BaseAsyncSignal<T> extends Promise<T>, ReadonlySignal<T | undefined> {
+export interface BaseReactivePromise<T> extends Promise<T>, ReadonlySignal<T | undefined> {
   value: T | undefined;
   error: unknown;
 
@@ -61,46 +61,42 @@ export interface BaseAsyncSignal<T> extends Promise<T>, ReadonlySignal<T | undef
   isResolved: boolean;
   isSettled: boolean;
   isReady: boolean;
-
-  rerun(): void;
 }
 
-export interface PendingAsyncSignal<T> extends BaseAsyncSignal<T> {
+export interface PendingReactivePromise<T> extends BaseReactivePromise<T> {
   value: undefined;
   isReady: false;
 }
 
-export interface ReadyAsyncSignal<T> extends BaseAsyncSignal<T> {
+export interface ReadyReactivePromise<T> extends BaseReactivePromise<T> {
   value: T;
   isReady: true;
 }
 
-export type AsyncSignal<T> = PendingAsyncSignal<T> | ReadyAsyncSignal<T>;
+export type ReactivePromise<T> = PendingReactivePromise<T> | ReadyReactivePromise<T>;
 
-export type TaskSignal<T, Args extends unknown[]> = Omit<AsyncSignal<T>, 'rerun'> & {
-  run(...args: Args): AsyncSignal<T>;
+export type ReactiveTask<T, Args extends unknown[]> = ReactivePromise<T> & {
+  run(...args: Args): ReactivePromise<T>;
 };
-
-export type RelaySignal<T> = Omit<AsyncSignal<T>, 'rerun'>;
 
 export type SignalValue<T> =
   // We have to first check if T is a ReactiveTask, because it will also match Promise<T>
-  T extends TaskSignal<infer U, infer Args>
-    ? TaskSignal<U, Args>
+  T extends ReactiveTask<infer U, infer Args>
+    ? ReactiveTask<U, Args>
     : T extends Promise<infer U>
-      ? AsyncSignal<U>
+      ? ReactivePromise<U>
       : T extends Generator<any, infer U>
-        ? AsyncSignal<U>
+        ? ReactivePromise<U>
         : T;
 
 // This type is used when initial values are provided to async functions and
 // relays. It allows us to skip checking `isReady` when there is always
 // a guaranteed value to return.
 export type ReadySignalValue<T> =
-  T extends TaskSignal<infer U, infer Args>
-    ? TaskSignal<U, Args>
+  T extends ReactiveTask<infer U, infer Args>
+    ? ReactiveTask<U, Args>
     : T extends Promise<infer U>
-      ? ReadyAsyncSignal<U>
+      ? ReadyReactivePromise<U>
       : T extends Generator<any, infer U>
-        ? ReadyAsyncSignal<U>
+        ? ReadyReactivePromise<U>
         : T;

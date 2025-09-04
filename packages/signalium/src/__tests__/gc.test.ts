@@ -74,7 +74,6 @@ describe('Garbage Collection', () => {
 
     const conditionalSignal = reactive(() => shouldAllowGC.value, {
       shouldGC: (signal, value) => {
-        // console.log('shouldGC', signal, value);
         return value;
       },
     });

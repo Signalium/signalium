@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     /* Language and Environment */
-    "target": "es2023",
+    "target": "es2024",
     "module": "NodeNext",
     "moduleResolution": "nodenext",
     "esModuleInterop": true,

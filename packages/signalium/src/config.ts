@@ -1,5 +1,3 @@
-import { SignalScope } from './internals/contexts.js';
-
 export type FlushCallback = () => void;
 
 export type FlushFn = (fn: FlushCallback) => void;
