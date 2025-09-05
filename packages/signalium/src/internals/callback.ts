@@ -74,7 +74,7 @@ export function callback<T extends Function>(fn: T, idx: number, deps?: unknown[
 
   if (callback === undefined) {
     callback = callbacks[idx] = createCallback(fn, getCurrentScope(), deps);
-  } else if (deps && callback.deps?.find((dep, i) => dep !== deps[i])) {
+  } else if (deps && callback.deps?.findIndex((dep, i) => dep !== deps[i]) !== -1) {
     callback.setFn(fn);
     callback.deps = deps as unknown[];
   }

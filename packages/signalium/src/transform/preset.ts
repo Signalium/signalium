@@ -1,5 +1,6 @@
 import { signaliumAsyncTransform } from './async.js';
 import { signaliumCallbackTransform } from './callback.js';
+import { signaliumPromiseMethodsTransform } from './promise.js';
 
 export interface SignaliumTransformOptions {
   transformedImports?: [string, string | RegExp][];
@@ -12,6 +13,9 @@ export function signaliumPreset(opts?: SignaliumTransformOptions) {
     plugins: [
       signaliumCallbackTransform({ transformedImports: opts?.transformedImports ?? [] }),
       signaliumAsyncTransform({ transformedImports: opts?.transformedImports ?? [] }),
+      // Transform Promise.* calls inside signalium functions to ReactivePromise.*
+      // Must run after async so that await->yield conversion has already occurred
+      signaliumPromiseMethodsTransform({ transformedImports: opts?.transformedImports ?? [] }),
     ],
   };
 }

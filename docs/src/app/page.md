@@ -30,13 +30,13 @@ Add the babel plugin to your `vite.config.js`:
 ```js
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { signaliumAsyncTransform } from 'signalium/transform';
+import { signaliumPreset } from 'signalium/transform';
 
 export default defineConfig({
   plugins: [
     react({
       babel: {
-        plugins: [signaliumAsyncTransform()],
+        presets: [signaliumPreset()],
       },
     }),
   ],
@@ -48,61 +48,48 @@ export default defineConfig({
 Add the plugin to your `babel.config.js`:
 
 ```js
-import { signaliumAsyncTransform } from 'signalium/transform';
+import { signaliumPreset } from 'signalium/transform';
 
 module.exports = {
   presets: [
     '@babel/preset-env',
     '@babel/preset-react',
     '@babel/preset-typescript',
+    signaliumPreset(),
   ],
-  plugins: [signaliumAsyncTransform()],
 };
 ```
 
-### 3. Setup React integration
-
-If you're using React, you'll need to setup the React integration:
-
-```tsx
-import { setupReact } from 'signalium/react';
-
-// Call this once at the root of your app
-setupReact();
-```
-
-### 4. Add your first reactive function
+### 3. Add your first reactive component
 
 Create a simple counter component:
 
 ```jsx
 import { reactive } from 'signalium';
-import { setupReact, useStateSignal } from '@signalium/react';
+import { component, useSignal } from 'signalium/react';
 
 // Create a reactive function outside your component
-const doubled = reactive(() => count.value * 2);
+const doubled = reactive((count) => count.value * 2);
 
-function Counter() {
+export const Counter = component(() => {
   // Create a state signal inside your component
-  const count = useStateSignal(0);
+  const count = useSignal(0);
 
   return (
     <div>
       <h1>Counter: {count.value}</h1>
-      <p>Doubled: {doubled()}</p>
+      <p>Doubled: {doubled(count)}</p>
       <button onClick={() => count.value++}>Increment</button>
     </div>
   );
-}
-
-export default Counter;
+});
 ```
 
 ## Learn More
 
 {% quick-links %}
 
-{% quick-link title="Explore core concepts" icon="presets" href="/core/reactive-functions-and-state" description="Learn the core components of Signalium-based reactivity" /%}
+{% quick-link title="Explore core concepts" icon="presets" href="/core/reactive-functions-and-state" description="Learn the core concepts of Signalium-based reactivity" /%}
 
 {% quick-link title="React integration" icon="plugins" href="/guides/react" description="Learn how to use Signalium with React" /%}
 

@@ -6,8 +6,8 @@ import {
   relay,
   reactive,
   signal,
-  AsyncSignal,
-  isAsyncSignal,
+  ReactivePromise,
+  isReactivePromise,
 } from 'signalium';
 import {
   createTracerFromId,
@@ -23,7 +23,10 @@ import { dedent } from '@/lib/string';
 import { CodeFence } from './Fence';
 import { createHookWatcher, reactiveHook, useState } from '@/lib/hooks-tracer';
 import { addDescOptions, addHooksWrapper } from './visualizer/babel';
-import { signaliumAsyncTransform } from 'signalium/transform';
+import {
+  signaliumAsyncTransform,
+  signaliumPromiseMethodsTransform,
+} from 'signalium/transform';
 
 const item = {
   visible: { opacity: 1, y: 0 },
@@ -65,8 +68,8 @@ function useNodeClass(
 
   const loading = node.loading;
   const updating = node.updating || forceUpdating;
-  const success = isAsyncSignal(node.value) && node.value.isResolved;
-  const error = isAsyncSignal(node.value) && node.value.isRejected;
+  const success = isReactivePromise(node.value) && node.value.isResolved;
+  const error = isReactivePromise(node.value) && node.value.isRejected;
 
   if (loading) {
     return classes.loading;
@@ -90,10 +93,10 @@ export const VisualizerNodeComponent = ({ node }: { node: VisualizerNode }) => {
     () => node.version,
   );
 
-  const isPromise = isAsyncSignal(node.value);
+  const isPromise = isReactivePromise(node.value);
   const params = node.params;
   const value = isPromise
-    ? (node.value as AsyncSignal<unknown>).value
+    ? (node.value as ReactivePromise<unknown>).value
     : node.value;
 
   const nodeClass = useNodeClass(
@@ -206,13 +209,20 @@ type createWatcher = (
 ) => WatcherProxy;
 
 const createSignalWatcher: createWatcher = (tracer, fn, id, desc, scope) => {
-  const w = watcher(fn, {
-    id,
-    desc,
-    scope,
-    equals: false,
-    tracer,
-  });
+  const w = watcher(
+    () => {
+      const value = fn();
+
+      return value;
+    },
+    {
+      id,
+      desc,
+      scope,
+      equals: false,
+      tracer,
+    },
+  );
 
   const unsub = w.addListener(() => {});
 
@@ -419,16 +429,26 @@ const WatcherRunner = ({
   if (watcherRef.current === undefined) {
     const scope = new SignalScope([]);
 
-    const compiled = transform(source, {
+    const preamble = `import { relay, reactive, task } from 'signalium';`;
+
+    const sourceWithPreamble =
+      preamble + source.replace(/import .* from .*;?/, '');
+
+    const compiled = transform(sourceWithPreamble, {
       presets: ['react'],
-      plugins: [addDescOptions, addHooksWrapper, signaliumAsyncTransform()],
+      plugins: [
+        addDescOptions,
+        addHooksWrapper,
+        signaliumAsyncTransform(),
+        signaliumPromiseMethodsTransform(),
+      ],
     })
       .code!.replace('export default function', 'return function')
       .replace(/export const (\w+) =/, 'return')
       .replace(/import .* from .*;?/, '');
 
     let output = new Function(
-      '{ signal, relay, reactive, useReactive, hook, useRef, useState, useEffect, React, sleep }',
+      '{ signal, relay, reactive, useReactive, hook, useRef, useState, useEffect, React, sleep, ReactivePromise }',
       compiled,
     )({
       signal,
@@ -441,6 +461,7 @@ const WatcherRunner = ({
       useReactive,
       React,
       sleep,
+      ReactivePromise,
     });
 
     if (wrapOutput) {

@@ -1,12 +1,11 @@
 import {
-  BaseAsyncSignal,
-  RelaySignal,
-  TaskSignal,
+  BaseReactivePromise,
+  ReactiveTask,
   SignalEquals,
   SignalOptionsWithInit,
   SignalActivate,
   RelayHooks,
-  AsyncSignal,
+  ReactivePromise as IReactivePromise,
   RelayState,
 } from '../types.js';
 import { createReactiveFnSignal, ReactiveFnSignal, ReactiveFnDefinition, ReactiveFnState } from './reactive.js';
@@ -48,16 +47,28 @@ interface PendingResolve<T> {
   reject: ((error: unknown) => void) | undefined | null;
 }
 
-type TaskFn<T, Args extends unknown[]> = (...args: Args) => Promise<T>;
+const arrayFrom = Array.from;
 
-export class AsyncSignalImpl<T, Args extends unknown[] = unknown[]> implements BaseAsyncSignal<T> {
+function isThenable(v: unknown): v is PromiseLike<unknown> {
+  return v !== null && typeof v === 'object' && typeof (v as any).then === 'function';
+}
+
+function thenLoop(v: unknown, onFulfill: (value: unknown) => void, onReject: (reason: unknown) => void): void {
+  if (isThenable(v)) {
+    (v as PromiseLike<unknown>).then(onFulfill, onReject);
+  } else {
+    onFulfill(v);
+  }
+}
+
+export class ReactivePromise<T> implements BaseReactivePromise<T> {
   private _value: T | undefined = undefined;
 
   private _error: unknown | undefined = undefined;
-  private _flags = 0;
+  private _flags = AsyncFlags.Pending;
 
-  private _signal: ReactiveFnSignal<any, any> | TaskFn<T, Args> | undefined = undefined;
-  private _equals!: SignalEquals<T>;
+  private _signal: ReactiveFnSignal<any, any> | undefined = undefined;
+  private _equals: SignalEquals<T> = DEFAULT_EQUALS as SignalEquals<T>;
   private _promise: Promise<T> | undefined;
 
   private _pending: PendingResolve<T>[] = [];
@@ -71,113 +82,176 @@ export class AsyncSignalImpl<T, Args extends unknown[] = unknown[]> implements B
   // was used because we can't dynamically call hooks.
   private _version = signal(0);
 
-  static createPromise<T>(promise: Promise<T>, signal?: ReactiveFnSignal<T, unknown[]>, initValue?: T | undefined) {
-    const p = new AsyncSignalImpl<T>();
+  // Private but exposed for the ReactiveTask interface so we don't have to create a new
+  // class and make all this code polypmorphic
+  private run: ((...args: unknown[]) => ReactivePromise<T>) | undefined = undefined;
 
-    p._signal = signal;
-    p._equals = signal?.def.equals ?? DEFAULT_EQUALS;
+  constructor(executor?: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason: unknown) => void) => void) {
+    // If an executor is provided, behave like Promise constructor
+    if (executor) {
+      const resolve = (value: T | PromiseLike<T>) => {
+        if (value && typeof (value as any).then === 'function') {
+          this._setPromise(value as Promise<T>);
+        } else {
+          this._setValue(value as T);
+        }
+      };
+      const reject = (reason: unknown) => {
+        this._setError(reason);
+      };
+      try {
+        executor(resolve, reject);
+      } catch (e) {
+        reject(e);
+      }
+    }
+  }
 
-    p._initFlags(AsyncFlags.Pending, initValue);
+  static all<T extends readonly unknown[] | []>(
+    values: T,
+  ): ReactivePromise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
+    const p = new ReactivePromise();
+    const arr = arrayFrom(values);
+    const len = arr.length;
+    if (len === 0) {
+      p._setValue([] as any);
+      return p as unknown as ReactivePromise<any>;
+    }
+    const results: unknown[] = new Array(len);
+    let remaining = len;
+    let rejected = false;
+    const onFulfillAt = (i: number) => (v: unknown) => {
+      if (rejected) return;
+      results[i] = v;
+      if (--remaining === 0) p._setValue(results as any);
+    };
+    const onReject = (r: unknown) => {
+      if (rejected) return;
+      rejected = true;
+      p._setError(r);
+    };
+    for (let i = 0; i < len; i++) {
+      thenLoop(arr[i], onFulfillAt(i), onReject);
+    }
+    return p as unknown as ReactivePromise<any>;
+  }
 
-    if (promise) {
-      p._setPromise(promise);
+  static race<T extends readonly unknown[] | []>(values: T): ReactivePromise<Awaited<T[number]>> {
+    const p = new ReactivePromise();
+    const arr = arrayFrom(values);
+    const len = arr.length;
+    if (len === 0) return p as unknown as ReactivePromise<any>;
+    let settled = false;
+    const onFulfill = (v: unknown) => {
+      if (settled) return;
+      settled = true;
+      p._setValue(v as any);
+    };
+    const onReject = (r: unknown) => {
+      if (settled) return;
+      settled = true;
+      p._setError(r);
+    };
+    for (let i = 0; i < len; i++) {
+      thenLoop(arr[i], onFulfill, onReject);
+    }
+    return p as unknown as ReactivePromise<any>;
+  }
+
+  static any<T>(values: Iterable<T | PromiseLike<T>>): ReactivePromise<Awaited<T>>;
+  static any<T extends readonly unknown[] | []>(values: T): ReactivePromise<Awaited<T[number]>> {
+    const p = new ReactivePromise();
+    const arr = arrayFrom(values);
+    const len = arr.length;
+
+    if (len === 0) {
+      // Like native Promise.any([]): reject with AggregateError
+      p._setError(new AggregateError([], 'No promises were provided to ReactivePromise.any'));
+      return p as unknown as ReactivePromise<any>;
     }
 
-    return p;
-  }
+    let pending = len;
+    const errors: unknown[] = new Array(len);
+    let fulfilled = false;
 
-  static createRelay<T>(
-    activate: SignalActivate<T>,
-    scope: SignalScope,
-    opts?: Partial<SignalOptionsWithInit<T, unknown[]>>,
-  ) {
-    const p = new AsyncSignalImpl<T>();
-    const initValue = opts?.initValue;
-
-    let active = false;
-    let currentSub: RelayHooks | (() => void) | undefined | void;
-
-    const unsubscribe = () => {
-      if (typeof currentSub === 'function') {
-        currentSub();
-      } else if (currentSub !== undefined) {
-        currentSub.deactivate?.();
+    const onFulfill = (value: unknown) => {
+      if (fulfilled) return;
+      fulfilled = true;
+      p._setValue(value as any);
+    };
+    const onRejectAt = (index: number) => (reason: unknown) => {
+      if (fulfilled) return;
+      errors[index] = reason;
+      if (--pending === 0) {
+        p._setError(new AggregateError(errors, 'All promises were rejected in ReactivePromise.any'));
       }
-
-      const signal = p._signal as ReactiveFnSignal<any, any>;
-
-      // Reset the signal state, preparing it for next activation
-      signal.subs = new Map();
-      signal._state = ReactiveFnState.Dirty;
-      signal.watchCount = 0;
-      active = false;
-      currentSub = undefined;
     };
 
-    const state: RelayState<T> = {
-      get value() {
-        return p._value as T;
-      },
+    for (let i = 0; i < len; i++) {
+      thenLoop(arr[i], onFulfill, onRejectAt(i));
+    }
 
-      set value(value: T) {
-        p._setValue(value);
-      },
-
-      setPromise: (promise: Promise<T>) => {
-        p._setPromise(promise);
-      },
-
-      setError: (error: unknown) => {
-        p._setError(error);
-      },
-    };
-
-    const def: ReactiveFnDefinition<() => void, unknown[]> = {
-      compute: () => {
-        if (active === false) {
-          currentSub = activate(state);
-          active = true;
-        } else if (typeof currentSub === 'function' || currentSub === undefined) {
-          currentSub?.();
-          currentSub = activate(state);
-        } else {
-          currentSub.update?.();
-        }
-
-        return unsubscribe;
-      },
-      equals: DEFAULT_EQUALS,
-      isRelay: true,
-      paramKey: opts?.paramKey,
-      shouldGC: opts?.shouldGC as (signal: object, value: () => void, args: unknown[]) => boolean,
-      id: opts?.id,
-      desc: opts?.desc,
-    };
-
-    p._signal = createReactiveFnSignal<() => void, unknown[]>(def, [], undefined, scope);
-
-    p._equals = equalsFrom(opts?.equals);
-    p._initFlags(AsyncFlags.isRelay | AsyncFlags.Pending, initValue as T);
-
-    return p;
+    return p as unknown as ReactivePromise<any>;
   }
 
-  static createTask<T, Args extends unknown[]>(
-    task: (...args: Args) => Promise<T>,
-    scope: SignalScope,
-    opts?: Partial<SignalOptionsWithInit<T, Args>>,
-  ): TaskSignal<T, Args> {
-    const p = new AsyncSignalImpl<T, Args>();
-    const initValue = opts?.initValue;
+  static allSettled<T>(values: Iterable<T | PromiseLike<T>>): Promise<PromiseSettledResult<Awaited<T>>[]>;
+  static allSettled<T extends readonly unknown[] | []>(
+    values: T,
+  ): Promise<{ -readonly [P in keyof T]: PromiseSettledResult<Awaited<T[P]>> }> {
+    const p = new ReactivePromise();
+    const arr = arrayFrom(values);
+    const len = arr.length;
 
-    const { fn } = createCallback(task, scope);
+    if (len === 0) {
+      p._setValue([] as any);
+      return p as unknown as Promise<any>;
+    }
 
-    p._signal = fn;
+    const results: PromiseSettledResult<unknown>[] = new Array(len);
+    let remaining = len;
 
-    p._equals = equalsFrom(opts?.equals);
-    p._initFlags(AsyncFlags.isRunnable, initValue as T);
+    const onFulfillAt = (index: number) => (value: unknown) => {
+      results[index] = { status: 'fulfilled', value } as PromiseFulfilledResult<unknown>;
+      if (--remaining === 0) p._setValue(results as any);
+    };
+    const onRejectAt = (index: number) => (reason: unknown) => {
+      results[index] = { status: 'rejected', reason } as PromiseRejectedResult;
+      if (--remaining === 0) p._setValue(results as any);
+    };
 
-    return p as TaskSignal<T, Args>;
+    for (let i = 0; i < len; i++) {
+      thenLoop(arr[i], onFulfillAt(i), onRejectAt(i));
+    }
+
+    return p as unknown as Promise<any>;
+  }
+
+  static resolve<T>(value: T): ReactivePromise<T> {
+    if (value instanceof ReactivePromise) return value as unknown as ReactivePromise<T>;
+    return new ReactivePromise<T>(resolve => resolve(value)) as unknown as ReactivePromise<T>;
+  }
+
+  static reject<T = never>(reason: any): ReactivePromise<T> {
+    return new ReactivePromise<T>((_resolve, reject) => reject(reason)) as unknown as ReactivePromise<T>;
+  }
+
+  static withResolvers<T>() {
+    const p = new ReactivePromise<T>();
+    p._equals = DEFAULT_EQUALS as SignalEquals<T>;
+    p._initFlags(AsyncFlags.Pending);
+
+    const resolve = (value: T | PromiseLike<T>) => {
+      if (value && typeof (value as any).then === 'function') {
+        p._setPromise(value as Promise<T>);
+      } else {
+        p._setValue(value as T);
+      }
+    };
+    const reject = (reason: unknown) => {
+      p._setError(reason);
+    };
+
+    return { promise: p as unknown as ReactivePromise<T>, resolve, reject } as const;
   }
 
   private _initFlags(baseFlags: number, initValue?: T) {
@@ -415,50 +489,6 @@ export class AsyncSignalImpl<T, Args extends unknown[] = unknown[]> implements B
     return (this._flags & AsyncFlags.Settled) !== 0;
   }
 
-  // Aliases for backwards compatibility (TODO: Figure out how to do this better)
-  get data() {
-    return this.value;
-  }
-
-  get isFetching() {
-    return this.isPending;
-  }
-
-  get isSuccess() {
-    return this.isResolved;
-  }
-
-  get isError() {
-    return this.isRejected;
-  }
-
-  get isFetched() {
-    return this.isSettled;
-  }
-
-  _run(...args: Args) {
-    const flags = this._flags;
-    const signal = this._signal;
-
-    if ((flags & AsyncFlags.isRunnable) !== 0) {
-      this._setPromise((signal as TaskFn<T, Args>)(...args));
-    } else if (signal) {
-      dirtySignal(signal as ReactiveFnSignal<any, any>);
-    } else {
-      throw new Error(
-        'This async signal is not runnable. If you are using run() on an AsyncSignal, make sure you used `task` to create this promise. If you are using rerun(), make sure its a promise that was generated by a reactive async function.',
-      );
-    }
-
-    return this;
-  }
-
-  run = this._run.bind(this);
-
-  get rerun() {
-    return this.run as () => AsyncSignalImpl<T, Args>;
-  }
-
   then<TResult1 = T, TResult2 = never>(
     onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -477,9 +507,9 @@ export class AsyncSignalImpl<T, Args extends unknown[] = unknown[]> implements B
         ref = CURRENT_CONSUMER.ref;
 
         const prevEdge =
-          this._awaitSubs.get(ref!) ?? findAndRemoveDirty(CURRENT_CONSUMER, this as AsyncSignalImpl<any>);
+          this._awaitSubs.get(ref!) ?? findAndRemoveDirty(CURRENT_CONSUMER, this as ReactivePromise<any>);
 
-        edge = createEdge(prevEdge, EdgeType.Promise, this as AsyncSignalImpl<any>, -1, CURRENT_CONSUMER.computedCount);
+        edge = createEdge(prevEdge, EdgeType.Promise, this as ReactivePromise<any>, -1, CURRENT_CONSUMER.computedCount);
       }
       // Create wrapper functions that will call the original callbacks and then resolve/reject the new Promise
       const wrappedFulfilled = onfulfilled
@@ -540,26 +570,127 @@ export class AsyncSignalImpl<T, Args extends unknown[] = unknown[]> implements B
   }
 
   get [Symbol.toStringTag](): string {
-    const flags = this._flags;
-
-    if ((flags & AsyncFlags.isRelay) !== 0) {
-      return 'RelaySignal';
-    } else if ((flags & AsyncFlags.isRunnable) !== 0) {
-      return 'TaskSignal';
-    } else {
-      return 'AsyncSignal';
-    }
+    return `ReactivePromise`;
   }
 }
 
-export function isAsyncSignal(obj: unknown): obj is AsyncSignal<unknown> {
-  return obj instanceof AsyncSignalImpl && (obj['_flags'] & (AsyncFlags.isRelay & AsyncFlags.isRunnable)) === 0;
+export function isReactivePromise(obj: unknown): obj is IReactivePromise<unknown> {
+  return obj instanceof ReactivePromise;
 }
 
-export function isTaskSignal(obj: unknown): obj is TaskSignal<unknown, unknown[]> {
-  return obj instanceof AsyncSignalImpl && (obj['_flags'] & AsyncFlags.isRunnable) !== 0;
+export function isRelay<T>(obj: unknown): obj is ReactivePromise<T> {
+  return obj instanceof ReactivePromise && (obj['_flags'] & AsyncFlags.isRelay) !== 0;
 }
 
-export function isRelaySignal<T, Args extends unknown[]>(obj: unknown): obj is RelaySignal<T> {
-  return obj instanceof AsyncSignalImpl && (obj['_flags'] & AsyncFlags.isRelay) !== 0;
+export function createPromise<T>(
+  promise: Promise<T>,
+  signal: ReactiveFnSignal<T, unknown[]>,
+  initValue: T | undefined,
+) {
+  const p = new ReactivePromise<T>();
+
+  p['_signal'] = signal;
+  p['_equals'] = signal.def.equals;
+  p['_initFlags'](AsyncFlags.Pending, initValue);
+  p['_setPromise'](promise);
+
+  return p;
+}
+
+export function createRelay<T>(
+  activate: SignalActivate<T>,
+  scope: SignalScope,
+  opts?: Partial<SignalOptionsWithInit<T, unknown[]>>,
+) {
+  const p = new ReactivePromise<T>();
+  const initValue = opts?.initValue;
+
+  let active = false;
+  let currentSub: RelayHooks | (() => void) | undefined | void;
+
+  const unsubscribe = () => {
+    if (typeof currentSub === 'function') {
+      currentSub();
+    } else if (currentSub !== undefined) {
+      currentSub.deactivate?.();
+    }
+
+    const signal = p['_signal'] as ReactiveFnSignal<any, any>;
+
+    // Reset the signal state, preparing it for next activation
+    signal.subs = new Map();
+    signal._state = ReactiveFnState.Dirty;
+    signal.watchCount = 0;
+    active = false;
+    currentSub = undefined;
+  };
+
+  const state: RelayState<T> = {
+    get value() {
+      return p['_value'] as T;
+    },
+
+    set value(value: T) {
+      p['_setValue'](value);
+    },
+
+    setPromise: (promise: Promise<T>) => {
+      p['_setPromise'](promise);
+    },
+
+    setError: (error: unknown) => {
+      p['_setError'](error);
+    },
+  };
+
+  const def: ReactiveFnDefinition<() => void, unknown[]> = {
+    compute: () => {
+      if (active === false) {
+        currentSub = activate(state);
+        active = true;
+      } else if (typeof currentSub === 'function' || currentSub === undefined) {
+        currentSub?.();
+        currentSub = activate(state);
+      } else {
+        currentSub.update?.();
+      }
+
+      return unsubscribe;
+    },
+    equals: DEFAULT_EQUALS,
+    isRelay: true,
+    paramKey: opts?.paramKey,
+    shouldGC: opts?.shouldGC as (signal: object, value: () => void, args: unknown[]) => boolean,
+    id: opts?.id,
+    desc: opts?.desc,
+  };
+
+  p['_signal'] = createReactiveFnSignal<() => void, unknown[]>(def, [], undefined, scope);
+
+  p['_equals'] = equalsFrom(opts?.equals);
+  p['_initFlags'](AsyncFlags.isRelay | AsyncFlags.Pending, initValue as T);
+
+  return p;
+}
+
+export function createTask<T, Args extends unknown[]>(
+  task: (...args: Args) => Promise<T>,
+  scope: SignalScope,
+  opts?: Partial<SignalOptionsWithInit<T, Args>>,
+): ReactiveTask<T, Args> {
+  const p = new ReactivePromise<T>();
+  const initValue = opts?.initValue;
+
+  const { fn } = createCallback(task, scope);
+
+  p['_equals'] = equalsFrom(opts?.equals);
+  p['_initFlags'](AsyncFlags.isRunnable, initValue as T);
+
+  p['run'] = ((...args: Args) => {
+    p._setPromise(fn(...args));
+
+    return p;
+  }) as any;
+
+  return p as unknown as ReactiveTask<T, Args>;
 }

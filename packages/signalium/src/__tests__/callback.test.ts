@@ -148,4 +148,27 @@ describe('callback + reactive scope/identity', () => {
     const result = withContexts([[ctx, 'other']], () => cbChild());
     expect(await result).toBe('child');
   });
+
+  test('callbacks can be used to create reactive closures', async () => {
+    const sa = signal(0);
+    const sb = signal(0);
+
+    const getValue = reactive(() => {
+      const a = sa.value;
+
+      const ab = reactive(() => {
+        return a + sb.value;
+      });
+
+      return ab();
+    });
+
+    expect(getValue()).toBe(0);
+
+    sa.value = 1;
+    expect(getValue()).toBe(1);
+
+    sb.value = 1;
+    expect(getValue()).toBe(2);
+  });
 });

@@ -1,10 +1,11 @@
 export type * from './types.js';
 
-export { reactive, reactiveMethod, relay, task, watcher } from './core-api.js';
+export { reactive, reactiveMethod, task, relay, watcher } from './core-api.js';
 
 export { signal } from './internals/signal.js';
 
-export { isAsyncSignal, isTaskSignal, isRelaySignal } from './internals/async.js';
+export { isReactivePromise } from './internals/async.js';
+export { ReactivePromise } from './internals/async.js';
 
 export { callback } from './internals/callback.js';
 

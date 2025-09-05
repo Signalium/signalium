@@ -1,9 +1,9 @@
 import { scheduleListeners, scheduleTracer, scheduleUnwatch, setResolved } from './scheduling.js';
 import { SignalType, TRACER as TRACER, TracerEventType } from '../trace.js';
-import { ReactiveFnSignal, ReactiveFnFlags, ReactiveFnState } from './reactive.js';
+import { ReactiveFnSignal, ReactiveFnFlags, ReactiveFnState, isRelay } from './reactive.js';
 import { createEdge, Edge, EdgeType } from './edge.js';
 import { watchSignal } from './watch.js';
-import { AsyncSignalImpl } from './async.js';
+import { createPromise, ReactivePromise } from './async.js';
 import { SignalValue } from '../types.js';
 import { isGeneratorResult, isPromise, isAsyncSignalImpl } from './utils/type-utils.js';
 import { CURRENT_CONSUMER, setCurrentConsumer } from './consumer.js';
@@ -46,7 +46,7 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveFnSignal<T,
 }
 
 export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
-  let { ref, _state: state } = signal;
+  const { ref, _state: state } = signal;
 
   if (state < ReactiveFnState.Dirty) {
     return signal.updatedCount;
@@ -64,15 +64,15 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
         if (dep.isPending) {
           const value = signal._value;
 
-          if (value instanceof AsyncSignalImpl) {
+          if (value instanceof ReactivePromise) {
             // Propagate the pending state to the parent signal
-            value._setPending();
+            value['_setPending']();
           }
 
           // Add the signal to the awaitSubs map to be notified when the promise is resolved
-          dep._awaitSubs.set(ref, edge);
+          dep['_awaitSubs'].set(ref, edge);
 
-          state = ReactiveFnState.Pending;
+          signal._state = ReactiveFnState.Pending;
           signal.dirtyHead = edge;
 
           // Early return to prevent the signal from being computed and to preserve the dirty state
@@ -90,7 +90,7 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
 
       if (edge.updatedAt !== updatedAt) {
         signal.dirtyHead = edge.nextDirty;
-        state = ReactiveFnState.Dirty;
+        signal._state = ReactiveFnState.Dirty;
         break;
       }
 
@@ -98,7 +98,10 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
     }
   }
 
-  if (state === ReactiveFnState.Dirty) {
+  // If the signal is dirty, we need to run it. This should always be checked
+  // directly on the signal instance, because the state could have been changed
+  // mid computation and not just through direct dependencies.
+  if (signal._state === ReactiveFnState.Dirty) {
     if (signal._isLazy) {
       signal.updatedCount++;
     } else {
@@ -155,7 +158,7 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
           TRACER!.emit({
             type: TracerEventType.EndLoading,
             id: signal.tracerMeta!.id,
-            value: signal._value,
+            value: isRelay(signal) ? '...' : signal._value,
           });
         });
       }
@@ -172,13 +175,13 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
         // value is the same. _setPromise will update the nested values on the
         // AsyncSignal instance, and consumers of those values will be notified
         // of the change through that.
-        prevValue._setPromise(nextValue);
+        prevValue['_setPromise'](nextValue);
       } else {
         // If the signal has not been computed yet, we then the initValue was assigned
         // in the constructor. Otherwise, we don't know what the initial value was, so
         // we don't pass it to the AsyncSignal constructor.
         const initValue = !initialized ? prevValue : undefined;
-        signal._value = AsyncSignalImpl.createPromise(nextValue, signal, initValue);
+        signal._value = createPromise(nextValue, signal, initValue);
         signal.updatedCount = updatedCount + 1;
       }
     } else if (!initialized || !signal.def.equals(prevValue!, nextValue)) {
@@ -193,7 +196,7 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
     TRACER?.emit({
       type: TracerEventType.EndUpdate,
       id: signal.tracerMeta!.id,
-      value: signal._value,
+      value: isRelay(signal) ? '...' : signal._value,
     });
 
     const { ref, deps } = signal;
@@ -214,13 +217,8 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
   }
 }
 
-export function checkAndRunListeners(signal: ReactiveFnSignal<any, any>, willWatch = false) {
+export function checkAndRunListeners(signal: ReactiveFnSignal<any, any>) {
   const listeners = signal.listeners;
-
-  if (willWatch && (listeners === null || listeners.current.size === 0)) {
-    signal.watchCount++;
-    signal['flags'] |= ReactiveFnFlags.isListener;
-  }
 
   let updatedCount = checkSignal(signal);
 

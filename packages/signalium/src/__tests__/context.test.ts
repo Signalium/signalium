@@ -116,6 +116,8 @@ describe('contexts', () => {
   test('async computed maintains context ownership across await boundaries', async () => {
     const ctx = context('default');
 
+    const promise = Promise.resolve('promise-value');
+
     const inner = reactive(async () => {
       await Promise.resolve();
       return 'inner-value';

@@ -1,7 +1,6 @@
 import { createContext, useContext as useReactContext } from 'react';
 import { Context, ContextImpl, SignalScope } from '../internals/contexts.js';
 import { CURRENT_CONSUMER } from '../internals/consumer.js';
-// import { isRendering } from './rendering.js';
 
 export const ScopeContext = createContext<SignalScope | undefined>(undefined);
 

@@ -8,40 +8,28 @@
   "module": "./dist/esm/index.js",
   "exports": {
     ".": {
-      "import": {
-        "development": "./src/index.ts",
-        "default": "./dist/esm/index.js"
-      },
-      "require": {
-        "default": "./dist/cjs/index.js"
-      }
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "default": "./dist/esm/index.js"
     },
     "./debug": {
-      "import": {
-        "development": "./src/debug.ts",
-        "default": "./dist/esm/debug.js"
-      },
-      "require": {
-        "default": "./dist/cjs/debug.js"
-      }
+      "types": "./dist/esm/debug.d.ts",
+      "import": "./dist/esm/debug.js",
+      "require": "./dist/cjs/debug.js",
+      "default": "./dist/esm/debug.js"
     },
     "./react": {
-      "import": {
-        "development": "./src/react/index.ts",
-        "default": "./dist/esm/react/index.js"
-      },
-      "require": {
-        "default": "./dist/cjs/react/index.js"
-      }
+      "types": "./dist/esm/react/index.d.ts",
+      "import": "./dist/esm/react/index.js",
+      "require": "./dist/cjs/react/index.js",
+      "default": "./dist/esm/react/index.js"
     },
     "./transform": {
-      "import": {
-        "development": "./src/transform/index.ts",
-        "default": "./dist/esm/transform/index.js"
-      },
-      "require": {
-        "default": "./dist/cjs/transform/index.js"
-      }
+      "types": "./dist/esm/transform/index.d.ts",
+      "import": "./dist/esm/transform/index.js",
+      "require": "./dist/cjs/transform/index.js",
+      "default": "./dist/esm/transform/index.js"
     },
     "./package.json": "./package.json"
   },
