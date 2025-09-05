@@ -1,5 +1,26 @@
 # signalium
 
+## 2.0.0
+
+### Major Changes
+
+- 67d9663: Add reactiveMethods
+- d471c90: Remove implicit reactive hook consumption, add useReactive
+- 4367c00: Adds a universal transform for callbacks and updates the callback API semantics
+- 1cb3d49: Update the docs for v2 and add fixes for static Promise methods
+- 2a6ba5c: Breaking API changes:
+
+  - `state` -> `signal`
+  - `useStateSignal` -> `useSignal`
+  - `Subscription` -> `Relay`
+  - All `ReactiveX` types are now `XSignal`, reflecting the fact that functions are reactive and values are signals
+
+  See https://github.com/pzuraq/signalium/issues/72 for more details
+
+### Minor Changes
+
+- 3c54d69: Adds `component` API for definining reactive React components
+
 ## 1.2.2
 
 ### Patch Changes
