@@ -1,5 +1,0 @@
----
-'signalium': major
----
-
-Add reactiveMethods
