@@ -135,11 +135,7 @@ export class SignalScope {
   sweepGc() {
     for (const signal of this.gcCandidates) {
       if (signal.watchCount === 0) {
-        const { shouldGC } = signal.def;
-
-        if (!shouldGC || shouldGC(signal, signal._value, signal.args)) {
-          this.signals.delete(signal.key!);
-        }
+        this.signals.delete(signal.key!);
       }
     }
 

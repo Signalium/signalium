@@ -2,12 +2,12 @@ import { afterEach, Assertion, expect } from 'vitest';
 import {
   reactive as _reactive,
   relay as _relay,
-  SignalActivate,
+  RelayActivate,
   withContexts,
   task as _task,
   watcher,
 } from '../../index.js';
-import { ReactiveTask, SignalValue, SignalOptionsWithInit, RelayHooks } from '../../types.js';
+import { ReactiveTask, ReactiveValue, RelayHooks, ReactiveOptions } from '../../types.js';
 import { Context, ContextImpl, getCurrentScope, GLOBAL_SCOPE, SignalScope } from '../../internals/contexts.js';
 import { ReactiveFnSignal } from '../../internals/reactive.js';
 import { ReactivePromise } from '../../internals/async.js';
@@ -234,11 +234,11 @@ export type TaskWithCounts<T, Args extends unknown[]> = ReactiveTask<T, Args> & 
   [COUNTS]: SignalHookCounts;
 };
 
-export type ReactiveFunctionWithCounts<T, Args extends unknown[]> = ((...args: Args) => SignalValue<T>) & {
+export type ReactiveFunctionWithCounts<T, Args extends unknown[]> = ((...args: Args) => ReactiveValue<T>) & {
   [COUNTS]: SignalHookCounts;
 };
 
-export type ReactiveBuilderFunction<T, Args extends unknown[]> = ((...args: Args) => SignalValue<T>) & {
+export type ReactiveBuilderFunction<T, Args extends unknown[]> = ((...args: Args) => ReactiveValue<T>) & {
   [COUNTS]: SignalHookCounts;
   watch: () => () => void;
   withParams: (...args: Args) => ReactiveBuilderFunction<T, []>;
@@ -247,19 +247,19 @@ export type ReactiveBuilderFunction<T, Args extends unknown[]> = ((...args: Args
 
 // Create a function-class hybrid for the builder pattern
 function createBuilderFunction<T, Args extends unknown[]>(
-  originalFn: (...args: Args) => SignalValue<T>,
+  originalFn: (...args: Args) => ReactiveValue<T>,
   countsMap: Map<number, SignalHookCounts>,
   args: Args,
   contexts?: [Context<unknown>, unknown][],
 ): ReactiveBuilderFunction<T, []>;
 function createBuilderFunction<T, Args extends unknown[]>(
-  originalFn: (...args: Args) => SignalValue<T>,
+  originalFn: (...args: Args) => ReactiveValue<T>,
   countsMap: Map<number, SignalHookCounts>,
   args?: undefined,
   contexts?: [Context<unknown>, unknown][],
 ): ReactiveBuilderFunction<T, Args>;
 function createBuilderFunction<T, Args extends unknown[]>(
-  originalFn: (...args: Args) => SignalValue<T>,
+  originalFn: (...args: Args) => ReactiveValue<T>,
   countsMap: Map<number, SignalHookCounts>,
   args?: Args,
   contexts?: [Context<unknown>, unknown][],
@@ -316,7 +316,7 @@ function createBuilderFunction<T, Args extends unknown[]>(
 
 export function reactive<T, Args extends unknown[]>(
   fn: (...args: Args) => T,
-  opts?: Partial<SignalOptionsWithInit<T, Args>>,
+  opts?: ReactiveOptions<T, Args>,
 ): ReactiveBuilderFunction<T, Args> {
   const countsMap = new Map<number, SignalHookCounts>();
 
@@ -347,10 +347,7 @@ export const task: typeof _task = (fn, opts) => {
   return wrapper;
 };
 
-export const relay = <T>(
-  fn: SignalActivate<T>,
-  opts?: Partial<SignalOptionsWithInit<T, unknown[]>>,
-): ReturnType<typeof _relay<T>> => {
+export const relay = <T>(fn: RelayActivate<T>, opts?: ReactiveOptions<T, unknown[]>): ReturnType<typeof _relay<T>> => {
   const counts = new SignalHookCounts(opts?.desc ?? 'unknownRelay');
 
   let wrapper = _relay<T>(state => {

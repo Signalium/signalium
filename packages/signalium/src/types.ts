@@ -1,17 +1,21 @@
-import { SignalScope } from './internals/contexts.js';
-
 export interface Signal<T> {
   value: T;
   update(updater: (value: T) => T): void;
 }
 
-export interface ReadonlySignal<T> {
-  readonly value: T;
+export type ReactiveFn<T, Args extends unknown[]> = (...args: Args) => ReactiveValue<T>;
+
+export interface Watcher<T> {
+  readonly value: ReactiveValue<T>;
+  addListener(listener: () => void): () => void;
 }
 
-export type SignalEquals<T> = (prev: T, next: T) => boolean;
+export interface Notifier {
+  consume(): void;
+  notify(): void;
+}
 
-export type SignalListener = () => void;
+export type Equals<T> = (prev: T, next: T) => boolean;
 
 export type RelayHooks = {
   update?(): void;
@@ -24,79 +28,51 @@ export interface RelayState<T> {
   setError: (error: unknown) => void;
 }
 
-export type SignalActivate<T> = (state: RelayState<T>) => RelayHooks | (() => unknown) | undefined | void;
+export type RelayActivate<T> = (state: RelayState<T>) => RelayHooks | (() => unknown) | undefined | void;
 
-export interface SignalOptions<T, Args extends unknown[]> {
-  equals?: SignalEquals<T> | false;
+export interface SignalOptions<T> {
+  equals?: Equals<T> | false;
   id?: string;
   desc?: string;
-  scope?: SignalScope;
-  paramKey?: (...args: Args) => string;
-
-  /**
-   * Called when signal's watchCount reaches 0.
-   * Return `true` to allow GC, `false` to prevent it.
-   * If not provided, defaults to always allowing GC.
-   */
-  shouldGC?: (signal: object, value: T, args: Args) => boolean;
 }
 
-export interface SignalOptionsWithInit<T, Args extends unknown[]> extends SignalOptions<T, Args> {
-  initValue: T extends Promise<infer U> ? U : T extends Generator<any, infer U, any> ? U : T;
+export interface ReactiveOptions<T, Params extends unknown[]> extends SignalOptions<T> {
+  paramKey?: (...params: Params) => string | number;
 }
 
-export interface Thenable<T> {
-  then(onfulfilled?: (value: T) => void, onrejected?: (reason: unknown) => void): void;
-  finally: any;
-  catch: any;
-  [Symbol.toStringTag]: string;
+export interface ReactivePromise<T> extends Promise<T> {
+  readonly value: T | undefined;
+  readonly error: unknown;
+
+  readonly isPending: boolean;
+  readonly isRejected: boolean;
+  readonly isResolved: boolean;
+  readonly isSettled: boolean;
+  readonly isReady: boolean;
 }
 
-export interface BaseReactivePromise<T> extends Promise<T>, ReadonlySignal<T | undefined> {
-  value: T | undefined;
-  error: unknown;
-
-  isPending: boolean;
-  isRejected: boolean;
-  isResolved: boolean;
-  isSettled: boolean;
-  isReady: boolean;
+export interface PendingReactivePromise<T> extends ReactivePromise<T> {
+  readonly value: undefined;
+  readonly isReady: false;
 }
 
-export interface PendingReactivePromise<T> extends BaseReactivePromise<T> {
-  value: undefined;
-  isReady: false;
+export interface ReadyReactivePromise<T> extends ReactivePromise<T> {
+  readonly value: T;
+  readonly isReady: true;
 }
 
-export interface ReadyReactivePromise<T> extends BaseReactivePromise<T> {
-  value: T;
-  isReady: true;
-}
+export type DiscriminatedReactivePromise<T> = PendingReactivePromise<T> | ReadyReactivePromise<T>;
 
-export type ReactivePromise<T> = PendingReactivePromise<T> | ReadyReactivePromise<T>;
-
-export type ReactiveTask<T, Args extends unknown[]> = ReactivePromise<T> & {
-  run(...args: Args): ReactivePromise<T>;
+export type ReactiveTask<T, Params extends unknown[]> = DiscriminatedReactivePromise<T> & {
+  run(...params: Params): DiscriminatedReactivePromise<T>;
 };
 
-export type SignalValue<T> =
+export type ReactiveValue<T> =
   // We have to first check if T is a ReactiveTask, because it will also match Promise<T>
   T extends ReactiveTask<infer U, infer Args>
     ? ReactiveTask<U, Args>
     : T extends Promise<infer U>
-      ? ReactivePromise<U>
+      ? DiscriminatedReactivePromise<U>
       : T extends Generator<any, infer U>
-        ? ReactivePromise<U>
-        : T;
-
-// This type is used when initial values are provided to async functions and
-// relays. It allows us to skip checking `isReady` when there is always
-// a guaranteed value to return.
-export type ReadySignalValue<T> =
-  T extends ReactiveTask<infer U, infer Args>
-    ? ReactiveTask<U, Args>
-    : T extends Promise<infer U>
-      ? ReadyReactivePromise<U>
-      : T extends Generator<any, infer U>
-        ? ReadyReactivePromise<U>
+        ? DiscriminatedReactivePromise<U>
         : T;

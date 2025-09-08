@@ -102,15 +102,6 @@ describe('async computeds', () => {
     expect((result2.error as Error).message).toBe('Test error');
   });
 
-  test('Async computed with init value starts ready', () => {
-    const getC = reactive(async () => 'updated', { initValue: 'initial' });
-
-    const result = getC();
-    expect(result.isReady).toBe(true);
-    expect(result.value).toBe('initial');
-    expect(result.isPending).toBe(true);
-  });
-
   test('Nested async computeds work correctly', async () => {
     let innerCount = 0;
     let outerCount = 0;
@@ -165,29 +156,6 @@ describe('async computeds', () => {
     expect(errorResult.isRejected).toBe(true);
     expect(errorResult.error).toBeInstanceOf(Error);
     expect((errorResult.error as Error).message).toBe('Inner error');
-  });
-
-  test('Nested async computeds with init values work correctly', async () => {
-    const inner = reactive(async (x: number) => x * 2, { initValue: 0 });
-
-    const outer = reactive(
-      async (x: number) => {
-        const innerResult = inner(x);
-        await innerResult;
-        return innerResult.value! + 1;
-      },
-      { initValue: -1 },
-    );
-
-    const result = outer(2);
-    expect(result.isReady).toBe(true);
-    expect(result.value).toBe(-1); // Initial value
-    expect(result.isPending).toBe(true);
-
-    await new Promise(resolve => setTimeout(resolve, 10));
-    expect(result.value).toBe(5); // (2 * 2) + 1
-    expect(result.isPending).toBe(false);
-    expect(result.isResolved).toBe(true);
   });
 
   test('Nested generator functions with subsequent dependencies track past the first yield', async () => {

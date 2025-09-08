@@ -9,6 +9,6 @@ export {
   Tracer,
   TRACER,
   SignalType,
-} from './trace.js';
+} from './internals/trace.js';
 
 export { scheduleTracer } from './internals/scheduling.js';

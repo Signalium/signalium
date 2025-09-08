@@ -1,5 +1,5 @@
-import { TRACER as TRACER, TracerEventType } from '../trace.js';
-import { Signal, SignalEquals, SignalListener, SignalOptions } from '../types.js';
+import { TRACER as TRACER, TracerEventType } from './trace.js';
+import { Signal, Equals, SignalOptions, Notifier } from '../types.js';
 import { ReactiveFnSignal } from './reactive.js';
 import { dirtySignal } from './dirty.js';
 import { CURRENT_CONSUMER } from './consumer.js';
@@ -9,14 +9,14 @@ let STATE_ID = 0;
 
 export class StateSignal<T> implements Signal<T> {
   private _value: T;
-  private _equals: SignalEquals<T>;
+  private _equals: Equals<T>;
   private _subs = new Map<WeakRef<ReactiveFnSignal<unknown, unknown[]>>, number>();
   _desc: string;
   _id: number;
 
-  private _listeners: Set<SignalListener> | null = null;
+  private _listeners: Set<() => void> | null = null;
 
-  constructor(value: T, equals: SignalEquals<T> = (a, b) => a === b, desc: string = 'state') {
+  constructor(value: T, equals: Equals<T> = (a, b) => a === b, desc: string = 'state') {
     this._value = value;
     this._equals = equals;
     this._id = STATE_ID++;
@@ -24,19 +24,7 @@ export class StateSignal<T> implements Signal<T> {
   }
 
   get value(): T {
-    if (CURRENT_CONSUMER !== undefined) {
-      TRACER?.emit({
-        type: TracerEventType.ConsumeState,
-        id: CURRENT_CONSUMER.tracerMeta!.id,
-        childId: this._id,
-        value: this._value,
-        setValue: (value: unknown) => {
-          this.value = value as T;
-        },
-      });
-      this._subs.set(CURRENT_CONSUMER.ref, CURRENT_CONSUMER.computedCount);
-      return this._value!;
-    }
+    this.consume();
 
     return this._value;
   }
@@ -51,7 +39,27 @@ export class StateSignal<T> implements Signal<T> {
     }
 
     this._value = value;
-    const { _subs: subs, _listeners: listeners } = this;
+
+    this.notify();
+  }
+
+  consume(): void {
+    if (CURRENT_CONSUMER !== undefined) {
+      TRACER?.emit({
+        type: TracerEventType.ConsumeState,
+        id: CURRENT_CONSUMER.tracerMeta!.id,
+        childId: this._id,
+        value: this._value,
+        setValue: (value: unknown) => {
+          this.value = value as T;
+        },
+      });
+      this._subs.set(CURRENT_CONSUMER.ref, CURRENT_CONSUMER.computedCount);
+    }
+  }
+
+  notify(): void {
+    const { _subs: subs } = this;
 
     for (const [subRef, consumedAt] of subs.entries()) {
       const sub = subRef.deref();
@@ -68,7 +76,7 @@ export class StateSignal<T> implements Signal<T> {
     scheduleListeners(this);
   }
 
-  addListener(listener: SignalListener): () => void {
+  addListener(listener: () => void): () => void {
     let listeners = this._listeners;
 
     if (listeners === null) {
@@ -93,10 +101,14 @@ export function runListeners(signal: StateSignal<any>) {
   }
 }
 
-const FALSE_EQUALS: SignalEquals<unknown> = () => false;
+const FALSE_EQUALS: Equals<unknown> = () => false;
 
-export function signal<T>(initialValue: T, opts?: Omit<SignalOptions<T, unknown[]>, 'paramKey'>): StateSignal<T> {
+export function signal<T>(initialValue: T, opts?: SignalOptions<T>): Signal<T> {
   const equals = opts?.equals === false ? FALSE_EQUALS : (opts?.equals ?? ((a, b) => a === b));
 
-  return new StateSignal(initialValue, equals, opts?.desc);
+  return new StateSignal(initialValue, equals, opts?.desc) as Signal<T>;
 }
+
+export const notifier = (opts?: SignalOptions<undefined>) => {
+  return new StateSignal(undefined, FALSE_EQUALS, opts?.desc) as Notifier;
+};

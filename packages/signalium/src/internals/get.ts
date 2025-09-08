@@ -1,15 +1,15 @@
-import { scheduleListeners, scheduleTracer, scheduleUnwatch, setResolved } from './scheduling.js';
-import { SignalType, TRACER as TRACER, TracerEventType } from '../trace.js';
-import { ReactiveFnSignal, ReactiveFnFlags, ReactiveFnState, isRelay } from './reactive.js';
+import { scheduleListeners, scheduleTracer, scheduleUnwatch } from './scheduling.js';
+import { SignalType, TRACER as TRACER, TracerEventType } from './trace.js';
+import { ReactiveFnSignal, ReactiveFnState, isRelay } from './reactive.js';
 import { createEdge, Edge, EdgeType } from './edge.js';
 import { watchSignal } from './watch.js';
-import { createPromise, ReactivePromise } from './async.js';
-import { SignalValue } from '../types.js';
-import { isGeneratorResult, isPromise, isAsyncSignalImpl } from './utils/type-utils.js';
+import { createPromise, isReactivePromise, ReactivePromise } from './async.js';
+import { ReactiveValue } from '../types.js';
+import { isGeneratorResult, isPromise } from './utils/type-utils.js';
 import { CURRENT_CONSUMER, setCurrentConsumer } from './consumer.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
 
-export function getSignal<T, Args extends unknown[]>(signal: ReactiveFnSignal<T, Args>): SignalValue<T> {
+export function getSignal<T, Args extends unknown[]>(signal: ReactiveFnSignal<T, Args>): ReactiveValue<T> {
   if (CURRENT_CONSUMER !== undefined) {
     const { ref, computedCount, deps } = CURRENT_CONSUMER;
     const prevEdge = deps.get(signal);
@@ -42,7 +42,7 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveFnSignal<T,
     checkSignal(signal);
   }
 
-  return signal._value as SignalValue<T>;
+  return signal._value as ReactiveValue<T>;
 }
 
 export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
@@ -168,7 +168,7 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
         id: signal.tracerMeta!.id,
       });
 
-      if (prevValue !== null && typeof prevValue === 'object' && isAsyncSignalImpl(prevValue)) {
+      if (prevValue !== null && typeof prevValue === 'object' && isReactivePromise(prevValue)) {
         // Update the AsyncSignal with the new promise. Since the value
         // returned from the function is the same AsyncSignal instance,
         // we don't need to increment the updatedCount, because the returned
@@ -177,11 +177,7 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
         // of the change through that.
         prevValue['_setPromise'](nextValue);
       } else {
-        // If the signal has not been computed yet, we then the initValue was assigned
-        // in the constructor. Otherwise, we don't know what the initial value was, so
-        // we don't pass it to the AsyncSignal constructor.
-        const initValue = !initialized ? prevValue : undefined;
-        signal._value = createPromise(nextValue, signal, initValue);
+        signal._value = createPromise(nextValue, signal);
         signal.updatedCount = updatedCount + 1;
       }
     } else if (!initialized || !signal.def.equals(prevValue!, nextValue)) {

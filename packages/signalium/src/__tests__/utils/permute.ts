@@ -1,6 +1,6 @@
 import { describe } from 'vitest';
 import { ReactiveBuilderFunction, reactive, relay } from './instrumented-hooks.js';
-import { SignalOptionsWithInit } from '../../types.js';
+import { ReactiveOptions } from '../../types.js';
 
 const createMethods = [
   {
@@ -11,7 +11,7 @@ const createMethods = [
     name: 'createAsyncComputed',
     create: <T, Args extends unknown[]>(
       fn: (...args: Args) => T | Promise<T>,
-      opts?: Partial<SignalOptionsWithInit<Promise<T>, Args>>,
+      opts?: ReactiveOptions<Promise<T>, Args>,
     ): ReactiveBuilderFunction<T, Args> => {
       const computed = reactive(async (...args: Args) => {
         return fn(...args);
@@ -26,7 +26,7 @@ const createMethods = [
     name: 'createRelay',
     create: function _createRelay<T, Args extends unknown[]>(
       fn: (...args: Args) => T,
-      opts?: Partial<SignalOptionsWithInit<T, Args>>,
+      opts?: ReactiveOptions<T, Args>,
     ): ReactiveBuilderFunction<T, Args> {
       const computed = reactive((...args: Args) => {
         return relay(
@@ -51,7 +51,7 @@ const createMethods = [
               },
             };
           },
-          opts as Partial<SignalOptionsWithInit<T, unknown[]>>,
+          opts as ReactiveOptions<T, unknown[]>,
         );
       });
 

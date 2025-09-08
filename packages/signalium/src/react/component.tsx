@@ -22,7 +22,6 @@ export default function component<Props extends object>(
         {
           compute: () => fn(propsRef.current),
           equals: () => false,
-          shouldGC: undefined,
           isRelay: false,
           tracer: undefined,
         },

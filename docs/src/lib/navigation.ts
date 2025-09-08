@@ -104,7 +104,7 @@ export const navigation: GroupNavigationItem[] = [
       },
       {
         type: 'link',
-        title: 'Usage with React',
+        title: 'React Integration',
         href: '/core/react',
       },
     ],
@@ -123,100 +123,29 @@ export const navigation: GroupNavigationItem[] = [
         title: 'Signals as Monads',
         href: '/advanced/signals-as-monads',
       },
+      {
+        type: 'link',
+        title: 'Code Transforms and Async Context',
+        href: '/advanced/code-transforms-and-async-context',
+      },
     ],
   },
   {
     title: 'API reference',
     type: 'group',
     items: [
+      { type: 'link', title: 'signalium', href: '/api/signalium' },
+      { type: 'link', title: 'signalium/react', href: '/api/signalium/react' },
+      { type: 'link', title: 'signalium/utils', href: '/api/signalium/utils' },
       {
-        type: 'group',
-        title: 'signalium',
-        items: [
-          { type: 'link', title: 'signal()', href: '/api#signal' },
-          {
-            type: 'link',
-            title: 'reactive()',
-            href: '/api#reactive',
-          },
-          {
-            type: 'link',
-            title: 'task()',
-            href: '/api#task',
-          },
-          {
-            type: 'link',
-            title: 'relay()',
-            href: '/api#relay',
-          },
-          { type: 'link', title: 'watcher()', href: '/api#watcher' },
-          {
-            type: 'link',
-            title: 'callback()',
-            href: '/api#callback',
-          },
-          {
-            type: 'link',
-            title: 'createContext()',
-            href: '/api#createContext',
-          },
-          {
-            type: 'link',
-            title: 'useContext()',
-            href: '/api#use-context',
-          },
-          {
-            type: 'link',
-            title: 'withContexts()',
-            href: '/api#with-contexts',
-          },
-          {
-            type: 'link',
-            title: 'isAsyncSignal()',
-            href: '/api#is-async-signal',
-          },
-          {
-            type: 'link',
-            title: 'isTaskSignal()',
-            href: '/api#is-task-signal',
-          },
-          {
-            type: 'link',
-            title: 'isRelaySignal()',
-            href: '/api#is-relay-signal',
-          },
-          {
-            type: 'link',
-            title: 'hashValue()',
-            href: '/api#hash-value',
-          },
-          {
-            type: 'link',
-            title: 'registerCustomHash()',
-            href: '/api#register-custom-hash',
-          },
-        ],
+        type: 'link',
+        title: 'signalium/config',
+        href: '/api/signalium/config',
       },
       {
-        type: 'group',
-        title: 'signalium/react',
-        items: [
-          {
-            type: 'link',
-            title: 'useStateSignal()',
-            href: '/api#use-state-signal',
-          },
-          {
-            type: 'link',
-            title: 'ContextProvider',
-            href: '/api#context-provider',
-          },
-          {
-            type: 'link',
-            title: 'setupReact()',
-            href: '/api#setup-react',
-          },
-        ],
+        type: 'link',
+        title: 'signalium/transform',
+        href: '/api/signalium/transform',
       },
     ],
   },

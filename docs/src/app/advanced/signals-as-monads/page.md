@@ -7,28 +7,28 @@ nextjs:
 ---
 
 {% callout title="Alternatively" %}
-This article is a deep dive into the theory behind Signals and Signalium. If you're trying to jump into Signalium feet first and build something, you should instead [skip ahead to the core docs](/core/reactive-functions-and-state) and come back to this when you have time later.
+This article is a deep dive into the theory behind Signals and Signalium. If you're trying to jump into Signalium feet first and build something, you should instead [read the core docs first](/core/signals-and-reactive-functions) and come back to this when you have time later.
 {% /callout %}
 
 Signalium is, on its face, a state management library that is built primarily for React applications. However, it also represents a _paradigm-shift_ in the way we think about state management in reactive applications - not just in React, but in _any_ JavaScript app.
 
 Paradigm shifts like this usually require more than just skimming the documentation for them to sink in. If you take Signalium and simply rewrite your React application using the same patterns you used with hooks, you likely will see _some_ benefits in DX and performance. But, if you want to really get the most out of Signalium, then you need to understand _why_ it is necessary in the first place. What was it that led us to create a new state management system? What common problems is it solving that cannot be solved in other ways?
 
-This page is a deep dive into the theory behind Signals and Signalium. At its core, the Signal represents a new _monadic_ data structure for reactivity, one that is as fundamental as the Promise was for async. We will dig why this structure is important, how it can be used to solve difficult functional-reactive problems, and what it could look like in the future of the language as a whole.
+This page is a deep dive into the theory behind Signals and Signalium. At its core, the Signal represents a new _monadic_ data structure for reactivity, one that is as fundamental as the Promise was for async. We will dig into why this structure is important, how it can be used to solve difficult functional-reactive problems, and what it could look like in the future of the language as a whole.
 
 ## First, a retrospective
 
 When React Hooks first hit the frontend world back in [2018](https://www.youtube.com/watch?v=dpw9EHDh2bM), I was, like many others, immediately enamored by them. React had already proven the benefits of component-oriented view layers, and the benefits of functional programming were finally becoming accepted in the industry after decades of dominance by object-oriented programming. I was skeptical that the _entire_ view layer could be pushed into a "pure" functional style, but I was also curious, because at the time I was working on a very similar set of problems.
 
-Back then, we were working on overhauling the Ember.js programming model holistically around an [early version](https://github.com/emberjs/rfcs/pull/410) of what would today be recognized as [Signals](https://github.com/tc39/proposal-signals), and one core issue we kept coming back to was _loading data_. Much like React pre-hooks, Ember components that wanted to load data outside of the framework's router had to rely on a variety of lifecycle hooks, and this dance of managing state and dynamically loading data was, to say the least, _very tricky_.
+Back then, we were working on overhauling the Ember.js programming model holistically around an [early version](https://github.com/emberjs/rfcs/pull/410) of what would today be recognized as [Signals](https://github.com/tc39/proposal-signals), and one core issue we kept coming back to was _loading data_. Much like pre-hooks React, Ember components that wanted to load data outside of the framework's router had to rely on a variety of lifecycle hooks, and this dance of managing state and dynamically loading data was, to say the least, _very tricky_.
 
-Hooks, with early utilities like [SWR](https://swr.vercel.app/) and [Tanstack Query](https://tanstack.com/query/latest), showed a different path toward solving this problem. One that looked a lot cleaner and easier to understand, that made the whole process of managing that state _self-contained_ in a way that wasn't really possible before. They essentially extended _reactivity_ beyond components and into the world of data loading, DOM mutation, and general side-effect management as a whole.
+Hooks, with early utilities like [SWR](https://swr.vercel.app/) and [TanStack Query](https://tanstack.com/query/latest), showed a different path toward solving this problem. One that looked a lot cleaner and easier to understand, that made the whole process of managing that state _self-contained_ in a way that wasn't really possible before. They essentially extended _reactivity_ beyond components and into the world of data loading, DOM mutation, and general side-effect management as a whole.
 
 But in the years since their release, there have been more and more complications with the Hooks programming model. It's not uncommon these days for React devs to decry Hooks and the complexity that they add, and there have been more and more experiments with alternatives for state management such as [Legend State](https://legendapp.com/open-source/state/v3/) or [Jotai](https://jotai.org/) in the wider ecosystem.
 
 The React team has been attempting to solve these issues with an [experimental compiler](https://react.dev/learn/react-compiler) that purports to automatically add calls to `useMemo`, `useCallback`, and `React.memo`, reducing the cognitive overhead that plagues hooks usages - but I don't think that this is going to work, for the simple reason that adding an additional layer of compiler magic which _further_ obfuscates the usage of hooks seems like it ultimately will add more fuel to the raging firestorm of emergent complexity. You can't dig yourself out of a hole, so to speak.
 
-Meanwhile, on the other end of the JavaScript ecosystem, there has been an ongoing effort to standardize a new reactivity model built around **Signals**. Essentially every major frontend framework besides React - Angular, Vue, Svelte, Preact, Solid, and more - have more or less _independently_ arrived at the Signals design. Even Jotai and MobX in the React world are, essentially, Signals flavors in their own ways. There is enough independent discovery and convergent evolution here that it really does suggest that we've _found_ something interesting, at the least.
+Meanwhile, on the other end of the JavaScript ecosystem, there has been an ongoing effort to standardize a new reactivity model built around **Signals**. Essentially every major frontend framework besides React — Angular, Vue, Svelte, Preact, Solid, and more — has more or less _independently_ arrived at the Signals design. Even Jotai and MobX in the React world are, essentially, Signals flavors in their own ways. There is enough independent discovery and convergent evolution here that it really does suggest that we've _found_ something interesting, at the least.
 
 Up until recently though, none of us has really been able to put our finger on it. We _feel_ like Signals solve many of the common problems we face in Hooks, but explaining _why_ usually leads to a long explanation with a lot of different examples and edge cases and corner cases and so on. We struggled to find a principle behind it all for quite some time. But now, we have (and I'm really sorry for this in advance):
 
@@ -58,7 +58,7 @@ To explain what I mean here, we do need to get back to the "what is a monad" thi
 
 I had a computer science professor in college who taught us Haskell and had a whole section on monads, and we even implemented a `semicolon` monad to sequence things like an imperative language (which honestly just felt like trolling at that point), but I still couldn't really _grasp_ it.
 
-When I first started my career and was learning Scala, one of my coworkers told me that a monad was "anything that implemented `map` and `flapMap`", which was also not really helpful. Over time I learned about more things that were monads, like `Result` and `Option`, and that helped a bit more as I started to dig into Rust and such.
+When I first started my career and was learning Scala, one of my coworkers told me that a monad was "anything that implemented `map` and `flatMap`", which was also not really helpful. Over time I learned about more things that were monads, like `Result` and `Option`, and that helped a bit more as I started to dig into Rust and such.
 
 But where it really finally hit me was with Futures, and by extension, Promises (and to be clear, I'm aware that [Promises are not really monads](https://stackoverflow.com/questions/45712106/why-are-promises-monads), but they are _close enough_ in purpose and, more importantly, they're familiar enough to every JavaScript dev that they provide a great reference point).
 
@@ -84,7 +84,7 @@ This code is pretty simple, but stepping back, let's think about what has to hap
 
 The exact details of how and where those values are stored don't really matter, because externally we don't really need to worry about them. That's all handled by the Promise (and JavaScript's closure/scope semantics).
 
-Monads are essentially like a box that contains some _context_, and that box comes with a function that let's you take that context and transform it into _another_ box with the _next_ context in the sequence. In the case of [Options](https://en.wikipedia.org/wiki/Option_type) or [Results](https://en.wikipedia.org/wiki/Result_type), you're transforming the result of an operation (`Some`/`None` or `Ok`/`Err`) into whatever you were planning on doing next with those values, and handling the edge cases if there was _no_ value, or an error instead. In the case of Futures and Promises, the box has all of that context around the async operation, and `Promise.then` is the function that carries us on to the next step.
+Monads are essentially like a box that contains some _context_, and that box comes with a function that lets you take that context and transform it into _another_ box with the _next_ context in the sequence. In the case of [Options](https://en.wikipedia.org/wiki/Option_type) or [Results](https://en.wikipedia.org/wiki/Result_type), you're transforming the result of an operation (`Some`/`None` or `Ok`/`Err`) into whatever you were planning on doing next with those values, and handling the edge cases if there was _no_ value, or an error instead. In the case of Futures and Promises, the box has all of that context around the async operation, and `Promise.then` is the function that carries us on to the next step.
 
 But the magic of monads is not just in what they are, but also how often they fit into an existing, perhaps just _slightly_ tweaked, syntax. With `async`/`await` syntax we can restructure our original Promise-based function to look much more like plain-old-JavaScript:
 
@@ -97,7 +97,7 @@ async function loadAndProcessData(query) {
 }
 ```
 
-This reads like synchronous code, but does all of the same async sequencing and transformations as our first example. Similar syntax exists for Options or Results in functional languages like Rust and, of course, Haskell, and if we think about this it should be maybe a bit obvious _why_ this works so well - after all, programming languages are inherently about _linguistically sequencing_ things, either via imperative steps (turned out that `semicolon` lesson _was_ useful after all), nested function calls, declarative dependencies, or some other means.
+This reads like synchronous code, but does all of the same async sequencing and transformations as our first example. Similar syntax exists for Options or Results in functional languages like Rust and, of course, Haskell, and if we think about this it should be maybe a bit obvious _why_ this works so well — after all, programming languages are inherently about _linguistically sequencing_ things, either via imperative steps (turned out that `semicolon` lesson _was_ useful after all), nested function calls, declarative dependencies, or some other means.
 
 So, what does a _reactive_ monad look like?
 
@@ -133,13 +133,13 @@ This is a bit contrived (that _could_ just be a single `map` statement, or bette
 
 The issue with the Hooks version, however, is how it works under the hood.
 
-As we know, Hooks rerun whenever there _might_ be an update. This is why we have to constantly pass in our dependencies to every hook, and why all of the operations of hooks have to idempotent for the given set of arguments. What is happening in our example above is that we are rerunning all of the steps of the `useLoadAndProcessData` function that we _already ran_ in order to rebuild the previous state of the world, and we are _then_ advancing to the next step.
+As we know, Hooks rerun whenever there _might_ be an update. This is why we have to constantly pass in our dependencies to every hook, and why all of the operations of hooks have to be idempotent for the given set of arguments. What is happening in our example above is that we are rerunning all of the steps of the `useLoadAndProcessData` function that we _already ran_ in order to rebuild the previous state of the world, and we are _then_ advancing to the next step.
 
 And it's not just that hook that we're rerunning - we're also rerunning _every_ other hook above it in the call stack, all the way up to the nearest component. This is where the complexity comes from. And this is why hooks are not _monadic_.
 
 Imagine if this were the way that `async`/`await` syntax worked. We rerun the _entire_ function leading up to the currently active `await` statement. If all of those steps were fully idempotent and non-stateful, then that would _technically_ work. We could do that each time, and not really worry about capturing and restoring context fully in the Promise.
 
-That may sound far-fetched to you, but going back to the days _before_ promises, maybe that would be a bit more appealing.
+That may sound far-fetched to you, but going back to the days _before_ Promises, maybe that would be a bit more appealing.
 
 ```ts
 function useLoadAndProcessData(query, callback) {
@@ -247,7 +247,7 @@ const loadAndProcessData = memoize(async (query) => {
 });
 ```
 
-Overall, if Promises worked more like Hooks, we can see that it would only add increased complexity and many gotchas and foot-guns that are currently avoided. As applications using that model grew, they would also start to experience a lot of the same emergent complexity we see from Hooks in general: Infinite rerender bugs caused by forgetting to memoize a callback; Performance issues caused by calling plain functions without `useMemo`; And even code and infrastructure that becomes _reliant_ on the fact that we're constantly re-executing functions in this way, because if there's one thing we know, it's that timing semantics _always_ eventually become part of your public API.
+Overall, if Promises worked more like Hooks, we can see that it would only add increased complexity and many gotchas and foot-guns that are currently avoided. As applications using that model grew, they would also start to experience a lot of the same emergent complexity we see from Hooks in general: Infinite re-render bugs caused by forgetting to memoize a callback; performance issues caused by calling plain functions without `useMemo`; and even code and infrastructure that becomes _reliant_ on the fact that we're constantly re-executing functions in this way, because if there's one thing we know, it's that timing semantics _always_ eventually become part of your public API.
 
 ## Uno reverso
 
@@ -259,14 +259,13 @@ But this strategy can also be applied to _any_ pure function. It doesn't need to
 
 ```js {% visualize=true initialized=true showCode=false %}
 const getCounter = reactive((ms) => {
-  return relay(
-    (state) => {
-      const id = setInterval(() => state.value++, ms);
+  return relay((state) => {
+    state.value = 0;
 
-      return () => clearInterval(id);
-    },
-    { initValue: 0 },
-  );
+    const id = setInterval(() => state.value++, ms);
+
+    return () => clearInterval(id);
+  });
 });
 
 const divide = reactive((value, divideBy) => value / divideBy);
@@ -284,14 +283,13 @@ In this example, we see a visualization of a real function callstack. The bars r
 
 ```ts
 const getCounter = reactive((ms) => {
-  return relay(
-    (state) => {
-      const id = setInterval(() => state.value++, ms);
+  return relay((state) => {
+    state.value = 0;
 
-      return () => clearInterval(id);
-    },
-    { initValue: 0 },
-  );
+    const id = setInterval(() => state.value++, ms);
+
+    return () => clearInterval(id);
+  });
 });
 
 const divide = reactive((value, divideBy) => value / divideBy);

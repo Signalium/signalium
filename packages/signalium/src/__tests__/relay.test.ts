@@ -20,13 +20,13 @@ describe('relays', () => {
   });
 
   test('Relay can update value', async () => {
-    const value = signal(1);
+    const v = signal(1);
     const sub = relay(state => {
-      state.value = value.value;
+      state.value = v.value;
 
       return {
         update: () => {
-          state.value = value.value;
+          state.value = v.value;
         },
       };
     });
@@ -43,7 +43,7 @@ describe('relays', () => {
     expect(computed).toHaveValueAndCounts(1, { compute: 1 });
     expect(sub).toHaveValueAndCounts(1, { compute: 1, internalSet: 1 });
 
-    value.value = 2;
+    v.value = 2;
 
     await nextTick();
 
@@ -217,34 +217,29 @@ describe('relays', () => {
   test('Lifecycle works properly with multiple consumers', async () => {
     const externalValue = signal(1);
 
-    const sub = relay(
-      state => {
-        state.value = 1 + externalValue.value;
+    const sub = relay<number>(state => {
+      state.value = 1 + externalValue.value;
 
-        return {
-          update: () => {
-            state.value = 1 + externalValue.value;
-          },
-          deactivate: () => {},
-        };
-      },
-      {
-        initValue: 0,
-      },
-    );
+      return {
+        update: () => {
+          state.value = 1 + externalValue.value;
+        },
+        deactivate: () => {},
+      };
+    });
 
     const useSub1 = signal(true);
 
     const consumer1 = reactive(() => {
-      return useSub1.value ? sub.value : 0;
+      return useSub1.value && sub.isReady ? sub.value : 0;
     });
 
     const useSub2 = signal(true);
     const consumer2 = reactive(() => {
-      return useSub2.value ? sub.value : 0;
+      return useSub2.value ? (sub.value ?? 0) : 0;
     });
 
-    expect(sub).toHaveValueAndCounts(0, { compute: 0, subscribe: 0, internalSet: 0 });
+    expect(sub).toHaveValueAndCounts(undefined, { compute: 0, subscribe: 0, internalSet: 0 });
 
     const root = reactive(
       () => {
@@ -295,7 +290,7 @@ describe('relays', () => {
   test('Lifecycle works with nested relays', async () => {
     const externalValue = signal(1);
 
-    const sub1 = relay(
+    const sub1 = relay<number>(
       state => {
         state.value = 1 + externalValue.value;
 
@@ -307,24 +302,22 @@ describe('relays', () => {
         };
       },
       {
-        initValue: 0,
         desc: 'sub1',
       },
     );
 
-    const sub2 = relay(
+    const sub2 = relay<number>(
       state => {
-        state.value = sub1.value + 1;
+        state.value = (sub1.value ?? 0) + 1;
 
         return {
           update: () => {
-            state.value = sub1.value + 1;
+            state.value = (sub1.value ?? 0) + 1;
           },
           deactivate: () => {},
         };
       },
       {
-        initValue: 0,
         desc: 'sub2',
       },
     );
@@ -332,7 +325,7 @@ describe('relays', () => {
     const useSub1 = signal(true);
     const consumer1 = reactive(
       () => {
-        return useSub1.value ? sub1.value : 0;
+        return useSub1.value ? (sub1.value ?? 0) : 0;
       },
       {
         desc: 'consumer1',
@@ -342,15 +335,15 @@ describe('relays', () => {
     const useSub2 = signal(true);
     const consumer2 = reactive(
       () => {
-        return useSub2.value ? sub2.value : 0;
+        return useSub2.value ? (sub2.value ?? 0) : 0;
       },
       {
         desc: 'consumer2',
       },
     );
 
-    expect(sub1).toHaveValueAndCounts(0, { compute: 0, subscribe: 0, internalSet: 0 });
-    expect(sub2).toHaveValueAndCounts(0, { compute: 0, subscribe: 0, internalSet: 0 });
+    expect(sub1).toHaveValueAndCounts(undefined, { compute: 0, subscribe: 0, internalSet: 0 });
+    expect(sub2).toHaveValueAndCounts(undefined, { compute: 0, subscribe: 0, internalSet: 0 });
 
     const root = reactive(
       () => {
