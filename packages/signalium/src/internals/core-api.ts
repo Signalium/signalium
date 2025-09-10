@@ -50,14 +50,6 @@ export function getReactiveFnAndDefinition<T, Args extends unknown[]>(
 }
 
 export function reactive<T, Args extends unknown[]>(
-  fn: (...args: Args) => Promise<T>,
-  opts?: ReactiveOptions<T, Args>,
-): (...args: Args) => DiscriminatedReactivePromise<T>;
-export function reactive<T, Args extends unknown[]>(
-  fn: (...args: Args) => T,
-  opts?: ReactiveOptions<T, Args>,
-): (...args: Args) => T;
-export function reactive<T, Args extends unknown[]>(
   fn: (...args: Args) => T,
   opts?: ReactiveOptions<T, Args>,
 ): ReactiveFn<T, Args> {
