@@ -10,38 +10,6 @@ nextjs:
 
 ---
 
-### notifier
-
-```ts
-function notifier(opts?: SignalOptions<undefined>): Notifier;
-```
-
-Creates a Notifier, a special zero-value Signal used for manual invalidation. Inside a Reactive Function, call `consume()` to depend on the Notifier. Later, calling `notify()` will invalidate dependents so they recompute on next access.
-
-```ts
-import { notifier, reactive } from 'signalium';
-
-const n = notifier();
-let count = 0;
-
-const get = reactive(() => {
-  n.consume();
-  return count;
-});
-
-get(); // 0
-count = 1;
-get(); // still 0 (notifier not notified yet)
-n.notify();
-get(); // 1
-```
-
-| Parameter | Type                       | Description     |
-| --------- | -------------------------- | --------------- |
-| opts      | `SignalOptions<undefined>` | See Types below |
-
----
-
 ### signal
 
 ```ts
@@ -448,6 +416,38 @@ withContexts(
 | owner     | `object`                   | Object whose scope owns the method |
 | fn        | `(...args: Args) => T`     | Method computation                 |
 | opts      | `ReactiveOptions<T, Args>` | See Types below                    |
+
+---
+
+### notifier
+
+```ts
+function notifier(opts?: SignalOptions<undefined>): Notifier;
+```
+
+Creates a Notifier, a special zero-value Signal used for manual invalidation. Inside a Reactive Function, call `consume()` to depend on the Notifier. Later, calling `notify()` will invalidate dependents so they recompute on next access.
+
+```ts
+import { notifier, reactive } from 'signalium';
+
+const n = notifier();
+let count = 0;
+
+const get = reactive(() => {
+  n.consume();
+  return count;
+});
+
+get(); // 0
+count = 1;
+get(); // still 0 (notifier not notified yet)
+n.notify();
+get(); // 1
+```
+
+| Parameter | Type                       | Description     |
+| --------- | -------------------------- | --------------- |
+| opts      | `SignalOptions<undefined>` | See Types below |
 
 ## Types
 
