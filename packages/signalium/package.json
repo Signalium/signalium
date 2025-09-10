@@ -1,6 +1,6 @@
 {
   "name": "signalium",
-  "version": "1.2.2",
+  "version": "2.0.0",
   "type": "module",
   "repository": "https://github.com/signalium/signalium",
   "description": "Scalable signals, effortless async. Reactivity at critical mass.",
