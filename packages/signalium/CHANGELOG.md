@@ -1,5 +1,14 @@
 # signalium
 
+## 2.0.1
+
+### Patch Changes
+
+- 0c4aa88: Remove unnecessary type overloads for reactive().
+
+  These type overloads were preventing tasks return from Reactives from being
+  properly typed.
+
 ## 2.0.0
 
 ### Major Changes
