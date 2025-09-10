@@ -133,10 +133,12 @@ export function Hero() {
               source={`
                 const getCounter = reactive((ms) => {
                   return relay((state) => {
+                    state.value = 0;
+
                     const id = setInterval(() => state.value++, ms)
 
                     return () => clearInterval(id)
-                  }, { initValue: 0 });
+                  });
                 });
 
                 const divide = reactive((value, divideBy) =>

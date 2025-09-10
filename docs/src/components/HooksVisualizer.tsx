@@ -1,14 +1,6 @@
 import React, { useEffect, useRef, useSyncExternalStore } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  SignalScope,
-  watcher,
-  relay,
-  reactive,
-  signal,
-  ReactivePromise,
-  isReactivePromise,
-} from 'signalium';
+import { watcher, relay, reactive, signal, ReactivePromise } from 'signalium';
 import {
   createTracerFromId,
   setTracing,
@@ -68,8 +60,9 @@ function useNodeClass(
 
   const loading = node.loading;
   const updating = node.updating || forceUpdating;
-  const success = isReactivePromise(node.value) && node.value.isResolved;
-  const error = isReactivePromise(node.value) && node.value.isRejected;
+  const success =
+    node.value instanceof ReactivePromise && node.value.isResolved;
+  const error = node.value instanceof ReactivePromise && node.value.isRejected;
 
   if (loading) {
     return classes.loading;
@@ -93,7 +86,7 @@ export const VisualizerNodeComponent = ({ node }: { node: VisualizerNode }) => {
     () => node.version,
   );
 
-  const isPromise = isReactivePromise(node.value);
+  const isPromise = node.value instanceof ReactivePromise;
   const params = node.params;
   const value = isPromise
     ? (node.value as ReactivePromise<unknown>).value
@@ -205,10 +198,9 @@ type createWatcher = (
   fn: () => React.ReactNode,
   id: string,
   desc: string,
-  scope: SignalScope,
 ) => WatcherProxy;
 
-const createSignalWatcher: createWatcher = (tracer, fn, id, desc, scope) => {
+const createSignalWatcher: createWatcher = (tracer, fn, id, desc) => {
   const w = watcher(
     () => {
       const value = fn();
@@ -218,7 +210,7 @@ const createSignalWatcher: createWatcher = (tracer, fn, id, desc, scope) => {
     {
       id,
       desc,
-      scope,
+      isolate: true,
       equals: false,
       tracer,
     },
@@ -427,8 +419,6 @@ const WatcherRunner = ({
   const watcherRef = useRef<WatcherProxy | undefined>(undefined);
 
   if (watcherRef.current === undefined) {
-    const scope = new SignalScope([]);
-
     const preamble = `import { relay, reactive, task } from 'signalium';`;
 
     const sourceWithPreamble =
@@ -475,13 +465,7 @@ const WatcherRunner = ({
       };
     }
 
-    watcherRef.current = createWatcher(
-      tracer,
-      output,
-      tracerId,
-      'Output',
-      scope,
-    );
+    watcherRef.current = createWatcher(tracer, output, tracerId, 'Output');
   }
 
   watcherRef.current?.run?.();

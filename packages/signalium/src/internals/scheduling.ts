@@ -1,9 +1,9 @@
-import { scheduleFlush as _scheduleFlush, runBatch } from '../config.js';
+import { scheduleFlush as _scheduleFlush, runBatch } from './config.js';
 import { ReactiveFnSignal } from './reactive.js';
 import { checkAndRunListeners, checkSignal } from './get.js';
 import { runListeners as runDerivedListeners } from './reactive.js';
 import { runListeners as runStateListeners } from './signal.js';
-import { Tracer } from '../trace.js';
+import { Tracer } from './trace.js';
 import { unwatchSignal } from './watch.js';
 import { StateSignal } from './signal.js';
 import { SignalScope } from './contexts.js';

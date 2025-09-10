@@ -6,7 +6,7 @@ nextjs:
     description:
 ---
 
-This guide explains some of the more advanced behaviors of reactive functions in Signalium, including how to extend parameter equality, indirect access techniques, and how minimal re-execution works and maintains consistency.
+This guide explains some of the more advanced behaviors of Reactive Functions in Signalium, including how to extend parameter equality, indirect access techniques, and how minimal re-execution works and maintains consistency.
 
 ## Extending Parameter Equality
 
@@ -32,7 +32,7 @@ log(new Foo()); // 1
 log(new Foo()); //
 ```
 
-If you want to have more fine grained control over parameter equality, you can pass a `paramKey` function to the reactive function definition. This function should generate a _unique string key_ for the parameters it receives, but other than that has no constraints.
+If you want to have more fine-grained control over parameter equality, you can pass a `paramKey` function to the Reactive Function definition. This function should generate a _unique string key_ for the parameters it receives, but other than that has no constraints.
 
 ```js
 class Foo {
@@ -57,7 +57,7 @@ log(new Foo()); //
 
 ## Indirect access
 
-Signals can be accessed _anywhere_ inside of a reactive function. This means that you can access them directly OR indirectly, for instance by calling another function.
+Signals can be accessed _anywhere_ inside of a Reactive Function. This means that you can access them directly OR indirectly, for instance by calling another function.
 
 ```ts
 const num = signal(1);
@@ -73,7 +73,7 @@ const log = reactive(() => {
 });
 ```
 
-We call this _auto-tracking_, and this implicit entanglement it allows you to use _plain functions_ more often without having to make them "signal-aware". Consider the following example:
+We call this _auto-tracking_, and this implicit entanglement allows you to use _plain functions_ more often without having to make them "signal-aware". Consider the following example:
 
 ```js
 class User {
@@ -136,7 +136,7 @@ const getFullName = reactive(() => {
 });
 ```
 
-In this example, the `User` class hides the details of the state signals behind getters and setters, making them appear and behave just like normal properties. However, when we call `getFullName` inside of a reactive function, those states will be tracked as dependencies, and any updates to them will bust the cache.
+In this example, the `User` class hides the details of the state Signals behind getters and setters, making them appear and behave just like normal properties. However, when we call `getFullName` inside of a Reactive Function, those states will be tracked as dependencies, and any updates to them will bust the cache.
 
 What's important here is that `getFullName` does not need to _know_ about these details. We could update our implementation to add or remove reactive properties without having to make any changes to the functions that use them. Or, we could make non-reactive versions of classes and interfaces and use them interchangeably.
 
@@ -190,3 +190,41 @@ Now, let's start over and say that we trigger an update `getCurrentDirection()` 
 3. If all prior values have stayed the same, then the conditional could not have changed and `getLeftValue()` would be called again if we were to rerun the function.
 
 Thus, `getLeftValue()` and other conditional reactives are only ever rerun if they _absolutely_ need to, ensuring maximum efficiency and minimal re-execution complexity.
+
+## Manual invalidation with Notifiers
+
+In some cases, you may want to manually invalidate a Reactive Function. This is often a more advanced use case, but it can be useful in certain situations. For instance, if you are using a Reactive Function to fetch data from an API, you may want to manually invalidate the Reactive Function when the user navigates away from the page. You can do this with a Notifier.
+
+Notifiers are a special type of Signal that have no value. Instead, they expose two methods: `consume` and `notify`.
+
+```ts
+export interface NotifierSignal {
+  consume(): void;
+  notify(): void;
+}
+```
+
+You can consume a Notifier inside of a Reactive Function, and you can notify it to invalidate it.
+
+```ts
+const n = notifier();
+
+let count = 0;
+
+const result = reactive(() => {
+  n.consume();
+  return count;
+});
+
+result(); // 0
+
+count++;
+
+result(); // 0
+
+n.notify();
+
+result(); // 1
+```
+
+In general, Notifiers are a powerful tool for manual invalidation of Reactive Functions, and they can be used to create a variety of complex behaviors. You should generally avoid using them unless you have a very specific use case for them, such as manually invalidating Reactive Functions that are being used in a data layer.

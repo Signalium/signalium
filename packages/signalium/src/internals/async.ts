@@ -1,11 +1,11 @@
 import {
-  BaseReactivePromise,
-  ReactiveTask,
-  SignalEquals,
-  SignalOptionsWithInit,
-  SignalActivate,
-  RelayHooks,
   ReactivePromise as IReactivePromise,
+  ReactiveTask,
+  Equals,
+  ReactiveOptions,
+  RelayActivate,
+  RelayHooks,
+  DiscriminatedReactivePromise,
   RelayState,
 } from '../types.js';
 import { createReactiveFnSignal, ReactiveFnSignal, ReactiveFnDefinition, ReactiveFnState } from './reactive.js';
@@ -61,14 +61,14 @@ function thenLoop(v: unknown, onFulfill: (value: unknown) => void, onReject: (re
   }
 }
 
-export class ReactivePromise<T> implements BaseReactivePromise<T> {
+export class ReactivePromise<T> implements IReactivePromise<T> {
   private _value: T | undefined = undefined;
 
   private _error: unknown | undefined = undefined;
   private _flags = AsyncFlags.Pending;
 
   private _signal: ReactiveFnSignal<any, any> | undefined = undefined;
-  private _equals: SignalEquals<T> = DEFAULT_EQUALS as SignalEquals<T>;
+  private _equals: Equals<T> = DEFAULT_EQUALS as Equals<T>;
   private _promise: Promise<T> | undefined;
 
   private _pending: PendingResolve<T>[] = [];
@@ -237,7 +237,7 @@ export class ReactivePromise<T> implements BaseReactivePromise<T> {
 
   static withResolvers<T>() {
     const p = new ReactivePromise<T>();
-    p._equals = DEFAULT_EQUALS as SignalEquals<T>;
+    p._equals = DEFAULT_EQUALS as Equals<T>;
     p._initFlags(AsyncFlags.Pending);
 
     const resolve = (value: T | PromiseLike<T>) => {
@@ -254,15 +254,8 @@ export class ReactivePromise<T> implements BaseReactivePromise<T> {
     return { promise: p as unknown as ReactivePromise<T>, resolve, reject } as const;
   }
 
-  private _initFlags(baseFlags: number, initValue?: T) {
-    let flags = baseFlags;
-
-    if (initValue !== undefined) {
-      flags |= AsyncFlags.Ready;
-    }
-
-    this._flags = flags;
-    this._value = initValue as T;
+  private _initFlags(baseFlags: number) {
+    this._flags = baseFlags;
   }
 
   private _consumeFlags(flags: number) {
@@ -574,36 +567,27 @@ export class ReactivePromise<T> implements BaseReactivePromise<T> {
   }
 }
 
-export function isReactivePromise(obj: unknown): obj is IReactivePromise<unknown> {
-  return obj instanceof ReactivePromise;
+export function isReactivePromise(value: object): value is ReactivePromise<unknown> {
+  return value.constructor === ReactivePromise;
 }
 
 export function isRelay<T>(obj: unknown): obj is ReactivePromise<T> {
   return obj instanceof ReactivePromise && (obj['_flags'] & AsyncFlags.isRelay) !== 0;
 }
 
-export function createPromise<T>(
-  promise: Promise<T>,
-  signal: ReactiveFnSignal<T, unknown[]>,
-  initValue: T | undefined,
-) {
+export function createPromise<T>(promise: Promise<T>, signal: ReactiveFnSignal<T, unknown[]>) {
   const p = new ReactivePromise<T>();
 
   p['_signal'] = signal;
   p['_equals'] = signal.def.equals;
-  p['_initFlags'](AsyncFlags.Pending, initValue);
+  p['_initFlags'](AsyncFlags.Pending);
   p['_setPromise'](promise);
 
   return p;
 }
 
-export function createRelay<T>(
-  activate: SignalActivate<T>,
-  scope: SignalScope,
-  opts?: Partial<SignalOptionsWithInit<T, unknown[]>>,
-) {
+export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, opts?: ReactiveOptions<T, unknown[]>) {
   const p = new ReactivePromise<T>();
-  const initValue = opts?.initValue;
 
   let active = false;
   let currentSub: RelayHooks | (() => void) | undefined | void;
@@ -660,15 +644,15 @@ export function createRelay<T>(
     equals: DEFAULT_EQUALS,
     isRelay: true,
     paramKey: opts?.paramKey,
-    shouldGC: opts?.shouldGC as (signal: object, value: () => void, args: unknown[]) => boolean,
     id: opts?.id,
     desc: opts?.desc,
+    tracer: undefined,
   };
 
   p['_signal'] = createReactiveFnSignal<() => void, unknown[]>(def, [], undefined, scope);
 
   p['_equals'] = equalsFrom(opts?.equals);
-  p['_initFlags'](AsyncFlags.isRelay | AsyncFlags.Pending, initValue as T);
+  p['_initFlags'](AsyncFlags.isRelay | AsyncFlags.Pending);
 
   return p;
 }
@@ -676,15 +660,14 @@ export function createRelay<T>(
 export function createTask<T, Args extends unknown[]>(
   task: (...args: Args) => Promise<T>,
   scope: SignalScope,
-  opts?: Partial<SignalOptionsWithInit<T, Args>>,
+  opts?: ReactiveOptions<T, Args>,
 ): ReactiveTask<T, Args> {
   const p = new ReactivePromise<T>();
-  const initValue = opts?.initValue;
 
   const { fn } = createCallback(task, scope);
 
   p['_equals'] = equalsFrom(opts?.equals);
-  p['_initFlags'](AsyncFlags.isRunnable, initValue as T);
+  p['_initFlags'](AsyncFlags.isRunnable);
 
   p['run'] = ((...args: Args) => {
     p._setPromise(fn(...args));

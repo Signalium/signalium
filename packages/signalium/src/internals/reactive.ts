@@ -1,6 +1,6 @@
-import WeakRef from '../weakref.js';
-import { Tracer, TRACER, TracerMeta } from '../trace.js';
-import { SignalValue, SignalEquals, SignalListener, SignalOptionsWithInit } from '../types.js';
+import WeakRef from './weakref.js';
+import { Tracer, TRACER, TracerMeta } from './trace.js';
+import { ReactiveValue, Equals, ReactiveOptions } from '../types.js';
 import { getUnknownSignalFnName } from './utils/debug-name.js';
 import { SignalScope } from './contexts.js';
 import { getSignal } from './get.js';
@@ -9,6 +9,7 @@ import { schedulePull, scheduleUnwatch } from './scheduling.js';
 import { hashValue } from './utils/hash.js';
 import { stringifyValue } from './utils/stringify.js';
 import { Callback } from './callback.js';
+import { watchSignal } from './watch.js';
 
 /**
  * This file contains computed signal base types and struct definitions.
@@ -44,26 +45,24 @@ let ID = 0;
 
 interface ListenerMeta {
   updatedAt: number;
-  current: Set<SignalListener>;
+  current: Set<() => void>;
 
   // Cached bound add method to avoid creating a new one on each call, this is
   // specifically for React hooks where useSyncExternalStore will resubscribe each
   // time if the method is not cached. This prevents us from having to add a
   // useCallback for the listener.
-  cachedBoundAdd: (listener: SignalListener) => () => void;
+  cachedBoundAdd: (listener: () => void) => () => void;
 }
 
 /**
  * Shared definition for derived signals to reduce memory usage.
  * Contains configuration that's common across all instances of a reactive function.
  */
-export interface ReactiveFnDefinition<T, Args extends unknown[]>
-  extends Partial<Omit<SignalOptionsWithInit<T, Args>, 'scope'>> {
+export interface ReactiveFnDefinition<T, Args extends unknown[]> extends ReactiveOptions<T, Args> {
   compute: (...args: Args) => T;
-  equals: SignalEquals<T>;
-  shouldGC?: (signal: object, value: T, args: Args) => boolean;
+  equals: Equals<T>;
   isRelay: boolean;
-  tracer?: Tracer;
+  tracer: Tracer | undefined;
 }
 
 export class ReactiveFnSignal<T, Args extends unknown[]> {
@@ -88,7 +87,7 @@ export class ReactiveFnSignal<T, Args extends unknown[]> {
   callbacks: Callback[] | undefined = undefined;
 
   _listeners: ListenerMeta | null = null;
-  _value: SignalValue<T> | undefined;
+  _value: ReactiveValue<T> | undefined = undefined;
 
   tracerMeta?: TracerMeta;
 
@@ -101,7 +100,6 @@ export class ReactiveFnSignal<T, Args extends unknown[]> {
     this.key = key;
     this.args = args;
     this.def = def;
-    this._value = def.initValue as SignalValue<T>;
 
     if (TRACER) {
       this.tracerMeta = {
@@ -160,12 +158,12 @@ export class ReactiveFnSignal<T, Args extends unknown[]> {
     return getSignal(this);
   }
 
-  addListener(listener: SignalListener) {
+  addListener(listener: () => void) {
     const { current } = this.listeners;
 
     if (!current.has(listener)) {
       if (!this._isListener) {
-        this.watchCount++;
+        watchSignal(this);
         this.flags |= ReactiveFnFlags.isListener;
       }
 
@@ -191,7 +189,7 @@ export class ReactiveFnSignal<T, Args extends unknown[]> {
   // the listener as watched so that relays that are accessed will be activated.
   addListenerLazy() {
     if (!this._isListener) {
-      this.watchCount++;
+      watchSignal(this);
       this.flags |= ReactiveFnFlags.isListener;
     }
 

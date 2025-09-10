@@ -98,6 +98,36 @@
   animation: rotation 1s linear infinite;
 }
 
+table {
+  @apply border-separate border-spacing-0 rounded-xl border border-primary-900 bg-primary-1000;
+}
+
+table code {
+  @apply border-none bg-transparent;
+}
+
+table th {
+  @apply border-b-2 border-primary-900 px-4 py-2;
+}
+
+table td {
+  @apply px-4 py-2;
+}
+
+table tr:not(:last-child) > td {
+  @apply border-b border-primary-900;
+}
+
+code {
+  white-space: nowrap;
+  display: inline-block;
+}
+
+pre > code {
+  white-space: unset;
+  display: block;
+}
+
 @keyframes rotation {
   0% {
     transform: rotate(0deg);

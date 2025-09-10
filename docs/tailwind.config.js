@@ -13,7 +13,7 @@ module.exports = {
             },
             code: {
               backgroundColor: 'var(--color-primary-1000)',
-              padding: '0.2rem 0.4rem 0.15rem',
+              padding: '0 0.4rem',
               marginTop: '-0.20rem',
               marginBottom: '-0.15rem',
               borderRadius: '0.25rem',

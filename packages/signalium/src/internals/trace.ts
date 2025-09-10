@@ -1,6 +1,6 @@
-import { scheduleTracer } from './internals/scheduling.js';
-import { ReactiveFnSignal } from './internals/reactive.js';
-import { Signal } from './types.js';
+import { scheduleTracer } from './scheduling.js';
+import { ReactiveFnSignal } from './reactive.js';
+import { Signal } from '../types.js';
 
 export let TRACER: TracerProxy | undefined;
 

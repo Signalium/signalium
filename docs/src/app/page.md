@@ -89,13 +89,13 @@ export const Counter = component(() => {
 
 {% quick-links %}
 
-{% quick-link title="Explore core concepts" icon="presets" href="/core/reactive-functions-and-state" description="Learn the core concepts of Signalium-based reactivity" /%}
+{% quick-link title="Explore core concepts" icon="presets" href="/core/signals-and-reactive-functions" description="Learn the core concepts of Signalium-based reactivity" /%}
 
-{% quick-link title="React integration" icon="plugins" href="/guides/react" description="Learn how to use Signalium with React" /%}
+{% quick-link title="React integration" icon="plugins" href="/core/react" description="Learn how to use Signalium with React" /%}
 
-{% quick-link title="Read the theory" icon="installation" href="/signals-deep-dive" description="Take a deep dive into the thinking behind Signals and Signalium" /%}
+{% quick-link title="Read the theory" icon="installation" href="/advanced/signals-as-monads" description="Take a deep dive into the thinking behind Signals and Signalium" /%}
 
-{% quick-link title="API reference" icon="theming" href="/api" description="Check out the API docs" /%}
+{% quick-link title="API reference" icon="theming" href="/api/signalium" description="Check out the API docs" /%}
 
 {% /quick-links %}
 

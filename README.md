@@ -1,25 +1,130 @@
 # Signalium
 
-This library is an opinionated take on JavaScript Signals. It implements 4 key concepts:
+Granular Signals and Reactive Functions for JavaScript and React — with first-class async, subscriptions, and great DX.
 
-- **Signals:** Root state values that can be reacted to
-- **Reactive Functions:** Derived sync or async values based on root state
-- **Relays:** Self-contained stateful values that create subscriptions when read, and destroy those subscriptions when no longer needed
-- **Watchers:** External effects that watch the graph of signals and automatically pull on changes when they occur
+Read the docs at https://signalium.dev for guides, API reference, and examples.
 
-These 4 concepts are all that is needed in order to manage all forms of reactive state in a modern web application in an efficient, intuitive manner. These concepts working together can be used to create state graphs which are _signal-pure_ - that is to say, they maintain the same properties as _pure functions_, so long as all _mutable state_ is contained within Signals.
+Signalium gives you four composable primitives:
 
-> If a "pure" signal graph is given the same set of State signals, with the same values, it will always produce the same result
+- **Signals**: a mutable value (`signal(0)`)
+- **Reactive Functions**: a cached computed (sync or async) that tracks what it reads (`reactive(() => a.value + b.value)`). Async reactives produce a **Reactive Promise**.
+- **Relays**: a long-lived reactive for event-like sources (sockets, timers) that activates when watched and tears down when unused
+- **Watchers**: an external subscriber that bridges the reactive graph to the outside world
 
-## Why Signals?
+Together these cover local state, derived state, async data, and subscriptions in a single, consistent model.
 
-Signal-based applications have many similarities to functional programming paradigms and patterns. Side-effects are isolated and pushed toward the edges of the program, allowing developers to reason about systems without needing to worry about statefulness causing edge and corner cases. They also maintain a few advantages compared to functional frameworks:
+## Install
 
-- **Signals re-execute the minimal set of code required.** Signals don't require users to think about memoization or list dependencies. Instead, they wrap the reactive context up in a _monadic datastructure_ that contains everything necessary to read the updated state, react to it, and propagate any changes.
-- **Signals are lazy by default.** Values are not evaluated unless they are used, and work is not done unless it is necessary. Propagation only happens if values actually changed, even intermediate values can stop propagating if the derived value did not update.
-- **Signals manage resources based on usage.** With Relays, values are setup whenever they enter the signal graph and torn down when they are removed. This allows users to define sources within their state graph without needing to expose these details all the way up to the application lifecycle.
-- **Signals are independent of frameworks and view layers.** Functional frameworks dominate JavaScript view layers, and provide composability similar to Signals. But data management solutions built on these frameworks become _deeply_ tied to the lifecycle of the view layer, which can be at odds with each other. Views need to rerender in order to manage lifecycle events, but query stores and services might run quietly in the background and react to a myriad of events - server responses, websocket messages, worker streams, and so on. Most data solutions, such as TanStack Query or Apollo-Client, use their own internal subscription-based systems which then require integration layers per-framework. Signals eliminate this need by allowing data libraries to build and expose their data with _reactive primitives_ that can be read directly by views, without needing integration.
+```bash
+npm install signalium
+# or
+pnpm add signalium
+yarn add signalium
+```
 
-Most importantly, writing Signals is _just like_ using plain JavaScript. You can write and use standard JS functions without any unusual paradigms. Functions don't need to be used with a special context, or pass around special getters or setters. Simply reading State values within any Computed will automatically link the two.
+React helpers are provided by the same package via a subpath import:
 
-Just JavaScript. But Reactive.
+```ts
+import { component, useSignal } from 'signalium/react';
+```
+
+## Quickstart
+
+### Core (vanilla JS/TS)
+
+```ts
+import { signal, reactive } from 'signalium';
+
+const count = signal(0);
+const double = reactive(() => count.value * 2);
+
+double(); // 0 (computed and cached)
+count.value = 2;
+double(); // 4 (recomputed lazily on access)
+```
+
+Async reactive functions become Reactive Promises automatically:
+
+```ts
+import { reactive } from 'signalium';
+
+const fetchUser = reactive(async (id: string) => {
+  const res = await fetch(`https://example.com/users/${id}`);
+  return res.json() as Promise<{ id: string; name: string }>;
+});
+
+const user = await fetchUser('1');
+console.log(user.value); // resolved data
+```
+
+Relays handle subscriptions and push-based async:
+
+```ts
+import { signal, reactive, relay } from 'signalium';
+
+const url = signal('wss://echo.example');
+
+const messages = reactive(() =>
+  relay<string>(state => {
+    const socket = new WebSocket(url.value);
+    socket.onmessage = e => (state.value = String(e.data));
+    socket.onopen = () => socket.send('hello');
+    return () => socket.close();
+  }),
+);
+
+messages(); // Reactive Promise with latest message when ready
+```
+
+### React
+
+```tsx
+import { component, useSignal } from 'signalium/react';
+
+export const Counter = component(() => {
+  const count = useSignal(0);
+
+  return (
+    <div>
+      <button onClick={() => count.update(v => v - 1)}>-</button>
+      <span>{count.value}</span>
+      <button onClick={() => count.update(v => v + 1)}>+</button>
+    </div>
+  );
+});
+```
+
+Use Reactive Promises directly in components:
+
+```tsx
+import { component } from 'signalium/react';
+import { reactive } from 'signalium';
+
+const getUser = reactive(async () => {
+  const res = await fetch('https://example.com/users/1');
+  return res.json() as Promise<{ name: string }>;
+});
+
+export const User = component(() => {
+  const user = getUser();
+  if (user.isPending) return <p>Loading…</p>;
+  if (user.error) return <p>Error</p>;
+  return <p>{user.value.name}</p>;
+});
+```
+
+## Why Signalium?
+
+- **Minimal recomputation**: Only the necessary functions rerun, from changed state outward
+- **Lazy by default**: Work happens on demand when values are read
+- **Event-friendly**: Relays model long-lived, push-based sources cleanly
+- **Framework-agnostic core**: Use in Node, workers, scripts, or with React via `signalium/react`
+- **TypeScript-first**: Strong, predictable types across the API
+
+## Documentation
+
+Read the full documentation at https://signalium.dev
+
+## License
+
+MIT — see `docs/LICENCE.md` for details.

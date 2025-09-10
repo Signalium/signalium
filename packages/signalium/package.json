@@ -2,8 +2,8 @@
   "name": "signalium",
   "version": "1.2.2",
   "type": "module",
-  "repository": "https://github.com/pzuraq/signalium",
-  "description": "Chain-reactivity at critical mass",
+  "repository": "https://github.com/signalium/signalium",
+  "description": "Scalable signals, effortless async. Reactivity at critical mass.",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "exports": {
@@ -12,6 +12,18 @@
       "import": "./dist/esm/index.js",
       "require": "./dist/cjs/index.js",
       "default": "./dist/esm/index.js"
+    },
+    "./config": {
+      "types": "./dist/esm/config.d.ts",
+      "import": "./dist/esm/config.js",
+      "require": "./dist/cjs/config.js",
+      "default": "./dist/esm/config.js"
+    },
+    "./utils": {
+      "types": "./dist/esm/utils.d.ts",
+      "import": "./dist/esm/utils.js",
+      "require": "./dist/cjs/utils.js",
+      "default": "./dist/esm/utils.js"
     },
     "./debug": {
       "types": "./dist/esm/debug.d.ts",
@@ -33,6 +45,18 @@
     },
     "./package.json": "./package.json"
   },
+  "files": [
+    "dist/esm/**",
+    "dist/cjs/**",
+    "react.js",
+    "transform.js",
+    "debug.js",
+    "utils.js",
+    "config.js",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE*"
+  ],
   "peerDependencies": {
     "react": ">=18.3.1"
   },
@@ -51,12 +75,12 @@
     "test:transform": "vitest run --project transform",
     "test:react": "vitest run --project react",
     "check-types": "tsc --noEmit",
-    "prepublishOnly": "cp build/react.js react.js && cp build/transform.js transform.js",
+    "prepublishOnly": "node scripts/generate-legacy-entries.cjs",
     "build": "npm run build:esm && npm run build:cjs",
     "build:esm": "tsc",
     "build:cjs": "tsc --module commonjs --outDir dist/cjs --moduleResolution node"
   },
-  "author": "",
+  "author": "Kristen Hewell Garrett <me@pzuraq.com>",
   "license": "ISC",
   "devDependencies": {
     "@babel/core": "^7.23.6",

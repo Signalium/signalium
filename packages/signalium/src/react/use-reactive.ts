@@ -1,24 +1,23 @@
 /* eslint-disable react-hooks/rules-of-hooks */
 import { useCallback, useSyncExternalStore } from 'react';
-import { SignalValue, Signal, ReactivePromise } from '../types.js';
-import { getReactiveFnAndDefinition } from '../core-api.js';
+import { ReactiveValue, Signal, ReactivePromise } from '../types.js';
+import { getReactiveFnAndDefinition } from '../internals/core-api.js';
 import { CURRENT_CONSUMER } from '../internals/consumer.js';
 import { ReactiveFnSignal } from '../internals/reactive.js';
-import { isAsyncSignalImpl } from '../internals/utils/type-utils.js';
-import { isRelay, ReactivePromise as ReactivePromiseImpl } from '../internals/async.js';
+import { isReactivePromise, isRelay, ReactivePromise as ReactivePromiseImpl } from '../internals/async.js';
 import { StateSignal } from '../internals/signal.js';
 import { useScope } from './context.js';
 import { GLOBAL_SCOPE } from '../internals/contexts.js';
 
-const useStateSignal = <T>(signal: StateSignal<T>): T => {
+const useStateSignal = <T>(signal: Signal<T>): T => {
   return useSyncExternalStore(
-    useCallback(onStoreChange => signal.addListener(onStoreChange), [signal]),
+    useCallback(onStoreChange => (signal as StateSignal<T>).addListener(onStoreChange), [signal]),
     () => signal.value,
     () => signal.value,
   );
 };
 
-const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveFnSignal<R, Args>): SignalValue<R> => {
+const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveFnSignal<R, Args>): ReactiveValue<R> => {
   return useSyncExternalStore(
     signal.addListenerLazy(),
     () => signal.value,
@@ -52,7 +51,7 @@ const useReactiveFn = <R, Args extends readonly Narrowable[]>(fn: (...args: Args
   // If hooks could be called in dynamic order this would not be necessary, we
   // could entangle the promise when it is used. But, because that is not the
   // case, we need to eagerly entangle.
-  if (typeof value === 'object' && value !== null && isAsyncSignalImpl(value)) {
+  if (typeof value === 'object' && value !== null && isReactivePromise(value)) {
     return useReactivePromise(value) as R;
   }
 
@@ -60,7 +59,7 @@ const useReactiveFn = <R, Args extends readonly Narrowable[]>(fn: (...args: Args
 };
 
 const isNonNullishAsyncSignal = (value: unknown): value is ReactivePromise<unknown> => {
-  return typeof value === 'object' && value !== null && isAsyncSignalImpl(value);
+  return typeof value === 'object' && value !== null && isReactivePromise(value as object);
 };
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -85,9 +84,9 @@ export function useReactive<R, Args extends readonly Narrowable[]>(
 
   if (typeof signal === 'function') {
     return useReactiveFn(signal, ...args);
-  } else if (typeof signal === 'object' && signal !== null && isAsyncSignalImpl(signal)) {
+  } else if (typeof signal === 'object' && signal !== null && isReactivePromise(signal)) {
     return useReactivePromise(signal) as ReactivePromise<R>;
   } else {
-    return useStateSignal(signal as StateSignal<R>);
+    return useStateSignal(signal as Signal<R>);
   }
 }

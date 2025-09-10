@@ -1,9 +1,9 @@
-import { SignalEquals } from '../../types.js';
+import { Equals } from '../../types.js';
 
-export const DEFAULT_EQUALS: SignalEquals<unknown> = (a, b) => a === b;
-export const FALSE_EQUALS: SignalEquals<unknown> = () => false;
+export const DEFAULT_EQUALS: Equals<unknown> = (a, b) => a === b;
+export const FALSE_EQUALS: Equals<unknown> = () => false;
 
-export const equalsFrom = <T>(equals: SignalEquals<T> | false | undefined): SignalEquals<T> => {
+export const equalsFrom = <T>(equals: Equals<T> | false | undefined): Equals<T> => {
   if (equals === false) {
     return FALSE_EQUALS;
   }
