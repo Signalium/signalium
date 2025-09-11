@@ -9,12 +9,12 @@ function normalize(code: string): string {
   return code.trim().replace(/\r\n/g, '\n').replace(/\n+/g, '\n');
 }
 
-function runPreset(input: string): string {
+function runPreset(input: string, opts?: unknown): string {
   const res = transformSync(input, {
     ast: false,
     code: true,
     sourceMaps: false,
-    presets: [[signaliumPreset, {}]],
+    presets: [[signaliumPreset, opts ?? {}]],
     parserOpts: { plugins: ['typescript'] },
     generatorOpts: { decoratorsBeforeExport: true, comments: false, compact: false, retainLines: false },
     filename: 'fixture.ts',
@@ -38,7 +38,9 @@ describe('signaliumPreset', () => {
       const dir = path.join(fixturesRoot, name);
       const before = fs.readFileSync(path.join(dir, 'before.ts'), 'utf8');
       const after = fs.readFileSync(path.join(dir, 'after.ts'), 'utf8');
-      const output = runPreset(before);
+      const optionsPath = path.join(dir, 'options.json');
+      const opts = fs.existsSync(optionsPath) ? JSON.parse(fs.readFileSync(optionsPath, 'utf8') || '{}') : undefined;
+      const output = runPreset(before, opts);
 
       expect(normalize(output)).toEqual(normalize(after));
     });

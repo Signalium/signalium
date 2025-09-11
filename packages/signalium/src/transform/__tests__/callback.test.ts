@@ -9,12 +9,12 @@ function normalize(code: string): string {
   return code.trim().replace(/\r\n/g, '\n').replace(/\n+/g, '\n');
 }
 
-function runTransform(input: string): string {
+function runTransform(input: string, opts?: unknown): string {
   const res = transformSync(input, {
     ast: false,
     code: true,
     sourceMaps: false,
-    plugins: [signaliumCallbackTransform()],
+    plugins: [signaliumCallbackTransform((opts as any) ?? undefined)],
     parserOpts: { plugins: ['typescript'] },
     generatorOpts: { decoratorsBeforeExport: true, comments: false, compact: false, retainLines: false },
     filename: 'fixture.ts',
@@ -38,7 +38,9 @@ describe('signaliumCallbackTransform', () => {
       const dir = path.join(fixturesRoot, name);
       const before = fs.readFileSync(path.join(dir, 'before.ts'), 'utf8');
       const after = fs.readFileSync(path.join(dir, 'after.ts'), 'utf8');
-      const output = runTransform(before);
+      const optionsPath = path.join(dir, 'options.json');
+      const opts = fs.existsSync(optionsPath) ? JSON.parse(fs.readFileSync(optionsPath, 'utf8') || '{}') : undefined;
+      const output = runTransform(before, opts);
 
       expect(normalize(output)).toEqual(normalize(after));
     });

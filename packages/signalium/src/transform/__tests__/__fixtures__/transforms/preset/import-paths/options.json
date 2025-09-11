@@ -1,0 +1,5 @@
+{
+  "importPaths": ["@phantom/signalium"],
+  "callbackImportPath": "@phantom/signalium",
+  "promiseImportPath": "@phantom/signalium"
+}

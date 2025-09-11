@@ -6,9 +6,9 @@ const sb = signal(0);
 const getValue = reactive(() => {
   const a = sa.value;
 
-  const ab = reactive(_callback(() => {
+  const ab = reactive(() => {
     return a + sb.value;
-  }, 0, [a]));
+  });
 
   return ab();
 });
