@@ -36,7 +36,9 @@ describe('reactiveMethod', () => {
 
     const owner = new Owner();
 
-    expect(() => owner.method()).toThrow('reactiveMethods must be attached to an owned context object');
+    expect(() => owner.method()).toThrow(
+      'Object has no scope owner, reactiveMethod must be attached to an owned context object',
+    );
   });
 
   test('caches like a standard reactive function (per owner, per args)', () => {

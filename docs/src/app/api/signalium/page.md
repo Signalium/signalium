@@ -419,6 +419,63 @@ withContexts(
 
 ---
 
+### setScopeOwner
+
+```ts
+export function setScopeOwner(owner: object, ownerObject: object): void;
+```
+
+Associate an owner object with another owner (or with an object that is already tied to a scope through a Context). This lets `reactiveMethod(owner, ...)` resolve to the intended scope even when `owner` differs from the object registered in a scope.
+
+`setScopeOwner` is chainable: if you link `A → B` and `B → C`, and `C` is registered as the owner in a scope, then methods bound to `A` resolve using `C`'s scope.
+
+```ts
+import {
+  context,
+  withContexts,
+  getContext,
+  reactiveMethod,
+  setScopeOwner,
+} from 'signalium';
+
+const OwnerCtx = context<object | null>(null, 'owner');
+const LabelCtx = context('default', 'label');
+
+class Parent {
+  method = reactiveMethod(this, () => getContext(LabelCtx));
+}
+
+class Child {
+  method = reactiveMethod(this, () => getContext(LabelCtx));
+}
+
+const parent = new Parent();
+const child = new Child();
+
+// Register parent as the owner in a scope
+withContexts(
+  [
+    [OwnerCtx, parent],
+    [LabelCtx, 'owned'],
+  ],
+  () => {},
+);
+
+// Map child's owner to the parent's scope
+setScopeOwner(child, parent);
+
+child.method(); // 'owned'
+```
+
+Note that this API is a low-level API meant to enable more performant Context development. At some point we will try to add a better high-level abstraction for defining ownership and interdependencies between Contexts and subclasses of contexts. This API, along with `reactiveMethod`, are meant to unblock development for now until those are developed.
+
+| Parameter | Type     | Description                                |
+| --------- | -------- | ------------------------------------------ |
+| obj       | `object` | The owner to associate                     |
+| owner     | `object` | Another owner or an object tied to a scope |
+
+---
+
 ### notifier
 
 ```ts

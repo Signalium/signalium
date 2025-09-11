@@ -8,7 +8,7 @@ import {
   SignalOptions,
   ReactiveFn,
 } from '../types.js';
-import { getCurrentScope, getOwner, SignalScope } from './contexts.js';
+import { getCurrentScope, getScopeOwner, SignalScope } from './contexts.js';
 import { createReactiveFnSignal, ReactiveFnDefinition } from './reactive.js';
 import { createRelay, createTask, ReactivePromise as ReactivePromiseClass } from './async.js';
 import { Tracer } from './trace.js';
@@ -72,15 +72,7 @@ export const reactiveMethod = <T, Args extends unknown[]>(
   };
 
   const reactiveFn: ReactiveFn<T, Args> = (...args) => {
-    const scope = getOwner(owner);
-
-    if (scope === undefined) {
-      throw new Error('reactiveMethods must be attached to an owned context object');
-    }
-
-    const signal = scope.get(def, args as any);
-
-    return signal.value;
+    return getScopeOwner(owner).get(def, args as any).value;
   };
 
   DERIVED_DEFINITION_MAP.set(reactiveFn, [reactiveFn, def]);

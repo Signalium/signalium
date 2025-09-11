@@ -78,7 +78,7 @@ export class SignalScope {
       this.contexts[context._key] = value;
 
       if (typeof value === 'object' && value !== null) {
-        OWNER_SCOPE_MAP.set(value, this);
+        SCOPE_OWNER_MAP.set(value, this);
       }
     }
 
@@ -165,10 +165,39 @@ export const getCurrentScope = (): SignalScope => {
 
 // ======= Owner =======
 
-const OWNER_SCOPE_MAP = new Map<object, SignalScope>();
+const SCOPE_OWNER_MAP = new WeakMap<object, SignalScope>();
+const OWNER_CHILD_MAP = new WeakMap<object, object>();
 
-export const getOwner = (owner: object): SignalScope | undefined => {
-  return OWNER_SCOPE_MAP.get(owner);
+export const setScopeOwner = (obj: object, ownerObject: object) => {
+  if (OWNER_CHILD_MAP.has(obj)) {
+    throw new Error('Object already has a scope owner, owners cannot be dynamic');
+  }
+
+  OWNER_CHILD_MAP.set(obj, ownerObject);
+};
+
+const reifyScopeOwner = (obj: object): SignalScope => {
+  const owner = OWNER_CHILD_MAP.get(obj);
+
+  if (!owner) {
+    throw new Error('Object has no scope owner, reactiveMethod must be attached to an owned context object');
+  }
+
+  const scope = SCOPE_OWNER_MAP.get(owner) ?? reifyScopeOwner(owner);
+
+  SCOPE_OWNER_MAP.set(obj, scope);
+
+  return scope;
+};
+
+export const getScopeOwner = (obj: object): SignalScope => {
+  let scope = SCOPE_OWNER_MAP.get(obj);
+
+  if (!scope) {
+    scope = reifyScopeOwner(obj);
+  }
+
+  return scope;
 };
 
 // ======= Test Helper =======

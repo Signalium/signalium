@@ -8,4 +8,11 @@ export { ReactivePromise } from './internals/async.js';
 
 export { callback } from './internals/callback.js';
 
-export { context, getContext, withContexts, setGlobalContexts, clearGlobalContexts } from './internals/contexts.js';
+export {
+  context,
+  getContext,
+  withContexts,
+  setGlobalContexts,
+  clearGlobalContexts,
+  setScopeOwner,
+} from './internals/contexts.js';
