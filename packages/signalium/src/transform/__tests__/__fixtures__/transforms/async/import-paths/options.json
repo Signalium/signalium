@@ -1,0 +1,4 @@
+{
+  "importPaths": ["@phantom/signalium"],
+  "promiseImportPath": "@phantom/signalium"
+}

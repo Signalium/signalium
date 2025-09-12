@@ -5,7 +5,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const value = signal('Hello');
 
 const derived = reactive(() => {
-  return relay<string>(_callback(state => {
+  return relay<string>(state => {
     const run = _callback(function* () {
       yield sleep(100);
 
@@ -18,5 +18,5 @@ const derived = reactive(() => {
     }, 0);
 
     state.setPromise(run());
-  }, 0));
+  });
 });
