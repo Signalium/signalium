@@ -1,5 +1,11 @@
 # signalium
 
+## 2.0.3
+
+### Patch Changes
+
+- aa56f71: Add additional transform options and improve transform performance
+
 ## 2.0.2
 
 ### Patch Changes
