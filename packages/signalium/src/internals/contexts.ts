@@ -159,8 +159,8 @@ export const setCurrentScope = (scope: SignalScope | undefined) => {
   CURRENT_SCOPE = scope;
 };
 
-export const getCurrentScope = (): SignalScope => {
-  return CURRENT_SCOPE ?? CURRENT_CONSUMER?.scope ?? GLOBAL_SCOPE;
+export const getCurrentScope = (fallback = GLOBAL_SCOPE): SignalScope => {
+  return CURRENT_SCOPE ?? CURRENT_CONSUMER?.scope ?? fallback;
 };
 
 // ======= Owner =======

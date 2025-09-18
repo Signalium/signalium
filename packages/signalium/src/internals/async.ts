@@ -18,6 +18,7 @@ import { signal } from './signal.js';
 import { DEFAULT_EQUALS, equalsFrom } from './utils/equals.js';
 import { CURRENT_CONSUMER } from './consumer.js';
 import { createCallback } from './callback.js';
+import { TRACER, TracerEventType } from './trace.js';
 
 const enum AsyncFlags {
   // ======= Notifiers ========
@@ -255,6 +256,13 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
   }
 
   private _initFlags(baseFlags: number) {
+    if (TRACER !== undefined && this._signal !== undefined && (baseFlags & AsyncFlags.Pending) !== 0) {
+      TRACER.emit({
+        type: TracerEventType.StartLoading,
+        id: this._signal.tracerMeta!.id,
+      });
+    }
+
     this._flags = baseFlags;
   }
 
@@ -318,10 +326,29 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
     }
 
     this._version.update(v => v + 1);
+
+    if (TRACER !== undefined && this._signal !== undefined) {
+      if (setTrue & AsyncFlags.Pending && allChanged & AsyncFlags.Pending) {
+        TRACER.emit({
+          type: TracerEventType.StartLoading,
+          id: this._signal.tracerMeta!.id,
+        });
+      } else if (setFalse & AsyncFlags.Pending && allChanged & AsyncFlags.Pending) {
+        TRACER.emit({
+          type: TracerEventType.EndLoading,
+          id: this._signal.tracerMeta!.id,
+          value: isRelay(this) ? '...' : this._value,
+        });
+      }
+    }
   }
 
   _setPending() {
     this._setFlags(AsyncFlags.Pending);
+  }
+
+  _clearPending() {
+    this._setFlags(0, AsyncFlags.Pending);
   }
 
   async _setPromise(promise: Promise<T>) {
@@ -425,7 +452,7 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
     // consumers are not notified and end up back in the same state as before the promise
     // was set (because nothing changed), and instead they will be scheduled to continue
     // the computation from where they left off.
-    const newState = dirty ? ReactiveFnState.Dirty : ReactiveFnState.MaybeDirty;
+    const newState = dirty ? ReactiveFnState.Dirty : ReactiveFnState.PendingDirty;
 
     for (const ref of awaitSubs.keys()) {
       const signal = ref.deref();

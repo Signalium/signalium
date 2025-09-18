@@ -52,7 +52,7 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
     return signal.updatedCount;
   }
 
-  if (state === ReactiveFnState.MaybeDirty) {
+  if (state >= ReactiveFnState.MaybeDirty) {
     let edge: Edge | undefined = signal.dirtyHead;
 
     while (edge !== undefined) {
@@ -64,14 +64,11 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
         if (dep.isPending) {
           const value = signal._value;
 
-          if (value instanceof ReactivePromise) {
-            // Propagate the pending state to the parent signal
-            value['_setPending']();
-          }
-
           // Add the signal to the awaitSubs map to be notified when the promise is resolved
           dep['_awaitSubs'].set(ref, edge);
 
+          // Propagate the pending state to the parent signal
+          (value as ReactivePromise<unknown>)._setPending();
           signal._state = ReactiveFnState.Pending;
           signal.dirtyHead = edge;
 
@@ -98,15 +95,19 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
     }
   }
 
+  const newState = signal._state;
+
   // If the signal is dirty, we need to run it. This should always be checked
   // directly on the signal instance, because the state could have been changed
   // mid computation and not just through direct dependencies.
-  if (signal._state === ReactiveFnState.Dirty) {
+  if (newState === ReactiveFnState.Dirty) {
     if (signal._isLazy) {
       signal.updatedCount++;
     } else {
       runSignal(signal);
     }
+  } else if (newState === ReactiveFnState.PendingDirty) {
+    (signal._value as ReactivePromise<unknown>)._clearPending();
   }
 
   signal._state = ReactiveFnState.Clean;
@@ -148,26 +149,6 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
     }
 
     if (valueIsPromise) {
-      if (TRACER !== undefined) {
-        TRACER.emit({
-          type: TracerEventType.StartLoading,
-          id: signal.tracerMeta!.id,
-        });
-
-        nextValue.finally(() => {
-          TRACER!.emit({
-            type: TracerEventType.EndLoading,
-            id: signal.tracerMeta!.id,
-            value: isRelay(signal) ? '...' : signal._value,
-          });
-        });
-      }
-
-      TRACER?.emit({
-        type: TracerEventType.StartLoading,
-        id: signal.tracerMeta!.id,
-      });
-
       if (prevValue !== null && typeof prevValue === 'object' && isReactivePromise(prevValue)) {
         // Update the AsyncSignal with the new promise. Since the value
         // returned from the function is the same AsyncSignal instance,

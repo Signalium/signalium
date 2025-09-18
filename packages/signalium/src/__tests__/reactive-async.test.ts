@@ -513,4 +513,59 @@ describe('async computeds', () => {
     expect(inner2Count).toBe(2);
     expect(outerCount).toBe(2);
   });
+
+  test('Outer clears pending without rerun when inner resolves to same value', async () => {
+    let innerCount = 0;
+    let outerCount = 0;
+
+    const a = signal(1);
+    const b = signal(2);
+
+    const inner = reactive(
+      async () => {
+        innerCount++;
+        const sum = a.value + b.value;
+        await nextTick();
+        return sum;
+      },
+      { desc: 'inner' },
+    );
+
+    const outer = reactive(
+      async () => {
+        outerCount++;
+        const v = await inner();
+        return v + 1;
+      },
+      { desc: 'outer' },
+    );
+
+    const r1 = outer();
+    expect(r1.isPending).toBe(true);
+    expect(r1.value).toBe(undefined);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(r1.isResolved).toBe(true);
+    expect(r1.value).toBe(4); // (1 + 2) + 1
+    expect(innerCount).toBe(1);
+    expect(outerCount).toBe(1);
+
+    // Change dependencies so inner goes pending but resolves to the SAME value
+    a.value = 2; // sum would be 3 after both updates
+    b.value = 1;
+
+    const r2 = outer();
+    expect(r2.isPending).toBe(true);
+    expect(r2.value).toBe(4); // previous cached value while pending
+    // Outer should not rerun while dependency is pending
+    expect(outerCount).toBe(1);
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    // Inner resolved to same value; outer clears pending but does NOT rerun
+    expect(r2.isPending).toBe(false);
+    expect(r2.isResolved).toBe(true);
+    expect(r2.value).toBe(4);
+    expect(innerCount).toBe(2);
+    expect(outerCount).toBe(1);
+  });
 });

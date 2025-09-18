@@ -142,6 +142,7 @@ export const VisualizerNodeComponent = ({ node }: { node: VisualizerNode }) => {
             {node.type !== SignalType.State && node.showParams && (
               <>({node.params})</>
             )}
+            {node.type === SignalType.State && <>:{node.value}</>}
           </span>
 
           {node.showValue && (

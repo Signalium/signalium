@@ -16,11 +16,11 @@ export class StateSignal<T> implements Signal<T> {
 
   private _listeners: Set<() => void> | null = null;
 
-  constructor(value: T, equals: Equals<T> = (a, b) => a === b, desc: string = 'state') {
+  constructor(value: T, equals: Equals<T> = (a, b) => a === b, desc: string = 'signal') {
     this._value = value;
     this._equals = equals;
     this._id = STATE_ID++;
-    this._desc = `${desc}${this._id}`;
+    this._desc = desc;
   }
 
   get value(): T {
@@ -48,6 +48,7 @@ export class StateSignal<T> implements Signal<T> {
       TRACER?.emit({
         type: TracerEventType.ConsumeState,
         id: CURRENT_CONSUMER.tracerMeta!.id,
+        name: this._desc,
         childId: this._id,
         value: this._value,
         setValue: (value: unknown) => {

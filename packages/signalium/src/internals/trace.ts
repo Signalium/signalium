@@ -70,6 +70,7 @@ type DisconnectedEvent = {
 type ConsumeStateEvent = {
   type: TracerEventType.ConsumeState;
   id: string | number;
+  name: string;
   childId: string | number;
   value: unknown;
   setValue: (value: unknown) => void;
@@ -136,7 +137,7 @@ export class VisualizerNode {
 
     this._setValue?.(value);
     this.notify();
-    scheduleTracer(this.tracer);
+    // scheduleTracer(this.tracer);
   }
 
   connectChild(child: VisualizerNode): boolean {
@@ -213,7 +214,7 @@ export class VisualizerNode {
     this.notify();
   }
 
-  consumeState(id: string | number, value: unknown, setValue: (value: unknown) => void) {
+  consumeState(id: string | number, name: string, value: unknown, setValue: (value: unknown) => void) {
     const existing = this.stateChildren.find(child => child.id === id);
 
     if (existing) {
@@ -227,7 +228,7 @@ export class VisualizerNode {
         SignalType.State,
         id,
         value,
-        undefined,
+        name,
         undefined,
         setValue,
       );
@@ -334,6 +335,10 @@ export class Tracer {
       }
     }
 
+    if (event.type === TracerEventType.StartLoading || event.type === TracerEventType.EndLoading) {
+      scheduleTracer(this);
+    }
+
     if (this.initialized) {
       this.eventQueue.push(event);
     } else {
@@ -377,7 +382,7 @@ export class Tracer {
     } else if (event.type === TracerEventType.EndLoading) {
       node.endLoading(event.value);
     } else if (event.type === TracerEventType.ConsumeState) {
-      node.consumeState(event.childId, event.value, event.setValue);
+      node.consumeState(event.childId, event.name, event.value, event.setValue);
     }
 
     return skipDelay;
