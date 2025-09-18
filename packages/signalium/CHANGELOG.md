@@ -1,5 +1,11 @@
 # signalium
 
+## 2.0.4
+
+### Patch Changes
+
+- 89bff58: Fix an issue where unchanged promises didn't propagate pending state
+
 ## 2.0.3
 
 ### Patch Changes
