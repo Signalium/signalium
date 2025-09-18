@@ -34,8 +34,10 @@ export function getReactiveFnAndDefinition<T, Args extends unknown[]>(
       tracer: undefined,
     };
 
+    const defScope = getCurrentScope();
+
     const reactiveFn: ReactiveFn<T, Args> = (...args) => {
-      const scope = getCurrentScope();
+      const scope = getCurrentScope(defScope);
       const signal = scope.get(def, args as any);
 
       return signal.value;

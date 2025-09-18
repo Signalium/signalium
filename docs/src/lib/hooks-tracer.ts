@@ -8,7 +8,6 @@ import {
 import { useRef, useState as _useState, useEffect } from 'react';
 
 let CURRENT_HOOK_ID: string | undefined;
-let STATE_COUNT: number | undefined;
 
 interface HookOptions {
   desc?: string;
@@ -70,7 +69,8 @@ export const useState: typeof _useState = <T>(
   TRACER?.emit({
     type: TracerEventType.ConsumeState,
     id: CURRENT_HOOK_ID!,
-    childId: `useState:${STATE_COUNT}`,
+    childId: `useState`,
+    name: `useState`,
     value: state,
     setValue: (value: unknown) => {
       _setState(value as T);
@@ -105,7 +105,6 @@ export const createHookWatcher = <T>(
 
     try {
       CURRENT_HOOK_ID = id;
-      STATE_COUNT = 0;
       const result = fn();
 
       TRACER?.emit({
@@ -115,7 +114,6 @@ export const createHookWatcher = <T>(
       });
     } finally {
       CURRENT_HOOK_ID = undefined;
-      STATE_COUNT = undefined;
       scheduleTracer(tracer);
     }
   };

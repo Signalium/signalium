@@ -12,7 +12,7 @@ export function dirtySignal(signal: ReactiveFnSignal<any, any>) {
 
   signal._state = ReactiveFnState.Dirty;
 
-  if (prevState !== ReactiveFnState.MaybeDirty) {
+  if (prevState < ReactiveFnState.MaybeDirty) {
     propagateDirty(signal);
   }
 }
@@ -57,7 +57,8 @@ export function dirtySignalConsumers(map: Map<WeakRef<ReactiveFnSignal<any, any>
         break;
 
       case ReactiveFnState.Pending:
-      case ReactiveFnState.MaybeDirty: {
+      case ReactiveFnState.MaybeDirty:
+      case ReactiveFnState.PendingDirty: {
         let subEdge = sub.dirtyHead!;
         const ord = edge.ord;
 
@@ -65,7 +66,7 @@ export function dirtySignalConsumers(map: Map<WeakRef<ReactiveFnSignal<any, any>
           sub.dirtyHead = edge;
           edge.nextDirty = subEdge;
 
-          if (dirtyState === ReactiveFnState.Pending) {
+          if (dirtyState === ReactiveFnState.Pending || dirtyState === ReactiveFnState.PendingDirty) {
             // If the signal is pending, the first edge is the halt edge. If the
             // new dirty edge is BEFORE the halt edge, then it means that something
             // changed before the current halt, so we need to cancel the current computation

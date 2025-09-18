@@ -115,7 +115,7 @@ export function Hero() {
 
                   return (
                     <div className="flex flex-col px-4 md:py-12 text-center md:text-lg">
-                      <p className="text-xl md:text-2xl">Standard hooks count: {value}.</p>
+                      <p className="text-xl md:text-2xl">Hooks count: {value}.</p>
                       <p>Rendered {++renderCount} times.</p>
                     </div>
                   )
@@ -161,7 +161,7 @@ export function Hero() {
 
                   return (
                     <div className="flex flex-col px-4 md:py-12 text-center md:text-lg">
-                      <p className="text-xl md:text-2xl">Signal hooks count: {value}.</p>
+                      <p className="text-xl md:text-2xl">Reactive functions count: {value}.</p>
                       <p>Rendered {++renderCount} times.</p>
                     </div>
                   )

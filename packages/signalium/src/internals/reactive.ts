@@ -29,16 +29,17 @@ export const enum ReactiveFnState {
   Pending = 1,
   Dirty = 2,
   MaybeDirty = 3,
+  PendingDirty = 4,
 }
 
 export const enum ReactiveFnFlags {
   // State
-  State = 0b11,
+  State = 0b111,
 
   // Properties
-  isRelay = 0b100,
-  isListener = 0b1000,
-  isLazy = 0b10000,
+  isRelay = 0b1000,
+  isListener = 0b10000,
+  isLazy = 0b100000,
 }
 
 let ID = 0;

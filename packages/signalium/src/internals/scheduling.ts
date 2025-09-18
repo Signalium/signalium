@@ -156,5 +156,4 @@ export const batch = (fn: () => void) => {
 
   fn();
   flushWatchers();
-  // flushDisconnects();
 };
