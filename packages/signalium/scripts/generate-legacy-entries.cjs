@@ -39,4 +39,10 @@ write(path.join(pkgRoot, 'debug.js'), makeReexportWrapper('./dist/cjs/debug.js')
 write(path.join(pkgRoot, 'utils.js'), makeReexportWrapper('./dist/cjs/utils.js'));
 write(path.join(pkgRoot, 'config.js'), makeReexportWrapper('./dist/cjs/config.js'));
 
+// Write package.json to CJS directory to mark it as CommonJS
+write(
+  path.join(pkgRoot, 'dist/cjs/package.json'),
+  JSON.stringify({ type: 'commonjs' }, null, 2) + '\n'
+);
+
 console.log('Legacy entries generated.');
