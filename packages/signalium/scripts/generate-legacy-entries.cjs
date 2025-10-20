@@ -45,4 +45,5 @@ write(
   JSON.stringify({ type: 'commonjs' }, null, 2) + '\n'
 );
 
+// eslint-disable-next-line no-console -- this is a script
 console.log('Legacy entries generated.');
