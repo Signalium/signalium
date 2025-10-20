@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
 const fs = require('fs');
 const path = require('path');
 
@@ -40,10 +39,6 @@ write(path.join(pkgRoot, 'utils.js'), makeReexportWrapper('./dist/cjs/utils.js')
 write(path.join(pkgRoot, 'config.js'), makeReexportWrapper('./dist/cjs/config.js'));
 
 // Write package.json to CJS directory to mark it as CommonJS
-write(
-  path.join(pkgRoot, 'dist/cjs/package.json'),
-  JSON.stringify({ type: 'commonjs' }, null, 2) + '\n'
-);
+write(path.join(pkgRoot, 'dist/cjs/package.json'), JSON.stringify({ type: 'commonjs' }, null, 2) + '\n');
 
-// eslint-disable-next-line no-console -- this is a script
 console.log('Legacy entries generated.');
