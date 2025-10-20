@@ -1,5 +1,11 @@
 # signalium
 
+## 2.0.5
+
+### Patch Changes
+
+- 3dd62b4: add CommonJS package.json generation in generate-legacy-entries script
+
 ## 2.0.4
 
 ### Patch Changes
