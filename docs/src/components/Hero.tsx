@@ -1,9 +1,7 @@
 import Image from 'next/image';
 
 import { Button } from '@/components/Button';
-// @ts-ignore
 import blurCyanImage from '@/images/blur-cyan.png';
-// @ts-ignore
 import blurIndigoImage from '@/images/blur-indigo.png';
 import { HooksVisualizer } from './HooksVisualizer';
 

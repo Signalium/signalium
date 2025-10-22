@@ -531,8 +531,7 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
 
         ref = currentConsumer.ref;
 
-        const prevEdge =
-          this._awaitSubs.get(ref!) ?? findAndRemoveDirty(currentConsumer, this as ReactivePromise<any>);
+        const prevEdge = this._awaitSubs.get(ref!) ?? findAndRemoveDirty(currentConsumer, this as ReactivePromise<any>);
 
         edge = createEdge(prevEdge, EdgeType.Promise, this as ReactivePromise<any>, -1, currentConsumer.computedCount);
       }
