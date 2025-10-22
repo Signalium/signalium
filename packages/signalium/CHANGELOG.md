@@ -1,5 +1,11 @@
 # signalium
 
+## 2.0.6
+
+### Patch Changes
+
+- 0c6d407: Use getters instead of exported globals
+
 ## 2.0.5
 
 ### Patch Changes
