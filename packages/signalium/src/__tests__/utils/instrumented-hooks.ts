@@ -8,11 +8,11 @@ import {
   watcher,
 } from '../../index.js';
 import { ReactiveTask, ReactiveValue, RelayHooks, ReactiveOptions } from '../../types.js';
-import { Context, ContextImpl, getCurrentScope, GLOBAL_SCOPE, SignalScope } from '../../internals/contexts.js';
+import { Context, ContextImpl, getCurrentScope, getGlobalScope, SignalScope } from '../../internals/contexts.js';
 import { ReactiveFnSignal } from '../../internals/reactive.js';
 import { ReactivePromise } from '../../internals/async.js';
 import { hashValue } from '../../internals/utils/hash.js';
-
+const GLOBAL_SCOPE = getGlobalScope();
 class SignalHookCounts {
   name: string;
 

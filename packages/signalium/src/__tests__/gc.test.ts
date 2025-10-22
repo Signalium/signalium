@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { reactive, context, withContexts, watcher, signal } from '../index.js';
-import { SignalScope, GLOBAL_SCOPE, clearGlobalContexts } from '../internals/contexts.js';
+import { SignalScope, getGlobalScope, clearGlobalContexts } from '../internals/contexts.js';
 import { nextTick, sleep } from './utils/async.js';
 
+const GLOBAL_SCOPE = getGlobalScope();
 // Helper to access private properties for testing
 const getSignalsMap = (scope: SignalScope) => {
   return (scope as any).signals as Map<number, any>;
