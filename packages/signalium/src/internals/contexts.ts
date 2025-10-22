@@ -1,7 +1,7 @@
 import { ReactiveFnSignal, ReactiveFnDefinition, createReactiveFnSignal } from './reactive.js';
 import { hashReactiveFn, hashValue } from './utils/hash.js';
 import { scheduleGcSweep } from './scheduling.js';
-import { CURRENT_CONSUMER } from './consumer.js';
+import { getCurrentConsumer } from './consumer.js';
 
 // ======= Contexts =======
 
@@ -45,7 +45,7 @@ export function withContexts<C extends unknown[], U>(contexts: [...ContextPair<C
 }
 
 export const getContext = <T>(context: Context<T>): T => {
-  const scope = CURRENT_SCOPE ?? CURRENT_CONSUMER?.scope;
+  const scope = CURRENT_SCOPE ?? getCurrentConsumer()?.scope;
 
   if (scope === undefined) {
     throw new Error(
@@ -143,7 +143,11 @@ export class SignalScope {
   }
 }
 
-export let GLOBAL_SCOPE = new SignalScope([]);
+let GLOBAL_SCOPE = new SignalScope([]);
+
+export const getGlobalScope = () => {
+  return GLOBAL_SCOPE;
+};
 
 export function setGlobalContexts<C extends unknown[], U>(contexts: [...ContextPair<C>]): void {
   GLOBAL_SCOPE.setContexts(contexts as [ContextImpl<unknown>, unknown][]);
@@ -153,14 +157,18 @@ export const clearGlobalContexts = () => {
   GLOBAL_SCOPE = new SignalScope([]);
 };
 
-export let CURRENT_SCOPE: SignalScope | undefined;
+let CURRENT_SCOPE: SignalScope | undefined;
 
 export const setCurrentScope = (scope: SignalScope | undefined) => {
   CURRENT_SCOPE = scope;
 };
 
+export const getInternalCurrentScope = () => {
+  return CURRENT_SCOPE;
+};
+
 export const getCurrentScope = (fallback = GLOBAL_SCOPE): SignalScope => {
-  return CURRENT_SCOPE ?? CURRENT_CONSUMER?.scope ?? fallback;
+  return CURRENT_SCOPE ?? getCurrentConsumer()?.scope ?? fallback;
 };
 
 // ======= Owner =======

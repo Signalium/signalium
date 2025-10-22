@@ -2,12 +2,12 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { ReactiveValue, Signal, ReactivePromise } from '../types.js';
 import { getReactiveFnAndDefinition } from '../internals/core-api.js';
-import { CURRENT_CONSUMER } from '../internals/consumer.js';
+import { getCurrentConsumer } from '../internals/consumer.js';
 import { ReactiveFnSignal } from '../internals/reactive.js';
 import { isReactivePromise, isRelay, ReactivePromise as ReactivePromiseImpl } from '../internals/async.js';
 import { StateSignal } from '../internals/signal.js';
 import { useScope } from './context.js';
-import { GLOBAL_SCOPE } from '../internals/contexts.js';
+import { getGlobalScope } from '../internals/contexts.js';
 
 const useStateSignal = <T>(signal: Signal<T>): T => {
   return useSyncExternalStore(
@@ -38,7 +38,7 @@ const useReactivePromise = <R>(promise: ReactivePromiseImpl<R>): ReactivePromise
 const useReactiveFn = <R, Args extends readonly Narrowable[]>(fn: (...args: Args) => R, ...args: Args): R => {
   const [, def] = getReactiveFnAndDefinition(fn as any);
 
-  const scope = useScope() ?? GLOBAL_SCOPE;
+  const scope = useScope() ?? getGlobalScope();
 
   const signal = scope.get(def, args as any);
   const value = useReactiveFnSignal(signal);
@@ -72,7 +72,7 @@ export function useReactive<R, Args extends readonly Narrowable[]>(
   signal: Signal<R> | ReactivePromise<R> | ((...args: Args) => R),
   ...args: Args
 ): R | ReactivePromise<R> {
-  if (CURRENT_CONSUMER) {
+  if (getCurrentConsumer()) {
     if (typeof signal === 'function') {
       return signal(...args);
     } else if (isNonNullishAsyncSignal(signal)) {

@@ -1,5 +1,5 @@
-import { CURRENT_CONSUMER } from './consumer.js';
-import { getCurrentScope, CURRENT_SCOPE, setCurrentScope, SignalScope } from './contexts.js';
+import { getCurrentConsumer } from './consumer.js';
+import { getCurrentScope, getInternalCurrentScope, setCurrentScope, SignalScope } from './contexts.js';
 import { generatorResultToPromiseWithScope } from './generators.js';
 import { isGeneratorResult } from './utils/type-utils.js';
 
@@ -26,7 +26,7 @@ export class Callback<T extends Function = Function> {
   setFn(fn: T) {
     this.fn = ((...args: unknown[]) => {
       const scope = this.scope;
-      const prevScope = CURRENT_SCOPE;
+      const prevScope = getInternalCurrentScope();
       const prevCallback = CURRENT_CALLBACK;
 
       try {
@@ -63,11 +63,12 @@ export function callback<T extends Function>(fn: T, idx: number, deps?: unknown[
   if (CURRENT_CALLBACK !== undefined) {
     callbacks = CURRENT_CALLBACK.callbacks;
   } else {
-    if (CURRENT_CONSUMER === undefined) {
+    const currentConsumer = getCurrentConsumer();
+    if (currentConsumer === undefined) {
       throw new Error('callback must be used within a reactive function, component, or nested callback');
     }
 
-    callbacks = CURRENT_CONSUMER.callbacks ?? (CURRENT_CONSUMER.callbacks = []);
+    callbacks = currentConsumer.callbacks ?? (currentConsumer.callbacks = []);
   }
 
   let callback = callbacks[idx];

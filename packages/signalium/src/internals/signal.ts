@@ -1,8 +1,8 @@
-import { TRACER as TRACER, TracerEventType } from './trace.js';
+import { getTracerProxy, TracerEventType } from './trace.js';
 import { Signal, Equals, SignalOptions, Notifier } from '../types.js';
 import { ReactiveFnSignal } from './reactive.js';
 import { dirtySignal } from './dirty.js';
-import { CURRENT_CONSUMER } from './consumer.js';
+import { getCurrentConsumer } from './consumer.js';
 import { scheduleListeners } from './scheduling.js';
 
 let STATE_ID = 0;
@@ -44,10 +44,12 @@ export class StateSignal<T> implements Signal<T> {
   }
 
   consume(): void {
-    if (CURRENT_CONSUMER !== undefined) {
-      TRACER?.emit({
+    const currentConsumer = getCurrentConsumer();
+    const tracer = getTracerProxy();
+    if (currentConsumer !== undefined) {
+      tracer?.emit({
         type: TracerEventType.ConsumeState,
-        id: CURRENT_CONSUMER.tracerMeta!.id,
+        id: currentConsumer.tracerMeta!.id,
         name: this._desc,
         childId: this._id,
         value: this._value,
@@ -55,7 +57,7 @@ export class StateSignal<T> implements Signal<T> {
           this.value = value as T;
         },
       });
-      this._subs.set(CURRENT_CONSUMER.ref, CURRENT_CONSUMER.computedCount);
+      this._subs.set(currentConsumer.ref, currentConsumer.computedCount);
     }
   }
 

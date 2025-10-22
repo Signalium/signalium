@@ -1,14 +1,14 @@
 import {
   scheduleTracer,
   Tracer,
-  TRACER,
+  getTracerProxy,
   TracerEventType,
   SignalType,
 } from 'signalium/debug';
 import { useRef, useState as _useState, useEffect } from 'react';
 
 let CURRENT_HOOK_ID: string | undefined;
-
+const tracer = getTracerProxy();
 interface HookOptions {
   desc?: string;
 }
@@ -26,7 +26,7 @@ export function hook<T, Args extends unknown[]>(
 
     if (connectedId.current !== hookId) {
       connectedId.current = hookId;
-      TRACER?.emit({
+      tracer?.emit({
         type: TracerEventType.Connected,
         id: CURRENT_HOOK_ID!,
         childId: hookId,
@@ -36,7 +36,7 @@ export function hook<T, Args extends unknown[]>(
       });
     }
 
-    TRACER?.emit({
+    tracer?.emit({
       type: TracerEventType.StartUpdate,
       id: hookId,
     });
@@ -48,7 +48,7 @@ export function hook<T, Args extends unknown[]>(
 
       const result = fn(...args);
 
-      TRACER?.emit({
+      tracer?.emit({
         type: TracerEventType.EndUpdate,
         id: hookId,
         value: result,
@@ -66,7 +66,7 @@ export const useState: typeof _useState = <T>(
 ) => {
   const [state, _setState] = _useState<T>(...args);
 
-  TRACER?.emit({
+  tracer?.emit({
     type: TracerEventType.ConsumeState,
     id: CURRENT_HOOK_ID!,
     childId: `useState`,
@@ -98,7 +98,7 @@ export const createHookWatcher = <T>(
   desc: string,
 ) => {
   const hookFn = () => {
-    TRACER?.emit({
+    tracer?.emit({
       type: TracerEventType.StartUpdate,
       id,
     });
@@ -107,7 +107,7 @@ export const createHookWatcher = <T>(
       CURRENT_HOOK_ID = id;
       const result = fn();
 
-      TRACER?.emit({
+      tracer?.emit({
         type: TracerEventType.EndUpdate,
         id,
         value: result,
