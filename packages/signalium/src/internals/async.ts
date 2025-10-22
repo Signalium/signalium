@@ -286,8 +286,9 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
   private _connect() {
     const signal = this._signal as ReactiveFnSignal<any, any>;
 
-    if (getCurrentConsumer()?.watchCount === 0) {
-      const { ref, computedCount, deps } = getCurrentConsumer()!;
+    const currentConsumer = getCurrentConsumer();
+    if (currentConsumer?.watchCount === 0) {
+      const { ref, computedCount, deps } = currentConsumer;
       const prevEdge = deps.get(signal);
 
       if (prevEdge?.consumedAt !== computedCount) {

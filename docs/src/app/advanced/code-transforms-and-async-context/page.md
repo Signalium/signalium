@@ -25,20 +25,20 @@ The first two are about enabling async context, which is the most important gap 
 Signalium tracks Signal usage _implicitly_. When running a Reactive Function, we set a global context variable that is used to track which Signals are being used, and whenever a Signal is accessed or a Reactive Function is called, we add it to the current context. This is how most Signal-based frameworks work, including Preact, Vue, Solid, and others, and it generally looks something like this:
 
 ```ts
-let getCurrentConsumer(): ReactiveFn | null = null;
+let CURRENT_CONSUMER: ReactiveFn | null = null;
 
 export function runReactiveFunction<T>(fn: () => T): T {
-  if (getCurrentConsumer()) {
-    addDep(getCurrentConsumer(), fn);
+  if (CURRENT_CONSUMER) {
+    addDep(CURRENT_CONSUMER, fn);
   }
 
-  const prevConsumer = getCurrentConsumer();
+  const prevConsumer = CURRENT_CONSUMER;
 
   try {
-    getCurrentConsumer() = fn;
+    CURRENT_CONSUMER = fn;
     return fn();
   } finally {
-    getCurrentConsumer() = prevConsumer;
+    CURRENT_CONSUMER = prevConsumer;
   }
 }
 ```
@@ -62,20 +62,20 @@ const loadAndProcessData = reactive(async () => {
 Now that we're introducing asynchrony, we need to think about what happens if multiple functions are running interleaved with each other. If we try to make our `runReactiveFunction` async, we run into a problem:
 
 ```ts
-let getCurrentConsumer(): ReactiveFn | null = null;
+let CURRENT_CONSUMER: ReactiveFn | null = null;
 
 export async function runReactiveFunction<T>(fn: () => T): Promise<T> {
-  if (getCurrentConsumer()) {
-    addDep(getCurrentConsumer(), fn);
+  if (CURRENT_CONSUMER) {
+    addDep(CURRENT_CONSUMER, fn);
   }
 
-  const prevConsumer = getCurrentConsumer();
+  const prevConsumer = CURRENT_CONSUMER;
 
   try {
-    getCurrentConsumer() = fn;
+    CURRENT_CONSUMER = fn;
     return await fn();
   } finally {
-    getCurrentConsumer() = prevConsumer;
+    CURRENT_CONSUMER = prevConsumer;
   }
 }
 
@@ -100,13 +100,13 @@ runC();
 
 Let's step through this:
 
-1. `runB` is called, which sets `getCurrentConsumer()` to `runB`.
-2. `runB` calls `runA`, which adds `runA` to the dependencies of `runB`, and sets `getCurrentConsumer()` to `runA`.
+1. `runB` is called, which sets `CURRENT_CONSUMER` to `runB`.
+2. `runB` calls `runA`, which adds `runA` to the dependencies of `runB`, and sets `CURRENT_CONSUMER` to `runA`.
 3. `runB` then waits for `runA` to complete.
-4. Meanwhile, `runC` is called, which sets `getCurrentConsumer()` to `runC` and waits on a sleep.
-5. `runA` completes, and `getCurrentConsumer()` is set to `runB`.
-6. `runB` completes, and `getCurrentConsumer()` is set to `null`.
-7. When `runC`'s sleep completes, `getCurrentConsumer()` is `null`, so we don't add `runB` to the dependencies of `runC`. This is a bug.
+4. Meanwhile, `runC` is called, which sets `CURRENT_CONSUMER` to `runC` and waits on a sleep.
+5. `runA` completes, and `CURRENT_CONSUMER` is set to `runB`.
+6. `runB` completes, and `CURRENT_CONSUMER` is set to `null`.
+7. When `runC`'s sleep completes, `CURRENT_CONSUMER` is `null`, so we don't add `runB` to the dependencies of `runC`. This is a bug.
 
 There are a lot of ways concurrency can mess up the implicit tracking context like this, so clearly we can't just `await` async functions in our tracking logic. What we need to do instead is to _restore_ the tracking context _after_ the async function has completed.
 

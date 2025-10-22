@@ -15,3 +15,7 @@ export const setCurrentConsumer = (consumer: ReactiveFnSignal<any, any> | undefi
 export const getCurrentConsumer = () => {
   return CURRENT_CONSUMER;
 };
+
+export const getIsWatching = () => {
+  return IS_WATCHING;
+};
