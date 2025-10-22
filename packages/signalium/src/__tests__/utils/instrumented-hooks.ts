@@ -12,7 +12,6 @@ import { Context, ContextImpl, getCurrentScope, getGlobalScope, SignalScope } fr
 import { ReactiveFnSignal } from '../../internals/reactive.js';
 import { ReactivePromise } from '../../internals/async.js';
 import { hashValue } from '../../internals/utils/hash.js';
-const GLOBAL_SCOPE = getGlobalScope();
 class SignalHookCounts {
   name: string;
 
@@ -308,7 +307,8 @@ function createBuilderFunction<T, Args extends unknown[]>(
     return createBuilderFunction(originalFn, countsMap, args as Args, withContexts) as ReactiveBuilderFunction<T, Args>;
   };
 
-  const scope = contexts ? GLOBAL_SCOPE.getChild(contexts as [ContextImpl<unknown>, unknown][]) : GLOBAL_SCOPE;
+  const globalScope = getGlobalScope();
+  const scope = contexts ? globalScope.getChild(contexts as [ContextImpl<unknown>, unknown][]) : globalScope;
   builderFn[COUNTS] = getCountsFor(originalFn.name, countsMap, scope, args);
 
   return builderFn;
