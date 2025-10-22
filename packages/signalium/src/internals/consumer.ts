@@ -1,8 +1,8 @@
 import { ReactiveFnSignal } from './reactive.js';
 
-export let CURRENT_CONSUMER: ReactiveFnSignal<any, any> | undefined;
+let CURRENT_CONSUMER: ReactiveFnSignal<any, any> | undefined;
 
-export let IS_WATCHING = false;
+let IS_WATCHING = false;
 
 export const setIsWatching = (isWatching: boolean) => {
   IS_WATCHING = isWatching;
@@ -10,4 +10,12 @@ export const setIsWatching = (isWatching: boolean) => {
 
 export const setCurrentConsumer = (consumer: ReactiveFnSignal<any, any> | undefined) => {
   CURRENT_CONSUMER = consumer;
+};
+
+export const getCurrentConsumer = () => {
+  return CURRENT_CONSUMER;
+};
+
+export const getIsWatching = () => {
+  return IS_WATCHING;
 };

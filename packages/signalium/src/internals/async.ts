@@ -16,9 +16,9 @@ import { createEdge, EdgeType, findAndRemoveDirty, PromiseEdge } from './edge.js
 import { SignalScope } from './contexts.js';
 import { signal } from './signal.js';
 import { DEFAULT_EQUALS, equalsFrom } from './utils/equals.js';
-import { CURRENT_CONSUMER } from './consumer.js';
+import { getCurrentConsumer } from './consumer.js';
 import { createCallback } from './callback.js';
-import { TRACER, TracerEventType } from './trace.js';
+import { getTracerProxy, TracerEventType } from './trace.js';
 
 const enum AsyncFlags {
   // ======= Notifiers ========
@@ -256,8 +256,9 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
   }
 
   private _initFlags(baseFlags: number) {
-    if (TRACER !== undefined && this._signal !== undefined && (baseFlags & AsyncFlags.Pending) !== 0) {
-      TRACER.emit({
+    const tracer = getTracerProxy();
+    if (tracer !== undefined && this._signal !== undefined && (baseFlags & AsyncFlags.Pending) !== 0) {
+      tracer.emit({
         type: TracerEventType.StartLoading,
         id: this._signal.tracerMeta!.id,
       });
@@ -267,13 +268,14 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
   }
 
   private _consumeFlags(flags: number) {
-    if (CURRENT_CONSUMER === undefined) return;
+    const currentConsumer = getCurrentConsumer();
+    if (currentConsumer === undefined) return;
 
     if ((this._flags & AsyncFlags.isRelay) !== 0) {
       this._connect();
     }
 
-    const ref = CURRENT_CONSUMER.ref;
+    const ref = currentConsumer.ref;
 
     const subs = this._stateSubs;
 
@@ -284,8 +286,9 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
   private _connect() {
     const signal = this._signal as ReactiveFnSignal<any, any>;
 
-    if (CURRENT_CONSUMER?.watchCount === 0) {
-      const { ref, computedCount, deps } = CURRENT_CONSUMER!;
+    const currentConsumer = getCurrentConsumer();
+    if (currentConsumer?.watchCount === 0) {
+      const { ref, computedCount, deps } = currentConsumer;
       const prevEdge = deps.get(signal);
 
       if (prevEdge?.consumedAt !== computedCount) {
@@ -327,14 +330,15 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
 
     this._version.update(v => v + 1);
 
-    if (TRACER !== undefined && this._signal !== undefined) {
+    const tracer = getTracerProxy();
+    if (tracer !== undefined && this._signal !== undefined) {
       if (setTrue & AsyncFlags.Pending && allChanged & AsyncFlags.Pending) {
-        TRACER.emit({
+        tracer.emit({
           type: TracerEventType.StartLoading,
           id: this._signal.tracerMeta!.id,
         });
       } else if (setFalse & AsyncFlags.Pending && allChanged & AsyncFlags.Pending) {
-        TRACER.emit({
+        tracer.emit({
           type: TracerEventType.EndLoading,
           id: this._signal.tracerMeta!.id,
           value: isRelay(this) ? '...' : this._value,
@@ -519,17 +523,17 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
     return new Promise<TResult1 | TResult2>((resolve, reject) => {
       let ref, edge;
 
-      if (CURRENT_CONSUMER !== undefined) {
+      const currentConsumer = getCurrentConsumer();
+      if (currentConsumer !== undefined) {
         if ((flags & AsyncFlags.isRelay) !== 0) {
           this._connect();
         }
 
-        ref = CURRENT_CONSUMER.ref;
+        ref = currentConsumer.ref;
 
-        const prevEdge =
-          this._awaitSubs.get(ref!) ?? findAndRemoveDirty(CURRENT_CONSUMER, this as ReactivePromise<any>);
+        const prevEdge = this._awaitSubs.get(ref!) ?? findAndRemoveDirty(currentConsumer, this as ReactivePromise<any>);
 
-        edge = createEdge(prevEdge, EdgeType.Promise, this as ReactivePromise<any>, -1, CURRENT_CONSUMER.computedCount);
+        edge = createEdge(prevEdge, EdgeType.Promise, this as ReactivePromise<any>, -1, currentConsumer.computedCount);
       }
       // Create wrapper functions that will call the original callbacks and then resolve/reject the new Promise
       const wrappedFulfilled = onfulfilled

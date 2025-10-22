@@ -1,6 +1,6 @@
 import { scheduleAsyncPull, schedulePull } from './scheduling.js';
 import { ReactiveFnSignal, isRelay, ReactiveFnState } from './reactive.js';
-import { CURRENT_CONSUMER } from './consumer.js';
+import { getCurrentConsumer } from './consumer.js';
 import { Edge } from './edge.js';
 
 export function dirtySignal(signal: ReactiveFnSignal<any, any>) {
@@ -18,7 +18,7 @@ export function dirtySignal(signal: ReactiveFnSignal<any, any>) {
 }
 
 function propagateDirty(signal: ReactiveFnSignal<any, any>) {
-  if (CURRENT_CONSUMER === signal) {
+  if (getCurrentConsumer() === signal) {
     throw new Error(
       'A signal was dirtied after it was consumed by the current function. This can cause race conditions and infinite rerenders and is not allowed.',
     );

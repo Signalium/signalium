@@ -1,33 +1,34 @@
 import { scheduleListeners, scheduleTracer, scheduleUnwatch } from './scheduling.js';
-import { SignalType, TRACER as TRACER, TracerEventType } from './trace.js';
+import { SignalType, getTracerProxy, TracerEventType } from './trace.js';
 import { ReactiveFnSignal, ReactiveFnState, isRelay } from './reactive.js';
 import { createEdge, Edge, EdgeType } from './edge.js';
 import { watchSignal } from './watch.js';
 import { createPromise, isReactivePromise, ReactivePromise } from './async.js';
 import { ReactiveValue } from '../types.js';
 import { isGeneratorResult, isPromise } from './utils/type-utils.js';
-import { CURRENT_CONSUMER, setCurrentConsumer } from './consumer.js';
+import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
 
 export function getSignal<T, Args extends unknown[]>(signal: ReactiveFnSignal<T, Args>): ReactiveValue<T> {
-  if (CURRENT_CONSUMER !== undefined) {
-    const { ref, computedCount, deps } = CURRENT_CONSUMER;
+  const currentConsumer = getCurrentConsumer();
+  if (currentConsumer !== undefined) {
+    const { ref, computedCount, deps } = currentConsumer;
     const prevEdge = deps.get(signal);
 
     const prevConsumedAt = prevEdge?.consumedAt;
 
     if (prevConsumedAt !== computedCount) {
       if (prevEdge === undefined) {
-        TRACER?.emit({
+        getTracerProxy()?.emit({
           type: TracerEventType.Connected,
-          id: CURRENT_CONSUMER.tracerMeta!.id,
+          id: currentConsumer.tracerMeta!.id,
           childId: signal.tracerMeta!.id,
           name: signal.tracerMeta!.desc,
           params: signal.tracerMeta!.params,
           nodeType: SignalType.Reactive,
         });
 
-        if (CURRENT_CONSUMER.watchCount > 0) {
+        if (currentConsumer.watchCount > 0) {
           watchSignal(signal);
         }
       }
@@ -113,7 +114,7 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
   signal._state = ReactiveFnState.Clean;
   signal.dirtyHead = undefined;
 
-  if (TRACER !== undefined && signal.tracerMeta?.tracer) {
+  if (getTracerProxy() !== undefined && signal.tracerMeta?.tracer) {
     scheduleTracer(signal.tracerMeta.tracer);
   }
 
@@ -121,12 +122,13 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
 }
 
 export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
-  TRACER?.emit({
+  let tracer = getTracerProxy();
+  tracer?.emit({
     type: TracerEventType.StartUpdate,
     id: signal.tracerMeta!.id,
   });
 
-  const prevConsumer = CURRENT_CONSUMER;
+  const prevConsumer = getCurrentConsumer();
 
   const updatedCount = signal.updatedCount;
   const computedCount = ++signal.computedCount;
@@ -170,7 +172,7 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
   } finally {
     setCurrentConsumer(prevConsumer);
 
-    TRACER?.emit({
+    tracer?.emit({
       type: TracerEventType.EndUpdate,
       id: signal.tracerMeta!.id,
       value: isRelay(signal) ? '...' : signal._value,
@@ -184,7 +186,7 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
         dep.subs.delete(ref);
         deps.delete(dep);
 
-        TRACER?.emit({
+        tracer?.emit({
           type: TracerEventType.Disconnected,
           id: signal.tracerMeta!.id,
           childId: dep.tracerMeta!.id,

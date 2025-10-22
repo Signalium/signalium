@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
-import { signal, reactive, AsyncSignal, relay } from 'signalium';
+import { signal, reactive, ReactivePromise, relay } from 'signalium';
 import { useReactive } from '../index.js';
 import React, { memo } from 'react';
 import { Locator } from '@vitest/browser/context';
@@ -8,7 +8,7 @@ import { sleep } from '../../__tests__/utils/async.js';
 import { createRenderCounter, HOC, RenderCounter } from './utils.js';
 import component from '../component.js';
 
-const PROMISE_PROPS: (keyof AsyncSignal<string>)[] = [
+const PROMISE_PROPS: (keyof ReactivePromise<string>)[] = [
   'value',
   'error',
   'isPending',
@@ -18,26 +18,26 @@ const PROMISE_PROPS: (keyof AsyncSignal<string>)[] = [
   'isReady',
 ];
 
-function createPromisePropCounter(prop: keyof AsyncSignal<string>, wrapper?: HOC) {
-  return createRenderCounter(({ promise }: { promise: AsyncSignal<string> }) => {
+function createPromisePropCounter(prop: keyof ReactivePromise<string>, wrapper?: HOC) {
+  return createRenderCounter(({ promise }: { promise: ReactivePromise<string> }) => {
     return <>{String(promise[prop])}</>;
   }, wrapper);
 }
 
-type PromisePropsKey = keyof AsyncSignal<string> | 'parent';
+type PromisePropsKey = keyof ReactivePromise<string> | 'parent';
 
-type PromisePropsRenderers = Record<PromisePropsKey, RenderCounter<{ promise: AsyncSignal<string> }>>;
+type PromisePropsRenderers = Record<PromisePropsKey, RenderCounter<{ promise: ReactivePromise<string> }>>;
 
 export const createPromisePropsCounter = (
   propWrapper?: HOC,
   parentWrapper?: HOC,
-): [RenderCounter<{ promise: AsyncSignal<string> }>, PromisePropsRenderers] => {
+): [RenderCounter<{ promise: ReactivePromise<string> }>, PromisePropsRenderers] => {
   const PropRenderers = PROMISE_PROPS.reduce((acc, prop) => {
     acc[prop] = createPromisePropCounter(prop, propWrapper);
     return acc;
   }, {} as PromisePropsRenderers);
 
-  const ParentRenderer = createRenderCounter(({ promise }: { promise: AsyncSignal<string> }) => {
+  const ParentRenderer = createRenderCounter(({ promise }: { promise: ReactivePromise<string> }) => {
     return (
       <>
         {PROMISE_PROPS.map(prop => {
@@ -289,7 +289,7 @@ describe('React > async', () => {
         return v;
       });
 
-      const Child = component(({ promise }: { promise: AsyncSignal<string> }): React.ReactNode => {
+      const Child = component(({ promise }: { promise: ReactivePromise<string> }): React.ReactNode => {
         childRenderCount++;
         return <span data-testid="child">{promise.value}</span>;
       });
@@ -333,7 +333,7 @@ describe('React > async', () => {
         return v;
       });
 
-      const Child = memo(({ promise }: { promise: AsyncSignal<string> }): React.ReactNode => {
+      const Child = memo(({ promise }: { promise: ReactivePromise<string> }): React.ReactNode => {
         childRenderCount++;
         return <span data-testid="child">{promise.value}</span>;
       });
@@ -667,7 +667,7 @@ describe('React > async', () => {
         });
       });
 
-      const Child = memo(({ promise }: { promise: AsyncSignal<string> }): React.ReactNode => {
+      const Child = memo(({ promise }: { promise: ReactivePromise<string> }): React.ReactNode => {
         childRenderCount++;
         return <span data-testid="child">{promise.value}</span>;
       });

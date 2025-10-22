@@ -2,7 +2,11 @@ import { scheduleTracer } from './scheduling.js';
 import { ReactiveFnSignal } from './reactive.js';
 import { Signal } from '../types.js';
 
-export let TRACER: TracerProxy | undefined;
+let TRACER: TracerProxy | undefined;
+
+export const getTracerProxy = () => {
+  return TRACER;
+};
 
 export interface VisualizerLink {
   connected: boolean;

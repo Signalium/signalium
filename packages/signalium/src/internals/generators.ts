@@ -1,6 +1,6 @@
 import { isReactivePromise } from './async.js';
-import { CURRENT_CONSUMER, setCurrentConsumer } from './consumer.js';
-import { CURRENT_SCOPE, setCurrentScope, SignalScope } from './contexts.js';
+import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
+import { getInternalCurrentScope, setCurrentScope, SignalScope } from './contexts.js';
 import { ReactiveFnSignal } from './reactive.js';
 import { isPromise } from './utils/type-utils.js';
 
@@ -16,7 +16,7 @@ export function generatorResultToPromiseWithConsumer<T>(
 
   return new Promise((resolve, reject) => {
     function step(fn: (value: any) => IteratorResult<any, any>, value?: any) {
-      const prevConsumer = CURRENT_CONSUMER;
+      const prevConsumer = getCurrentConsumer();
 
       try {
         setCurrentConsumer(savedConsumer);
@@ -60,7 +60,7 @@ export function generatorResultToPromiseWithScope<T, Args extends unknown[]>(
 
   return new Promise((resolve, reject) => {
     function step(fn: (value: any) => IteratorResult<any, any>, value?: any) {
-      const prevScope = CURRENT_SCOPE;
+      const prevScope = getInternalCurrentScope();
 
       try {
         setCurrentScope(savedScope);

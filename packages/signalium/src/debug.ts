@@ -7,8 +7,8 @@ export {
   type VisualizerLink,
   TracerEventType,
   Tracer,
-  TRACER,
   SignalType,
+  getTracerProxy,
 } from './internals/trace.js';
 
 export { scheduleTracer } from './internals/scheduling.js';

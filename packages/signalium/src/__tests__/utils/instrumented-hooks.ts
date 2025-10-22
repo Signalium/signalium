@@ -8,11 +8,10 @@ import {
   watcher,
 } from '../../index.js';
 import { ReactiveTask, ReactiveValue, RelayHooks, ReactiveOptions } from '../../types.js';
-import { Context, ContextImpl, getCurrentScope, GLOBAL_SCOPE, SignalScope } from '../../internals/contexts.js';
+import { Context, ContextImpl, getCurrentScope, getGlobalScope, SignalScope } from '../../internals/contexts.js';
 import { ReactiveFnSignal } from '../../internals/reactive.js';
 import { ReactivePromise } from '../../internals/async.js';
 import { hashValue } from '../../internals/utils/hash.js';
-
 class SignalHookCounts {
   name: string;
 
@@ -308,7 +307,8 @@ function createBuilderFunction<T, Args extends unknown[]>(
     return createBuilderFunction(originalFn, countsMap, args as Args, withContexts) as ReactiveBuilderFunction<T, Args>;
   };
 
-  const scope = contexts ? GLOBAL_SCOPE.getChild(contexts as [ContextImpl<unknown>, unknown][]) : GLOBAL_SCOPE;
+  const globalScope = getGlobalScope();
+  const scope = contexts ? globalScope.getChild(contexts as [ContextImpl<unknown>, unknown][]) : globalScope;
   builderFn[COUNTS] = getCountsFor(originalFn.name, countsMap, scope, args);
 
   return builderFn;
