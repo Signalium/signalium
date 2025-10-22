@@ -10,7 +10,7 @@ import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
 
 export function getSignal<T, Args extends unknown[]>(signal: ReactiveFnSignal<T, Args>): ReactiveValue<T> {
-  let currentConsumer = getCurrentConsumer();
+  const currentConsumer = getCurrentConsumer();
   if (currentConsumer !== undefined) {
     const { ref, computedCount, deps } = currentConsumer;
     const prevEdge = deps.get(signal);

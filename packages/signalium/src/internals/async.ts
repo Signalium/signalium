@@ -268,7 +268,7 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
   }
 
   private _consumeFlags(flags: number) {
-    let currentConsumer = getCurrentConsumer();
+    const currentConsumer = getCurrentConsumer();
     if (currentConsumer === undefined) return;
 
     if ((this._flags & AsyncFlags.isRelay) !== 0) {
@@ -523,7 +523,7 @@ export class ReactivePromise<T> implements IReactivePromise<T> {
     return new Promise<TResult1 | TResult2>((resolve, reject) => {
       let ref, edge;
 
-      let currentConsumer = getCurrentConsumer();
+      const currentConsumer = getCurrentConsumer();
       if (currentConsumer !== undefined) {
         if ((flags & AsyncFlags.isRelay) !== 0) {
           this._connect();
