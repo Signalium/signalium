@@ -2,12 +2,9 @@ import { ReactiveFnSignal, ReactiveFnDefinition, createReactiveFnSignal } from '
 import { hashReactiveFn, hashValue } from './utils/hash.js';
 import { scheduleGcSweep } from './scheduling.js';
 import { getCurrentConsumer } from './consumer.js';
+import { Context } from '../types.js';
 
 // ======= Contexts =======
-
-export type Context<T> = {
-  defaultValue: T;
-};
 
 export type ContextPair<T extends unknown[]> = {
   [K in keyof T]: [Context<T[K]>, NoInfer<T[K]>];
