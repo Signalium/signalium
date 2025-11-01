@@ -1,5 +1,11 @@
 # signalium
 
+## 2.0.7
+
+### Patch Changes
+
+- e6c39ee: Initial Signalium Query release
+
 ## 2.0.6
 
 ### Patch Changes
