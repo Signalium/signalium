@@ -5,6 +5,14 @@ import react from '@vitejs/plugin-react';
 import babel from 'vite-plugin-babel';
 import { signaliumPreset } from './src/transform/index.js';
 import { fileURLToPath } from 'url';
+import module from 'module';
+import path from 'path';
+
+const require = module.createRequire(import.meta.url);
+
+// Dynamically resolve React from node's module resolution (respects workspaces)
+const reactPath = path.dirname(require.resolve('react/package.json'));
+const reactDomPath = path.dirname(require.resolve('react-dom/package.json'));
 
 export default defineConfig({
   resolve: {
@@ -19,7 +27,19 @@ export default defineConfig({
         find: /^signalium\/transform$/,
         replacement: fileURLToPath(new URL('./src/transform/index.ts', import.meta.url)),
       },
+      // Use Node's module resolution to find React (respects npm workspaces)
+      { find: 'react', replacement: reactPath },
+      { find: 'react-dom', replacement: reactDomPath },
     ],
+    // Ensure React is deduplicated in monorepo
+    dedupe: ['react', 'react-dom'],
+    conditions: ['browser', 'development', 'module', 'import', 'default'],
+  },
+  optimizeDeps: {
+    include: ['react', 'react/jsx-runtime', 'react-dom'],
+  },
+  ssr: {
+    noExternal: ['react', 'react-dom'],
   },
   test: {
     projects: [
@@ -106,6 +126,7 @@ export default defineConfig({
           browser: {
             enabled: true,
             provider: 'playwright',
+            headless: true,
             instances: [{ browser: 'chromium' }],
           },
         },

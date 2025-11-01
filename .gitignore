@@ -2,3 +2,5 @@ node_modules
 dist
 .turbo
 packages/signalium/*.js
+packages/signalium/*.d.ts
+__screenshots__/

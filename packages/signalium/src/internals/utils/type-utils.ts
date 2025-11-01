@@ -11,3 +11,7 @@ export function isGeneratorResult(value: object): value is Generator {
 export function isPromise(value: object): value is Promise<unknown> {
   return value.constructor === Promise;
 }
+
+export function isThennable(value: unknown): value is Promise<unknown> {
+  return value !== null && typeof value === 'object' && typeof (value as any).then === 'function';
+}

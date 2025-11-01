@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist/esm",
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": false,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "signalium": ["../signalium/src/index.ts"],
+      "signalium/utils": ["../signalium/src/utils.ts"],
+      "signalium/config": ["../signalium/src/config.ts"],
+      "signalium/debug": ["../signalium/src/debug.ts"],
+      "signalium/react": ["../signalium/src/react/index.ts"],
+      "signalium/transform": ["../signalium/src/transform/index.ts"]
+    }
+  },
+  "include": ["src", "vitest.config.ts"]
+}

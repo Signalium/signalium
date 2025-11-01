@@ -75,8 +75,7 @@
     "test:transform": "vitest run --project transform",
     "test:react": "vitest run --project react",
     "check-types": "tsc --noEmit",
-    "prepublishOnly": "node scripts/generate-legacy-entries.cjs",
-    "build": "npm run build:esm && npm run build:cjs",
+    "build": "npm run build:esm && npm run build:cjs && node scripts/generate-legacy-entries.cjs",
     "build:esm": "tsc",
     "build:cjs": "tsc --module commonjs --outDir dist/cjs --moduleResolution node"
   },

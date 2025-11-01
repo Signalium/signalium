@@ -212,8 +212,8 @@ export const runListeners = (signal: ReactiveFnSignal<any, any>) => {
   }
 };
 
-export const isRelay = (signal: unknown): boolean => {
-  return ((signal as any).flags & ReactiveFnFlags.isRelay) !== 0;
+export const isRelay = (signal: ReactiveFnSignal<any, any>): boolean => {
+  return (signal['flags'] & ReactiveFnFlags.isRelay) !== 0;
 };
 
 export function createReactiveFnSignal<T, Args extends unknown[]>(

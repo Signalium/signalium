@@ -1,4 +1,21 @@
-export type * from './types.js';
+export {
+  type Context,
+  type DiscriminatedReactivePromise,
+  type Equals,
+  type Notifier,
+  type PendingReactivePromise,
+  type ReactiveFn,
+  type ReactiveOptions,
+  type ReactiveTask,
+  type ReactiveValue,
+  type ReadyReactivePromise,
+  type RelayActivate,
+  type RelayHooks,
+  type RelayState,
+  type Signal,
+  type SignalOptions,
+  type Watcher,
+} from './types.js';
 
 export { reactive, reactiveMethod, task, relay, watcher } from './internals/core-api.js';
 
@@ -16,3 +33,5 @@ export {
   clearGlobalContexts,
   setScopeOwner,
 } from './internals/contexts.js';
+
+export { watchOnce } from './utils.js';
