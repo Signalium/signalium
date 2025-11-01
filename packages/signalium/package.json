@@ -2,7 +2,10 @@
   "name": "signalium",
   "version": "2.0.7",
   "type": "module",
-  "repository": "https://github.com/signalium/signalium",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Signalium/signalium.git"
+  },
   "description": "Scalable signals, effortless async. Reactivity at critical mass.",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
