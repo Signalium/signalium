@@ -350,6 +350,8 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
 
   _setPending() {
     this._setFlags(AsyncFlags.Pending);
+    dirtySignalConsumers(this._awaitSubs);
+    return (this._awaitSubs = new Map());
   }
 
   _clearPending() {
@@ -368,9 +370,7 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
     // If we were not already pending, we need to propagate the dirty state to any
     // consumers that were added since the promise was resolved last.
     if ((flags & AsyncFlags.Pending) === 0) {
-      this._setPending();
-      dirtySignalConsumers(awaitSubs);
-      this._awaitSubs = awaitSubs = new Map();
+      awaitSubs = this._setPending();
     }
 
     try {
