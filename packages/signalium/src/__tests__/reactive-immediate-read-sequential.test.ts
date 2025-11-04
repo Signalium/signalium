@@ -1,56 +1,65 @@
 import { describe, expect, test } from 'vitest';
-import { signal } from 'signalium';
+import { signal, watcher } from 'signalium';
 import { reactive } from './utils/instrumented-hooks.js';
 import { nextTick } from './utils/async.js';
 
 describe('reactive async immediate read after sequential writes', () => {
-  test('outer awaits inner and reflects sequential writes immediately', async () => {
-    const animals = signal<string[]>([]);
+  test.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])(
+    'with %i level(s) of nesting, outer awaits inner and reflects sequential writes immediately',
+    async (levels: number) => {
+      const animals = signal<string[]>([]);
 
-    const getRaw = reactive(
-      async () => {
-        // Introduce an async boundary that resolves next microtask
-        const s = animals.value;
-        await nextTick();
-        return s;
-      },
-      { desc: 'getRaw' },
-    );
+      // Create the base reactive function that reads from the signal
+      const reactiveFunctions: Array<() => Promise<string[]>> = [];
 
-    const getRaw1 = reactive(
-      async () => {
-        const s = await getRaw();
-        return s;
-      },
-      { desc: 'getRaw1' },
-    );
+      reactiveFunctions.push(
+        reactive(
+          async () => {
+            // Introduce an async boundary that resolves next microtask
+            const s = animals.value;
+            await nextTick();
+            return s;
+          },
+          { desc: 'getRaw0' },
+        ),
+      );
 
-    const getRaw2 = reactive(
-      async () => {
-        const s = await getRaw1();
-        return s;
-      },
-      { desc: 'getRaw2' },
-    );
+      // Create the chain of reactive functions up to the desired level
+      for (let i = 1; i < levels; i++) {
+        const prevFunction = reactiveFunctions[i - 1];
+        reactiveFunctions.push(
+          reactive(
+            async () => {
+              const s = await prevFunction();
+              return s;
+            },
+            { desc: `getRaw${i}` },
+          ),
+        );
+      }
 
-    const write = (k: string) => {
-      const curr = animals.value;
-      animals.value = [...curr, k];
-    };
+      // Use the outermost function in the chain
+      const getOutermost = reactiveFunctions[reactiveFunctions.length - 1];
 
-    // 1) first write
-    write('cat');
-    let items = await getRaw2();
-    expect(items).toContain('cat');
+      const write = (k: string) => {
+        const curr = animals.value;
+        animals.value = [...curr, k];
+      };
 
-    // 2) second write
-    write('dog');
-    items = await getRaw2();
-    expect(items).toContain('dog');
+      // 1) first write
+      write('cat');
+      let items = await getOutermost();
+      expect(items).toContain('cat');
 
-    // 3) third write — this has been observed to intermittently fail
-    write('fish');
-    items = await getRaw2();
-    expect(items).toContain('fish');
-  });
+      // 2) second write
+      write('dog');
+      items = await getOutermost();
+      expect(items).toContain('dog');
+
+      // 3) third write — this has been observed to intermittently fail
+      write('fish');
+      items = await getOutermost();
+      expect(items).toContain('fish');
+    },
+  );
 });
