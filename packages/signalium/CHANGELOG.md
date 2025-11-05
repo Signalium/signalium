@@ -1,5 +1,11 @@
 # signalium
 
+## 2.0.8
+
+### Patch Changes
+
+- 55ab462: Fixed an issue with async promise update propagation
+
 ## 2.0.7
 
 ### Patch Changes
