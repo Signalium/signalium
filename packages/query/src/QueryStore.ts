@@ -15,6 +15,7 @@ import { QueryDefinition } from './QueryClient.js';
 
 export interface CachedQuery {
   value: unknown;
+  refIds: Set<number> | undefined;
   updatedAt: number;
 }
 
@@ -33,7 +34,13 @@ export interface QueryStore {
    * Synchronously stores a document with optional reference IDs.
    * This is fire-and-forget for async implementations.
    */
-  saveQuery(queryDef: QueryDefinition<any, any>, queryKey: number, value: unknown, refIds?: Set<number>): void;
+  saveQuery(
+    queryDef: QueryDefinition<any, any>,
+    queryKey: number,
+    value: unknown,
+    updatedAt: number,
+    refIds?: Set<number>,
+  ): void;
 
   /**
    * Synchronously stores an entity with optional reference IDs.
@@ -141,6 +148,7 @@ export class SyncQueryStore implements QueryStore {
 
     return {
       value: JSON.parse(valueStr) as Record<string, unknown>,
+      refIds: entityIds === undefined ? undefined : new Set(entityIds ?? []),
       updatedAt,
     };
   }
@@ -166,9 +174,15 @@ export class SyncQueryStore implements QueryStore {
     }
   }
 
-  saveQuery(queryDef: QueryDefinition<any, any>, queryKey: number, value: unknown, refIds?: Set<number>): void {
+  saveQuery(
+    queryDef: QueryDefinition<any, any>,
+    queryKey: number,
+    value: unknown,
+    updatedAt: number,
+    refIds?: Set<number>,
+  ): void {
     this.setValue(queryKey, value, refIds);
-    this.kv.setNumber(updatedAtKeyFor(queryKey), Date.now());
+    this.kv.setNumber(updatedAtKeyFor(queryKey), updatedAt);
     this.activateQuery(queryDef, queryKey);
   }
 

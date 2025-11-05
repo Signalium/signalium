@@ -14,9 +14,9 @@
 import { relay, type RelayState, context, DiscriminatedReactivePromise, type Context, Signal, signal } from 'signalium';
 import { hashValue, setReactivePromise } from 'signalium/utils';
 import {
-  DiscriminatedQueryResult,
-  EntityDef,
   QueryResult,
+  EntityDef,
+  BaseQueryResult,
   ObjectFieldTypeDef,
   ComplexTypeDef,
   RefetchInterval,
@@ -40,15 +40,20 @@ export interface QueryCacheOptions {
   refetchInterval?: RefetchInterval;
 }
 
-export interface QueryDefinition<Params, Result> {
-  id: string;
-  shape: ObjectFieldTypeDef;
-  fetchFn: (context: QueryContext, params: Params) => Promise<Result>;
-
-  cache?: QueryCacheOptions;
+export interface QueryPaginationOptions<Result> {
+  getNextPageParams?(lastPage: Result, params?: QueryParams | undefined): QueryParams | undefined;
 }
 
-// QueryInstance is now merged into QueryResultImpl below
+export type QueryParams = Record<string, string | number | boolean | undefined | null>;
+
+export interface QueryDefinition<Params extends QueryParams | undefined, Result> {
+  id: string;
+  shape: ObjectFieldTypeDef;
+  fetchFn: (context: QueryContext, params: Params, prevResult?: Result) => Promise<Result>;
+
+  pagination?: QueryPaginationOptions<Result>;
+  cache?: QueryCacheOptions;
+}
 
 const queryKeyFor = (queryDef: QueryDefinition<any, any>, params: unknown): number => {
   return hashValue([queryDef.id, params]);
@@ -181,66 +186,120 @@ class MemoryEvictionManager {
  * like refetch, while forwarding all the base relay properties.
  * This class combines the old QueryInstance and QueryResultImpl into a single entity.
  */
-export class QueryResultImpl<T> implements QueryResult<T> {
-  // Fields from old QueryInstance
+export class QueryResultImpl<T> implements BaseQueryResult<T> {
   def: QueryDefinition<any, any>;
-  initialized: boolean = false;
-  isRefetchingSignal: Signal<boolean>;
-  updatedAt: number | undefined = undefined;
-
-  // References for refetch functionality
-  private queryClient: QueryClient;
   queryKey: number;
-  private params: any;
-  private relay: DiscriminatedReactivePromise<T>;
-  private relayState: RelayState<any> | undefined = undefined;
 
-  constructor(def: QueryDefinition<any, any>, queryClient: QueryClient, queryKey: number, params: any) {
+  private queryClient: QueryClient;
+  private initialized: boolean = false;
+  private isRefetchingSignal: Signal<boolean> = signal(false);
+  private isFetchingMoreSignal: Signal<boolean> = signal(false);
+  private updatedAt: number | undefined = undefined;
+  private params: QueryParams | undefined = undefined;
+  private refIds: Set<number> | undefined = undefined;
+
+  private refetchPromise: Promise<T> | undefined = undefined;
+  private fetchMorePromise: Promise<T> | undefined = undefined;
+
+  private relay: DiscriminatedReactivePromise<T>;
+  private _relayState: RelayState<any> | undefined = undefined;
+
+  private get relayState(): RelayState<any> {
+    const relayState = this._relayState;
+
+    if (!relayState) {
+      throw new Error('Relay state not initialized');
+    }
+
+    return relayState;
+  }
+
+  private _nextPageParams: QueryParams | undefined | null = undefined;
+
+  private get nextPageParams(): QueryParams | null {
+    let params = this._nextPageParams;
+
+    const value = this.relayState.value;
+
+    if (params === undefined && value !== undefined) {
+      if (!Array.isArray(value)) {
+        throw new Error('Query result is not an array, this is a bug');
+      }
+
+      const nextParams = this.def.pagination?.getNextPageParams?.(value[value.length - 1]);
+
+      if (nextParams === undefined) {
+        // store null to indicate that there is no next page, but we've already calculated
+        params = null;
+      } else {
+        // Clone current params
+        let hasDefinedParams = false;
+        const clonedParams = { ...this.params };
+
+        // iterate over the next page params and copy any defined values to the
+        for (const [key, value] of Object.entries(nextParams)) {
+          if (value !== undefined && value !== null) {
+            clonedParams[key] = value;
+            hasDefinedParams = true;
+          }
+        }
+
+        this._nextPageParams = params = hasDefinedParams ? clonedParams : null;
+      }
+    }
+
+    return params ?? null;
+  }
+
+  constructor(
+    def: QueryDefinition<any, any>,
+    queryClient: QueryClient,
+    queryKey: number,
+    params: QueryParams | undefined,
+  ) {
     setReactivePromise(this);
     this.def = def;
     this.queryClient = queryClient;
     this.queryKey = queryKey;
     this.params = params;
-    this.isRefetchingSignal = signal(false);
 
     // Create the relay and handle activation/deactivation
-    this.relay = relay<T>(
-      state => {
-        this.relayState = state;
-        // Load from cache first, then fetch fresh data
-        this.queryClient.activateQuery(this);
+    this.relay = relay<T>(state => {
+      this._relayState = state;
+      // Load from cache first, then fetch fresh data
+      this.queryClient.activateQuery(this);
 
-        if (this.initialized) {
-          if (this.isStale()) {
-            this.refetch();
-          }
-        } else {
-          this.initialize(state as RelayState<unknown>);
+      if (this.initialized) {
+        if (this.isStale) {
+          this.refetch();
         }
+      } else {
+        this.initialize();
+      }
 
-        // Return deactivation callback
-        return {
-          update: () => {
-            state.setPromise(this.runQuery());
-          },
-          deactivate: () => {
-            // Last subscriber left, deactivate refetch and schedule memory eviction
-            if (this.def.cache?.refetchInterval) {
-              this.queryClient.refetchManager.removeQuery(this);
-            }
+      // Return deactivation callback
+      return {
+        update: () => {
+          state.setPromise(this.runQuery(this.params, true));
+        },
+        deactivate: () => {
+          // Last subscriber left, deactivate refetch and schedule memory eviction
+          if (this.def.cache?.refetchInterval) {
+            this.queryClient.refetchManager.removeQuery(this);
+          }
 
-            // Schedule removal from memory using the global eviction manager
-            // This allows quick reactivation from memory if needed again soon
-            // Disk cache (if configured) will still be available after eviction
-            this.queryClient.memoryEvictionManager.scheduleEviction(this.queryKey);
-          },
-        };
-      },
-      // {
-      //   equals: false,
-      // },
-    ) as DiscriminatedReactivePromise<T>;
+          // Schedule removal from memory using the global eviction manager
+          // This allows quick reactivation from memory if needed again soon
+          // Disk cache (if configured) will still be available after eviction
+          this.queryClient.memoryEvictionManager.scheduleEviction(this.queryKey);
+        },
+      };
+    }) as DiscriminatedReactivePromise<T>;
   }
+
+  // ======================================================
+  // ReactivePromise properties
+  // =====================================================
 
   get value(): T | undefined {
     return this.relay.value;
@@ -268,14 +327,6 @@ export class QueryResultImpl<T> implements QueryResult<T> {
 
   get isReady(): boolean {
     return this.relay.isReady;
-  }
-
-  get isRefetching(): boolean {
-    return this.isRefetchingSignal.value;
-  }
-
-  get isFetching(): boolean {
-    return this.relay.isPending || this.isRefetching;
   }
 
   // TODO: Intimate APIs needed for `useReactive`, this is a code smell and
@@ -310,64 +361,20 @@ export class QueryResultImpl<T> implements QueryResult<T> {
     return this.relay.finally(onfinally);
   }
 
-  // Additional methods
-  async refetch(): Promise<T> {
-    this.isRefetchingSignal.value = true;
-
-    try {
-      const result = await this.runQuery();
-
-      if (this.relayState) {
-        this.relayState.value = result;
-
-        // Update the version to trigger a re-render for direct React consumers
-        // e.g. `useReactive(query, params)`
-        this._version.update(v => v + 1);
-      }
-
-      return result;
-    } finally {
-      this.isRefetchingSignal.value = false;
-    }
+  get [Symbol.toStringTag](): string {
+    return 'QueryResult';
   }
 
-  /**
-   * Fetches fresh data, updates the cache, and updates updatedAt timestamp
-   */
-  async runQuery(): Promise<T> {
-    const freshData = await this.def.fetchFn(this.queryClient.getContext(), this.params);
-
-    // Parse and cache the fresh data
-    const entityRefs = new Set<number>();
-    const shape = this.def.shape;
-
-    const parsedData =
-      shape instanceof ValidatorDef
-        ? parseEntities(freshData, shape as ComplexTypeDef, this.queryClient, entityRefs)
-        : parseValue(freshData, shape, this.def.id);
-
-    // Cache the data (synchronous, fire-and-forget)
-    this.queryClient.saveQueryData(this.def, this.queryKey, freshData, entityRefs);
-
-    // Update the timestamp
-    this.updatedAt = Date.now();
-
-    return parsedData as T;
-  }
-
-  isStale(): boolean {
-    if (this.updatedAt === undefined) {
-      return true; // No data yet, needs fetch
-    }
-
-    const staleTime = this.def.cache?.staleTime ?? 0;
-    return Date.now() - this.updatedAt >= staleTime;
-  }
+  // ======================================================
+  // Internal fetch methods
+  // ======================================================
 
   /**
    * Initialize the query by loading from cache and fetching if stale
    */
-  private async initialize(state: RelayState<unknown>): Promise<void> {
+  private async initialize(): Promise<void> {
+    const state = this.relayState;
+
     try {
       this.initialized = true;
       // Load from cache first
@@ -383,14 +390,17 @@ export class QueryResultImpl<T> implements QueryResult<T> {
         // Set the cached timestamp
         this.updatedAt = cached.updatedAt;
 
+        // Set the cached reference IDs
+        this.refIds = cached.refIds;
+
         // Check if data is stale
-        if (this.isStale()) {
+        if (this.isStale) {
           // Data is stale, trigger background refetch
           this.refetch();
         }
       } else {
         // No cached data, fetch fresh
-        state.setPromise(this.runQuery());
+        state.setPromise(this.runQuery(this.params, true));
       }
     } catch (error) {
       // Relay will handle the error state automatically
@@ -398,9 +408,163 @@ export class QueryResultImpl<T> implements QueryResult<T> {
     }
   }
 
-  // Make it work with Symbol.toStringTag for Promise detection
-  get [Symbol.toStringTag](): string {
-    return 'QueryResult';
+  /**
+   * Fetches fresh data, updates the cache, and updates updatedAt timestamp
+   */
+  private async runQuery(params: QueryParams | undefined, reset = false): Promise<T> {
+    const freshData = await this.def.fetchFn(this.queryClient.getContext(), params);
+
+    // Parse and cache the fresh data
+    let entityRefs;
+
+    if (this.def.pagination && !reset && this.refIds !== undefined) {
+      entityRefs = this.refIds;
+    } else {
+      entityRefs = new Set<number>();
+    }
+
+    const shape = this.def.shape;
+
+    const parsedData =
+      shape instanceof ValidatorDef
+        ? parseEntities(freshData, shape as ComplexTypeDef, this.queryClient, entityRefs)
+        : parseValue(freshData, shape, this.def.id);
+
+    let queryData;
+
+    if (this.def.pagination) {
+      const prevQueryData = this.relayState.value;
+      queryData = reset || prevQueryData === undefined ? [parsedData] : [...prevQueryData, parsedData];
+    } else {
+      queryData = parsedData;
+    }
+
+    let updatedAt;
+
+    if (reset) {
+      updatedAt = this.updatedAt = Date.now();
+    } else {
+      updatedAt = this.updatedAt ??= Date.now();
+    }
+
+    this._nextPageParams = undefined;
+
+    // Cache the data (synchronous, fire-and-forget)
+    this.queryClient.saveQueryData(this.def, this.queryKey, queryData, updatedAt, entityRefs);
+
+    // Update the timestamp
+    this.updatedAt = Date.now();
+
+    return queryData as T;
+  }
+
+  // ======================================================
+  // Public methods
+  // ======================================================
+
+  refetch(): Promise<T> {
+    if (this.fetchMorePromise) {
+      throw new Error('Query is fetching more, cannot refetch');
+    }
+
+    if (this.refetchPromise) {
+      return this.refetchPromise;
+    }
+
+    // Clear memoized nextPageParams so it's recalculated after refetch
+    this._nextPageParams = undefined;
+
+    // Set the signal before any async operations so it's immediately visible
+    // Use untrack to avoid reactive violations when called from reactive context
+    this.isRefetchingSignal.value = true;
+    this._version.update(v => v + 1);
+
+    const promise = this.runQuery(this.params, true)
+      .then(result => {
+        this.relayState.value = result;
+        return result;
+      })
+      .catch((error: unknown) => {
+        this.relayState.setError(error);
+        return Promise.reject(error);
+      })
+      .finally(() => {
+        this._version.update(v => v + 1);
+        this.isRefetchingSignal.value = false;
+        this.refetchPromise = undefined;
+      });
+
+    this.refetchPromise = promise;
+    return promise;
+  }
+
+  fetchNextPage(): Promise<T> {
+    if (this.refetchPromise) {
+      return Promise.reject(new Error('Query is refetching, cannot fetch next page'));
+    }
+
+    if (this.fetchMorePromise) {
+      return this.fetchMorePromise;
+    }
+
+    // Read nextPageParams in untracked context to avoid reactive violations
+    const nextPageParams = this.nextPageParams;
+
+    if (!nextPageParams) {
+      return Promise.reject(new Error('No next page params'));
+    }
+
+    // Set the signal before any async operations so it's immediately visible
+    // Use untrack to avoid reactive violations when called from reactive context
+    this.isFetchingMoreSignal.value = true;
+    this._version.update(v => v + 1);
+
+    const promise = this.runQuery(nextPageParams, false)
+      .then(result => {
+        this.relayState!.value = result;
+        return result as T;
+      })
+      .catch((error: unknown) => {
+        this.relayState.setError(error);
+        return Promise.reject(error);
+      })
+      .finally(() => {
+        this._version.update(v => v + 1);
+        this.isFetchingMoreSignal.value = false;
+        this.fetchMorePromise = undefined;
+      });
+
+    this.fetchMorePromise = promise;
+    return promise;
+  }
+
+  // ======================================================
+  // Public properties
+  // ======================================================
+
+  get isRefetching(): boolean {
+    return this.isRefetchingSignal.value;
+  }
+
+  get isFetchingMore(): boolean {
+    return this.isFetchingMoreSignal.value;
+  }
+
+  get isFetching(): boolean {
+    return this.relay.isPending || this.isRefetching || this.isFetchingMore;
+  }
+
+  get hasNextPage(): boolean {
+    return this.nextPageParams !== null;
+  }
+
+  get isStale(): boolean {
+    if (this.updatedAt === undefined) {
+      return true; // No data yet, needs fetch
+    }
+
+    const staleTime = this.def.cache?.staleTime ?? 0;
+    return Date.now() - this.updatedAt >= staleTime;
   }
 }
 
@@ -422,8 +586,14 @@ export class QueryClient {
     return this.context;
   }
 
-  saveQueryData(queryDef: QueryDefinition<any, any>, queryKey: number, data: unknown, entityRefs: Set<number>): void {
-    this.store.saveQuery(queryDef, queryKey, data, entityRefs);
+  saveQueryData(
+    queryDef: QueryDefinition<QueryParams | undefined, unknown>,
+    queryKey: number,
+    data: unknown,
+    updatedAt: number,
+    entityRefs: Set<number>,
+  ): void {
+    this.store.saveQuery(queryDef, queryKey, data, updatedAt, entityRefs);
   }
 
   activateQuery(queryInstance: QueryResultImpl<unknown>): void {
@@ -434,7 +604,7 @@ export class QueryClient {
     this.memoryEvictionManager.cancelEviction(queryKey);
   }
 
-  loadCachedQuery(queryDef: QueryDefinition<any, any>, queryKey: number) {
+  loadCachedQuery(queryDef: QueryDefinition<QueryParams | undefined, unknown>, queryKey: number) {
     return this.store.loadQuery(queryDef, queryKey, this.entityMap);
   }
 
@@ -442,13 +612,10 @@ export class QueryClient {
    * Loads a query from the document store and returns a QueryResult
    * that triggers fetches and prepopulates with cached data
    */
-  getQuery<Params, Result>(
-    queryDef: QueryDefinition<Params, Result>,
-    params: Params,
-  ): DiscriminatedQueryResult<Result> {
+  getQuery<T>(queryDef: QueryDefinition<any, any>, params: QueryParams | undefined): QueryResult<T> {
     const queryKey = queryKeyFor(queryDef, params);
 
-    let queryInstance = this.queryInstances.get(queryKey) as QueryResultImpl<Result> | undefined;
+    let queryInstance = this.queryInstances.get(queryKey) as QueryResultImpl<T> | undefined;
 
     // Create a new instance if it doesn't exist
     if (queryInstance === undefined) {
@@ -458,7 +625,7 @@ export class QueryClient {
       this.queryInstances.set(queryKey, queryInstance as QueryResultImpl<unknown>);
     }
 
-    return queryInstance as DiscriminatedQueryResult<Result>;
+    return queryInstance as QueryResult<T>;
   }
 
   hydrateEntity(key: number, shape: EntityDef): EntityRecord {

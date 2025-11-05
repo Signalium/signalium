@@ -5,6 +5,7 @@ import { QueryClient } from '../QueryClient.js';
 import { query } from '../query.js';
 import { RefetchInterval } from '../types.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
+import { t } from '../typeDefs.js';
 
 /**
  * RefetchInterval Tests
@@ -36,7 +37,7 @@ describe('RefetchInterval', () => {
       let callCount = 0;
       mockFetch.get('/counter', () => ({ count: ++callCount }));
 
-      const getCounter = query(t => ({
+      const getCounter = query(() => ({
         path: '/counter',
         response: { count: t.number },
         cache: { refetchInterval: RefetchInterval.Every1Second },
@@ -61,7 +62,7 @@ describe('RefetchInterval', () => {
       let callCount = 0;
       mockFetch.get('/item', () => ({ n: ++callCount }));
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { n: t.number },
         cache: { refetchInterval: RefetchInterval.Every1Second },
@@ -99,13 +100,13 @@ describe('RefetchInterval', () => {
       mockFetch.get('/every1s', () => ({ count: ++count1 }));
       mockFetch.get('/every5s', () => ({ count: ++count5 }));
 
-      const getEvery1s = query(t => ({
+      const getEvery1s = query(() => ({
         path: '/every1s',
         response: { count: t.number },
         cache: { refetchInterval: RefetchInterval.Every1Second },
       }));
 
-      const getEvery5s = query(t => ({
+      const getEvery5s = query(() => ({
         path: '/every5s',
         response: { count: t.number },
         cache: { refetchInterval: RefetchInterval.Every5Seconds },
@@ -145,13 +146,13 @@ describe('RefetchInterval', () => {
       mockFetch.get('/5s', () => ({ n: ++count5 }));
       mockFetch.get('/10s', () => ({ n: ++count10 }));
 
-      const get5s = query(t => ({
+      const get5s = query(() => ({
         path: '/5s',
         response: { n: t.number },
         cache: { refetchInterval: RefetchInterval.Every5Seconds },
       }));
 
-      const get10s = query(t => ({
+      const get10s = query(() => ({
         path: '/10s',
         response: { n: t.number },
         cache: { refetchInterval: RefetchInterval.Every10Seconds },
@@ -191,7 +192,7 @@ describe('RefetchInterval', () => {
         return { count: fetchCount };
       });
 
-      const getSlow = query(t => ({
+      const getSlow = query(() => ({
         path: '/slow',
         response: { count: t.number },
         cache: { refetchInterval: RefetchInterval.Every1Second },
@@ -218,7 +219,7 @@ describe('RefetchInterval', () => {
       let callCount = 0;
       mockFetch.get('/no-interval', () => ({ n: ++callCount }));
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/no-interval',
         response: { n: t.number },
         // No refetchInterval
@@ -241,7 +242,7 @@ describe('RefetchInterval', () => {
       let callCount = 0;
       mockFetch.get('/fast', () => ({ count: ++callCount }));
 
-      const getFast = query(t => ({
+      const getFast = query(() => ({
         path: '/fast',
         response: { count: t.number },
         cache: { refetchInterval: RefetchInterval.Every1Second },

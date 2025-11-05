@@ -33,7 +33,7 @@ describe('GC Time', () => {
 
   describe('Basic GC', () => {
     it('should evict queries from disk after gcTime expires', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item/[id]',
         response: { id: t.number, name: t.string },
         cache: { gcTime: 100, staleTime: 50 }, // 1 second
@@ -72,7 +72,7 @@ describe('GC Time', () => {
     });
 
     it('should NOT evict queries with active subscribers', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/active',
         response: { data: t.string },
         cache: { gcTime: 50 },
@@ -104,7 +104,7 @@ describe('GC Time', () => {
         name: t.string,
       }));
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: { user: User },
         cache: {
@@ -147,7 +147,7 @@ describe('GC Time', () => {
 
   describe('GC Queue Management', () => {
     it('should add queries to GC queue when deactivated', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { value: t.string },
         cache: { gcTime: 2000 },
@@ -171,7 +171,7 @@ describe('GC Time', () => {
     });
 
     it('should remove queries from GC queue when reactivated', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/reactivate',
         response: { n: t.number },
         cache: { gcTime: 1000 },
@@ -221,7 +221,7 @@ describe('GC Time', () => {
         post: Post,
       }));
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/user',
         response: { user: User },
         cache: { gcTime: 1000 },
@@ -260,7 +260,7 @@ describe('GC Time', () => {
 
   describe('Edge Cases', () => {
     it('should handle queries without gcTime', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/no-gc',
         response: { data: t.string },
         // No gcTime configured
@@ -281,7 +281,7 @@ describe('GC Time', () => {
     });
 
     it('should handle very short gcTime', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/short-gc',
         response: { value: t.number },
         cache: { gcTime: 100 }, // Very short
@@ -301,7 +301,7 @@ describe('GC Time', () => {
     });
 
     it('should handle very long gcTime', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/long-gc',
         response: { data: t.string },
         cache: { gcTime: 1000 * 60 * 60 }, // 1 hour

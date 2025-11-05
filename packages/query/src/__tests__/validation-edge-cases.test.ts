@@ -30,7 +30,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/item', { name: 'Test String' });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { name: t.string },
         }));
@@ -47,7 +47,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/item', { count: 42, price: 19.99 });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { count: t.number, price: t.number },
         }));
@@ -65,7 +65,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/item', { active: true, deleted: false });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { active: t.boolean, deleted: t.boolean },
         }));
@@ -82,7 +82,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/item', { value: null });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { value: t.union(t.string, t.null) },
         }));
@@ -98,7 +98,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/item', { optional: undefined });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { optional: t.union(t.string, t.undefined) },
         }));
@@ -123,7 +123,7 @@ describe('Type Validation and Edge Cases', () => {
       });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: {
             data: t.object({
@@ -153,7 +153,7 @@ describe('Type Validation and Edge Cases', () => {
       });
 
       await testWithClient(client, async () => {
-        const getArrays = query(t => ({
+        const getArrays = query(() => ({
           path: '/arrays',
           response: {
             numbers: t.array(t.number),
@@ -180,7 +180,7 @@ describe('Type Validation and Edge Cases', () => {
       });
 
       await testWithClient(client, async () => {
-        const getItems = query(t => ({
+        const getItems = query(() => ({
           path: '/items',
           response: {
             items: t.array(t.object({ id: t.number, name: t.string })),
@@ -206,7 +206,7 @@ describe('Type Validation and Edge Cases', () => {
       });
 
       await testWithClient(client, async () => {
-        const getMetadata = query(t => ({
+        const getMetadata = query(() => ({
           path: '/metadata',
           response: {
             metadata: t.record(t.string),
@@ -232,7 +232,7 @@ describe('Type Validation and Edge Cases', () => {
       await testWithClient(client, async () => {
         const UnionType = t.union(t.string, t.number, t.boolean);
 
-        const getValues = query(t => ({
+        const getValues = query(() => ({
           path: '/values',
           response: {
             value1: UnionType,
@@ -256,7 +256,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/item', { type: 'user', status: 'active' });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: {
             type: t.const('user'),
@@ -276,7 +276,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/config', { isEnabled: true });
 
       await testWithClient(client, async () => {
-        const getConfig = query(t => ({
+        const getConfig = query(() => ({
           path: '/config',
           response: {
             isEnabled: t.const(true),
@@ -294,7 +294,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/version', { version: 1 });
 
       await testWithClient(client, async () => {
-        const getVersion = query(t => ({
+        const getVersion = query(() => ({
           path: '/version',
           response: {
             version: t.const(1),
@@ -314,7 +314,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/items', { items: [] });
 
       await testWithClient(client, async () => {
-        const getItems = query(t => ({
+        const getItems = query(() => ({
           path: '/items',
           response: { items: t.array(t.number) },
         }));
@@ -331,7 +331,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/metadata', { metadata: {} });
 
       await testWithClient(client, async () => {
-        const getMetadata = query(t => ({
+        const getMetadata = query(() => ({
           path: '/metadata',
           response: { metadata: t.record(t.string) },
         }));
@@ -348,7 +348,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/item', { value: '' });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { value: t.string },
         }));
@@ -364,7 +364,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/numbers', { zero: 0, negative: -42, float: -3.14 });
 
       await testWithClient(client, async () => {
-        const getNumbers = query(t => ({
+        const getNumbers = query(() => ({
           path: '/numbers',
           response: { zero: t.number, negative: t.number, float: t.number },
         }));
@@ -383,7 +383,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/numbers', { numbers: largeArray });
 
       await testWithClient(client, async () => {
-        const getNumbers = query(t => ({
+        const getNumbers = query(() => ({
           path: '/numbers',
           response: { numbers: t.array(t.number) },
         }));
@@ -413,7 +413,7 @@ describe('Type Validation and Edge Cases', () => {
       });
 
       await testWithClient(client, async () => {
-        const getDeep = query(t => ({
+        const getDeep = query(() => ({
           path: '/deep',
           response: {
             level1: t.object({
@@ -443,7 +443,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/item', { required: 'test', optional: undefined });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: {
             required: t.string,
@@ -463,7 +463,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/item', { required: 'test', nullable: null });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: {
             required: t.string,
@@ -487,7 +487,7 @@ describe('Type Validation and Edge Cases', () => {
       });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: {
             nullValue: t.union(t.string, t.null, t.undefined),
@@ -547,7 +547,7 @@ describe('Type Validation and Edge Cases', () => {
       });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { data: t.string },
         }));
@@ -565,7 +565,7 @@ describe('Type Validation and Edge Cases', () => {
       });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { data: t.string },
         }));
@@ -577,7 +577,7 @@ describe('Type Validation and Edge Cases', () => {
     });
 
     it('should require QueryClient context', () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { data: t.string },
       }));
@@ -592,7 +592,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/static/path', { data: 'test' });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/static/path',
           response: { data: t.string },
         }));
@@ -608,7 +608,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/org/[orgId]/team/[teamId]/user/[userId]', { data: 'test' });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/org/[orgId]/team/[teamId]/user/[userId]',
           response: { data: t.string },
         }));
@@ -629,7 +629,7 @@ describe('Type Validation and Edge Cases', () => {
       }
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/items/[id]',
           response: { url: t.string },
         }));
@@ -654,7 +654,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/counter', { count: 1 });
 
       await testWithClient(client, async () => {
-        const getCounter = query(t => ({
+        const getCounter = query(() => ({
           path: '/counter',
           response: { count: t.number },
         }));
@@ -685,7 +685,7 @@ describe('Type Validation and Edge Cases', () => {
       });
 
       await testWithClient(client, async () => {
-        const getNumbers = query(t => ({
+        const getNumbers = query(() => ({
           path: '/numbers',
           response: {
             zero: t.number,
@@ -709,7 +709,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/counter', { count: 1 });
 
       await testWithClient(client, async () => {
-        const getCounter = query(t => ({
+        const getCounter = query(() => ({
           path: '/counter',
           response: { count: t.number },
         }));
@@ -736,7 +736,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/item', { data: 'test' });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => {
+        const getItem = query(() => {
           definitionBuildCount++;
           return {
             path: '/item',
@@ -763,13 +763,13 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.post('/items', { success: true });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/items',
           method: 'GET',
           response: { success: t.boolean },
         }));
 
-        const postItem = query(t => ({
+        const postItem = query(() => ({
           path: '/items',
           method: 'POST',
           response: { success: t.boolean },
@@ -792,7 +792,7 @@ describe('Type Validation and Edge Cases', () => {
       mockFetch.get('/counter', { count: 1 }, { delay: 25 });
 
       await testWithClient(client, async () => {
-        const getCounter = query(t => ({
+        const getCounter = query(() => ({
           path: '/counter',
           response: { count: t.number },
         }));

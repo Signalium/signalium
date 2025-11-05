@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unused-expressions */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { SyncQueryStore, MemoryPersistentStore, updatedAtKeyFor } from '../QueryStore.js';
+import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
 import { QueryClient } from '../QueryClient.js';
 import { query } from '../query.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
+import { t } from '../typeDefs.js';
 
 /**
  * StaleTime Tests
@@ -28,7 +29,7 @@ describe('StaleTime', () => {
   describe('Fresh Data', () => {
     it('should not refetch when data is fresh (within staleTime)', async () => {
       // Set up query with 10 second staleTime
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { value: t.string },
         cache: { staleTime: 10000 }, // 10 seconds
@@ -58,7 +59,7 @@ describe('StaleTime', () => {
     });
 
     it('should use fresh data from disk cache without refetch', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { data: t.number },
         cache: { staleTime: 5000 },
@@ -94,7 +95,7 @@ describe('StaleTime', () => {
 
   describe('Stale Data', () => {
     it('should serve stale data immediately while refetching in background', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { count: t.number },
         staleTime: 100, // 100ms
@@ -134,7 +135,7 @@ describe('StaleTime', () => {
     });
 
     it('should refetch stale data from disk cache', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/data',
         response: { version: t.number },
         staleTime: 100,
@@ -172,7 +173,7 @@ describe('StaleTime', () => {
     });
 
     it('should handle no staleTime (always refetch)', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { value: t.string },
         // No staleTime configured
@@ -208,7 +209,7 @@ describe('StaleTime', () => {
 
   describe('Edge Cases', () => {
     it('should handle staleTime of 0 (always stale)', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { n: t.number },
         cache: { staleTime: 0 },
@@ -239,7 +240,7 @@ describe('StaleTime', () => {
       vi.useFakeTimers();
 
       try {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { data: t.string },
           cache: { staleTime: 1000 * 60 * 60 }, // 1 hour
@@ -313,7 +314,7 @@ describe('StaleTime', () => {
     });
 
     it('should handle concurrent access to stale data', async () => {
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { id: t.number },
         cache: { staleTime: 50 },

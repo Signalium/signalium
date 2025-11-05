@@ -8,7 +8,7 @@ import { entity, t } from '../../typeDefs.js';
 import { query } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { createRenderCounter } from './utils.js';
-import { DiscriminatedQueryResult } from '../../types.js';
+import { QueryResult } from '../../types.js';
 
 /**
  * React Tests for Query Package
@@ -33,7 +33,7 @@ describe('React Query Integration', () => {
     it('should show loading state then data in component', async () => {
       mockFetch.get('/item', { id: 1, name: 'Test Item' }, { delay: 50 });
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { id: t.number, name: t.string },
       }));
@@ -66,7 +66,7 @@ describe('React Query Integration', () => {
       const error = new Error('Failed to fetch');
       mockFetch.get('/item', null, { error });
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { id: t.number, name: t.string },
       }));
@@ -99,12 +99,12 @@ describe('React Query Integration', () => {
       mockFetch.get('/user', { id: 1, name: 'Alice' });
       mockFetch.get('/posts', { posts: [{ id: 1, title: 'Hello' }] });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/user',
         response: { id: t.number, name: t.string },
       }));
 
-      const getPosts = query(t => ({
+      const getPosts = query(() => ({
         path: '/posts',
         response: {
           posts: t.array(
@@ -148,7 +148,7 @@ describe('React Query Integration', () => {
     it('should handle query with path parameters', async () => {
       mockFetch.get('/users/[id]', { id: 123, name: 'Bob' });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: { id: t.number, name: t.string },
       }));
@@ -184,14 +184,14 @@ describe('React Query Integration', () => {
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice' });
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice Updated' });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/user/[id]',
         response: User,
       }));
 
       const Counter = createRenderCounter(({ user }: { user: { name: string } }) => <div>{user.name}</div>);
 
-      let userQuery: DiscriminatedQueryResult<{ name: string }>;
+      let userQuery: QueryResult<{ name: string }>;
 
       function Component(): React.ReactNode {
         userQuery = useReactive(getUser, { id: '1' });
@@ -229,7 +229,7 @@ describe('React Query Integration', () => {
 
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice' });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/user/[id]',
         response: User,
       }));
@@ -320,12 +320,12 @@ describe('React Query Integration', () => {
       });
 
       // Two separate query definitions
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/user/[id]',
         response: User,
       }));
 
-      const getPost = query(t => ({
+      const getPost = query(() => ({
         path: '/posts/[postId]',
         response: Post,
       }));
@@ -438,7 +438,7 @@ describe('React Query Integration', () => {
         author: { __typename: 'User', id: '5', name: 'Alice' },
       });
 
-      const getPost = query(t => ({
+      const getPost = query(() => ({
         path: '/post/[id]',
         response: Post,
       }));
@@ -480,7 +480,7 @@ describe('React Query Integration', () => {
 
       mockFetch.get('/user', { __typename: 'User', id: '1', name: 'Alice', isAdmin: true });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/user',
         response: User,
       }));
@@ -518,13 +518,13 @@ describe('React Query Integration', () => {
     it('should work with React.memo components', async () => {
       mockFetch.get('/item', { id: 1, name: 'Test' });
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { id: t.number, name: t.string },
       }));
 
       let childRenderCount = 0;
-      let itemQuery: DiscriminatedQueryResult<{ id: number; name: string }>;
+      let itemQuery: QueryResult<{ id: number; name: string }>;
 
       const Child = memo(({ name }: { name: string }): React.ReactNode => {
         childRenderCount++;
@@ -561,7 +561,7 @@ describe('React Query Integration', () => {
     it('should deduplicate multiple components using same query', async () => {
       mockFetch.get('/counter', { count: 5 });
 
-      const getCounter = query(t => ({
+      const getCounter = query(() => ({
         path: '/counter',
         response: { count: t.number },
       }));
@@ -607,7 +607,7 @@ describe('React Query Integration', () => {
     it('should handle query refetch and update components', async () => {
       mockFetch.get('/counter', { count: 0 });
 
-      const getCounter = query(t => ({
+      const getCounter = query(() => ({
         path: '/counter',
         response: { count: t.number },
       }));
@@ -653,7 +653,7 @@ describe('React Query Integration', () => {
     it('should pass query results as props to children correctly', async () => {
       mockFetch.get('/data', { value: 'Hello World' });
 
-      const getData = query(t => ({
+      const getData = query(() => ({
         path: '/data',
         response: { value: t.string },
       }));
@@ -685,7 +685,7 @@ describe('React Query Integration', () => {
     it('should handle component unmount and remount', async () => {
       mockFetch.get('/item', { id: 1, name: 'Persistent' });
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { id: t.number, name: t.string },
       }));
@@ -738,7 +738,7 @@ describe('React Query Integration', () => {
     it('should update all promise properties correctly', async () => {
       mockFetch.get('/item', { data: 'test' }, { delay: 50 });
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { data: t.string },
       }));
@@ -797,7 +797,7 @@ describe('React Query Integration', () => {
       const error = new Error('Network error');
       mockFetch.get('/item', null, { error, delay: 50 });
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { data: t.string },
       }));
@@ -833,7 +833,7 @@ describe('React Query Integration', () => {
     it('should show loading indicator during fetch', async () => {
       mockFetch.get('/slow', { data: 'result' }, { delay: 100 });
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/slow',
         response: { data: t.string },
       }));
@@ -869,12 +869,12 @@ describe('React Query Integration', () => {
     it('should keep previous value during refetch', async () => {
       mockFetch.get('/item', { data: 'first' });
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { data: t.string },
       }));
 
-      let itemQuery: DiscriminatedQueryResult<{ data: string }>;
+      let itemQuery: QueryResult<{ data: string }>;
 
       function Component(): React.ReactNode {
         itemQuery = useReactive(getItem);

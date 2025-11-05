@@ -35,7 +35,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { data: 'test' }, { delay: 100 });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { data: t.string },
         }));
@@ -52,7 +52,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { data: 'test' });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { data: t.string },
         }));
@@ -72,7 +72,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', null, { error });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { data: t.string },
         }));
@@ -91,7 +91,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/counter', { count: 5 });
 
       await testWithClient(client, async () => {
-        const getCounter = query(t => ({
+        const getCounter = query(() => ({
           path: '/counter',
           response: { count: t.number },
         }));
@@ -119,7 +119,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/value', { value: 10 });
 
       await testWithClient(client, async () => {
-        const getValue = query(t => ({
+        const getValue = query(() => ({
           path: '/value',
           response: { value: t.number },
         }));
@@ -148,7 +148,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/config', { value: 5, shouldDouble: true });
 
       await testWithClient(client, async () => {
-        const getConfig = query(t => ({
+        const getConfig = query(() => ({
           path: '/config',
           response: { value: t.number, shouldDouble: t.boolean },
         }));
@@ -175,7 +175,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { data: 'test' }, { delay: 50 });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { data: t.string },
         }));
@@ -197,7 +197,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { data: 'test' });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { data: t.string },
         }));
@@ -216,7 +216,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { success: true });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { success: t.boolean },
         }));
@@ -233,7 +233,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', null, { error: new Error('Failed') });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { success: t.boolean },
         }));
@@ -257,7 +257,7 @@ describe('Signalium Reactivity', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUsers = query(t => ({
+        const getUsers = query(() => ({
           path: '/users',
           response: {
             users: t.array(t.object({ id: t.number, name: t.string })),
@@ -291,7 +291,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/config', { enabled: true, data: 'test' });
 
       await testWithClient(client, async () => {
-        const getConfig = query(t => ({
+        const getConfig = query(() => ({
           path: '/config',
           response: { enabled: t.boolean, data: t.string },
         }));
@@ -324,7 +324,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/items/3', { url: '/items/3', timestamp: Date.now() });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/items/[id]',
           response: { url: t.string, timestamp: t.number },
         }));
@@ -347,7 +347,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { count: 1 }, { delay: 50 });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { count: t.number },
         }));
@@ -379,7 +379,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', null, { error });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { data: t.string },
         }));
@@ -409,7 +409,7 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', null, { error });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/item',
           response: { data: t.string },
         }));
