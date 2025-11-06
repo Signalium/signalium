@@ -74,6 +74,9 @@ export function insertDirty(node: ReactiveFnSignal<any, any>, edge: Edge) {
       nextEdge = currentEdge.nextDirty;
     }
 
+    if (nextEdge === edge) {
+      throw new Error('Edge already inserted');
+    }
     currentEdge.nextDirty = edge;
   }
 }

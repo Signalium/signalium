@@ -155,15 +155,19 @@ describe('createMockFetch', () => {
     expect(data).toEqual({ users: [] });
   });
 
-  it('should only use each route once by default', async () => {
+  it('should reuse the last match when no unused mocks remain', async () => {
     const mockFetch = createMockFetch();
     mockFetch.get('/users/123', { id: 123, name: 'Alice' });
 
     // First call should succeed
-    await mockFetch('/users/123', { method: 'GET' });
+    const response1 = await mockFetch('/users/123', { method: 'GET' });
+    const data1 = await response1.json();
+    expect(data1).toEqual({ id: 123, name: 'Alice' });
 
-    // Second call should fail because route was already used
-    await expect(mockFetch('/users/123', { method: 'GET' })).rejects.toThrow('No mock response configured');
+    // Second call should reuse the same mock since there are no unused ones
+    const response2 = await mockFetch('/users/123', { method: 'GET' });
+    const data2 = await response2.json();
+    expect(data2).toEqual({ id: 123, name: 'Alice' });
   });
 
   it('should allow multiple setups for repeated calls', async () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore, refIdsKeyFor, refCountKeyFor } from '../QueryStore.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
@@ -24,6 +24,10 @@ describe('Entity System', () => {
     store = new SyncQueryStore(kv);
     mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any });
+  });
+
+  afterEach(() => {
+    client?.destroy();
   });
 
   describe('Entity Proxies', () => {

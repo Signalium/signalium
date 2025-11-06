@@ -81,6 +81,10 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
 
           // Early return to prevent the signal from being computed and to preserve the dirty state
           return signal.updatedCount;
+        } else if (edge.updatedAt !== edge.dep._updatedCount) {
+          signal.dirtyHead = edge.nextDirty;
+          signal._state = ReactiveFnState.Dirty;
+          break;
         }
 
         edge = edge.nextDirty;

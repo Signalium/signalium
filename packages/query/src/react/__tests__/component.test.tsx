@@ -24,6 +24,7 @@ describe('React Query Integration with component()', () => {
   let mockFetch: ReturnType<typeof createMockFetch>;
 
   beforeEach(() => {
+    client?.destroy();
     const store = new SyncQueryStore(new MemoryPersistentStore());
     mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any });
@@ -724,6 +725,7 @@ describe('React Query Integration with component()', () => {
         return (
           <div>
             <div data-testid="count">{result.isReady ? result.value!.count : 'Loading'}</div>
+            <div data-testid="refetching">{result.isRefetching ? 'Refetching' : 'Idle'}</div>
             <button
               onClick={async () => {
                 mockFetch.get('/counter', { count: (result.value?.count ?? 0) + 1 });
@@ -754,6 +756,7 @@ describe('React Query Integration with component()', () => {
       await sleep(10);
 
       expect(getByTestId('count').element().textContent).toBe('1');
+      expect(getByTestId('refetching').element().textContent).toBe('Idle');
     });
 
     it('should work with nested components', async () => {
@@ -962,16 +965,20 @@ describe('React Query Integration with component()', () => {
       // Trigger refetch with delay
       await getByText('Refetch').click();
 
-      // During refetch, should show loading AND still have previous value
+      // During refetch, should show fetching AND still have previous value
       await sleep(10);
-      // Note: The value should still be accessible even during pending state
+      // Note: The value should still be accessible even during refetch state
       expect(itemQuery!.value?.data).toBe('first');
-      expect(itemQuery!.isPending).toBe(true);
+      expect(itemQuery!.isPending).toBe(false); // Not pending - we have data!
+      expect(itemQuery!.isRefetching).toBe(true); // But we are refetching
+      expect(itemQuery!.isFetching).toBe(true); // isFetching = isPending || isRefetching
 
       await sleep(100);
 
       // After refetch completes
       expect(getByTestId('data').element().textContent).toBe('second');
+      expect(itemQuery!.isRefetching).toBe(false);
+      expect(itemQuery!.isFetching).toBe(false);
     });
   });
 });
