@@ -1,5 +1,13 @@
 # @signalium/query
 
+## 0.0.2
+
+### Patch Changes
+
+- 6eddfdc: Adds `staleTime`, `gcTime`, and `refetchInterval` options to queries.
+- Updated dependencies [6eddfdc]
+  - signalium@2.0.9
+
 ## 0.0.1
 
 ### Patch Changes
