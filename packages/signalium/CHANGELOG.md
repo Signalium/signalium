@@ -1,5 +1,12 @@
 # signalium
 
+## 2.0.9
+
+### Patch Changes
+
+- 6eddfdc: Fixed an issue where reactive promises were overly eager and scheduling even
+  when they were not watched.
+
 ## 2.0.8
 
 ### Patch Changes
