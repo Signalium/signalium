@@ -1,5 +1,11 @@
 # @signalium/query
 
+## 0.1.0
+
+### Minor Changes
+
+- 919ecd9: Remove unused decoders dependency and prepare for initial pre-release
+
 ## 0.0.2
 
 ### Patch Changes
