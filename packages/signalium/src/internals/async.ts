@@ -76,6 +76,8 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
   private _stateSubs = new Map<WeakRef<ReactiveFnSignal<unknown, unknown[]>>, number>();
   _awaitSubs = new Map<WeakRef<ReactiveFnSignal<unknown, unknown[]>>, PromiseEdge>();
 
+  _updatedCount = 0;
+
   // Version is not really needed in a pure signal world, but when integrating
   // with non-signal code, it's sometimes needed to entangle changes to the promise.
   // For example, in React we need to entangle each promise immediately after it
@@ -315,6 +317,10 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
       return;
     }
 
+    if ((allChanged & (AsyncFlags.Value | AsyncFlags.Error)) !== 0) {
+      this._updatedCount++;
+    }
+
     const subs = this._stateSubs;
 
     for (const [signalRef, subbedFlags] of subs) {
@@ -406,17 +412,26 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
       this._error = undefined;
     }
 
-    this._scheduleSubs(awaitSubs, notifyFlags !== 0);
+    if ((flags & AsyncFlags.Pending) !== 0) {
+      this._scheduleSubs(awaitSubs, notifyFlags !== 0);
+    } else if (notifyFlags !== 0) {
+      dirtySignalConsumers(awaitSubs);
+    }
+
+    this._awaitSubs = awaitSubs = new Map();
 
     this._setFlags(AsyncFlags.Resolved | AsyncFlags.Ready, AsyncFlags.Pending | AsyncFlags.Rejected, notifyFlags);
 
     const pending = this._pending;
     this._pending = [];
 
+    const updatedAt = this._updatedCount;
+
     for (const { ref, edge, resolve } of pending) {
       resolve?.(value!);
 
       if (ref !== undefined) {
+        edge!.updatedAt = updatedAt;
         awaitSubs.set(ref, edge!);
       }
     }
@@ -432,32 +447,54 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
       notifyFlags = AsyncFlags.Error;
     }
 
-    this._scheduleSubs(awaitSubs, notifyFlags !== 0);
+    if ((this._flags & AsyncFlags.Pending) !== 0) {
+      this._scheduleSubs(awaitSubs, notifyFlags !== 0);
+    } else if (notifyFlags !== 0) {
+      dirtySignalConsumers(awaitSubs);
+    }
+
+    this._awaitSubs = awaitSubs = new Map();
 
     this._setFlags(AsyncFlags.Rejected, AsyncFlags.Pending | AsyncFlags.Resolved, notifyFlags);
 
-    for (const { ref, edge, reject } of this._pending) {
+    const pending = this._pending;
+    this._pending = [];
+
+    const updatedAt = this._updatedCount;
+
+    for (const { ref, edge, reject } of pending) {
       reject?.(error);
 
       if (ref !== undefined) {
+        edge!.updatedAt = updatedAt;
         awaitSubs.set(ref, edge!);
       }
     }
-
-    this._pending = [];
   }
 
   private _scheduleSubs(awaitSubs: Map<WeakRef<ReactiveFnSignal<unknown, unknown[]>>, PromiseEdge>, dirty: boolean) {
-    // Await subscribers that have been added since the promise was set are specifically
-    // subscribers that were previously notified and MaybeDirty, were removed from the
-    // signal, and then were checked (e.g. checkSignal was called on them) and they
-    // halted and added themselves back as dependencies.
-    //
-    // If the value actually changed, then these consumers are Dirty and will notify and
-    // schedule themselves the standard way here. If the value did not change, then the
-    // consumers are not notified and end up back in the same state as before the promise
-    // was set (because nothing changed), and instead they will be scheduled to continue
-    // the computation from where they left off.
+    /**
+     * Await subscribers represent `await` statements, which is why they have a bit
+     * of a different notification path in general. But this area in particular is
+     * very nuanced.
+     *
+     * Basically, there are two places where an Await subscriber can be added:
+     *
+     * 1. `.then()` on the ReactivePromise, e.g. a real `await` statement
+     * 2. `checkSignal` on a signal that is a dependency of the ReactivePromise
+     *
+     * In the first case, we're actually executing the parent function, so when it
+     * halts on that `await` statement, it'll automatically start running again
+     * when we resolve the promise. This is why we push that subscriber into `pending`,
+     * because we don't need to notify that promise until the _next change_.
+     *
+     * In the second case, we're not actually executing the parent function, we're just
+     * checking the signal's dependencies. So to continue "executing" the parent
+     * function, we need to schedule it to continue where we left off.
+     *
+     * So the `_awaitSubs` map we're capturing here is _just_ the subscribers
+     * added in the second case, which is why we schedule them eagerly.
+     */
     const newState = dirty ? ReactiveFnState.Dirty : ReactiveFnState.PendingDirty;
 
     for (const ref of awaitSubs.keys()) {
@@ -540,7 +577,7 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
           prevEdge,
           EdgeType.Promise,
           this as ReactivePromiseImpl<any>,
-          -1,
+          this._updatedCount,
           currentConsumer.computedCount,
         );
       }

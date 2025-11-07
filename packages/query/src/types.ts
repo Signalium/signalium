@@ -1,6 +1,15 @@
 import { PendingReactivePromise, ReadyReactivePromise } from 'signalium';
 import { ReactivePromise } from 'signalium';
 
+export enum RefetchInterval {
+  Every1Second = 1000,
+  Every5Seconds = 5000,
+  Every10Seconds = 10000,
+  Every30Seconds = 30000,
+  Every1Minute = 60000,
+  Every5Minutes = 300000,
+}
+
 export const enum Mask {
   // Fundamental types
   UNDEFINED = 1 << 0,
@@ -110,6 +119,8 @@ export interface APITypes {
 
 type QueryResultExtensions<T> = {
   refetch: () => Promise<T>;
+  readonly isRefetching: boolean;
+  readonly isFetching: boolean;
 };
 
 export type QueryResult<T> = ReactivePromise<T> & QueryResultExtensions<T>;

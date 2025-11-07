@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore, valueKeyFor, refIdsKeyFor, refCountKeyFor } from '../QueryStore.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
@@ -21,6 +21,10 @@ describe('Parse Entities', () => {
     const queryStore = new SyncQueryStore(kv);
     client = new QueryClient(queryStore, { fetch: fetch });
     store = queryStore;
+  });
+
+  afterEach(() => {
+    client?.destroy();
   });
 
   describe('nested entities', () => {

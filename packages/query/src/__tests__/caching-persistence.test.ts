@@ -139,6 +139,7 @@ describe('Caching and Persistence', () => {
   let store: any;
 
   beforeEach(() => {
+    client?.destroy();
     kv = new MemoryPersistentStore();
     const queryStore = new SyncQueryStore(kv);
     mockFetch = createMockFetch();
@@ -199,8 +200,18 @@ describe('Caching and Persistence', () => {
 
         const result = await relay;
 
-        expect(result).toEqual({ id: 1, name: 'Fresh Data' });
+        // Immediate value should be the same as the cached value because we're
+        // background refetching but have a value that is still valid.
+        expect(result).toEqual({ id: 1, name: 'Cached Data' });
+        expect(relay.value).toEqual({ id: 1, name: 'Cached Data' });
+        expect(relay.isPending).toBe(false);
+        expect(relay.isRefetching).toBe(true);
+
+        await sleep(20);
+
+        expect(relay.isRefetching).toBe(false);
         expect(relay.value).toEqual({ id: 1, name: 'Fresh Data' });
+        expect(await relay).toEqual({ id: 1, name: 'Fresh Data' });
       });
     });
 
@@ -234,8 +245,17 @@ describe('Caching and Persistence', () => {
 
         const result = await relay;
 
-        expect(result).toEqual({ id: 1, value: 'New Data' });
+        // Immediate value should be the same as the cached value because we're
+        // background refetching but have a value that is still valid.
+        expect(result).toEqual({ id: 1, value: 'Persistent' });
+        expect(relay.value).toEqual({ id: 1, value: 'Persistent' });
+        expect(relay.isPending).toBe(false);
+        expect(relay.isRefetching).toBe(true);
+
+        await sleep(30);
+
         expect(relay.value).toEqual({ id: 1, value: 'New Data' });
+        expect(await relay).toEqual({ id: 1, value: 'New Data' });
       });
     });
   });
@@ -320,6 +340,15 @@ describe('Caching and Persistence', () => {
         expect(relay.value).toEqual({ user: { __typename: 'User', id: 1, name: 'Persisted User' } });
 
         const result = await relay;
+
+        // Immediate value should be the same as the cached value because we're
+        // background refetching but have a value that is still valid.
+        expect(result).toEqual({ user: { __typename: 'User', id: 1, name: 'Persisted User' } });
+        expect(relay.value).toEqual({ user: { __typename: 'User', id: 1, name: 'Persisted User' } });
+        expect(relay.isPending).toBe(false);
+        expect(relay.isRefetching).toBe(true);
+
+        await sleep(20);
 
         expect(result).toEqual({ user: { __typename: 'User', id: 1, name: 'Fresh User' } });
         expect(relay.value).toEqual({ user: { __typename: 'User', id: 1, name: 'Fresh User' } });

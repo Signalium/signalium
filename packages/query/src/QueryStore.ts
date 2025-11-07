@@ -13,6 +13,11 @@ import { QueryDefinition } from './QueryClient.js';
 // QueryStore Interface
 // -----------------------------------------------------------------------------
 
+export interface CachedQuery {
+  value: unknown;
+  updatedAt: number;
+}
+
 export interface QueryStore {
   /**
    * Asynchronously retrieves a document by key.
@@ -22,7 +27,7 @@ export interface QueryStore {
     queryDef: QueryDefinition<any, any>,
     queryKey: number,
     entityMap: EntityStore,
-  ): MaybePromise<unknown | undefined>;
+  ): MaybePromise<CachedQuery | undefined>;
 
   /**
    * Synchronously stores a document with optional reference IDs.
@@ -61,7 +66,7 @@ export interface SyncPersistentStore {
 }
 
 const DEFAULT_MAX_COUNT = 50;
-const DEFAULT_MAX_AGE = 1000 * 60 * 60 * 24; // 24 hours
+const DEFAULT_GC_TIME = 1000 * 60 * 60 * 24; // 24 hours
 
 export class MemoryPersistentStore implements SyncPersistentStore {
   private readonly kv: Record<string, unknown> = Object.create(null);
@@ -113,16 +118,16 @@ export class SyncQueryStore implements QueryStore {
 
   constructor(private readonly kv: SyncPersistentStore) {}
 
-  loadQuery(queryDef: QueryDefinition<any, any>, queryKey: number, entityMap: EntityStore): unknown | undefined {
+  loadQuery(queryDef: QueryDefinition<any, any>, queryKey: number, entityMap: EntityStore): CachedQuery | undefined {
     const updatedAt = this.kv.getNumber(updatedAtKeyFor(queryKey));
 
-    if (updatedAt === undefined || updatedAt < Date.now() - (queryDef.cache?.maxAge ?? DEFAULT_MAX_AGE)) {
+    if (updatedAt === undefined || updatedAt < Date.now() - (queryDef.cache?.gcTime ?? DEFAULT_GC_TIME)) {
       return;
     }
 
-    const value = this.kv.getString(valueKeyFor(queryKey));
+    const valueStr = this.kv.getString(valueKeyFor(queryKey));
 
-    if (value === undefined) {
+    if (valueStr === undefined) {
       return;
     }
 
@@ -134,7 +139,10 @@ export class SyncQueryStore implements QueryStore {
 
     this.activateQuery(queryDef, queryKey);
 
-    return JSON.parse(value) as Record<string, unknown>;
+    return {
+      value: JSON.parse(valueStr) as Record<string, unknown>,
+      updatedAt,
+    };
   }
 
   private preloadEntities(entityIds: Uint32Array, entityMap: EntityStore): void {

@@ -14,7 +14,7 @@ const scheduleIdleCallback =
 
 let PROMISE_WAS_RESOLVED = false;
 
-let PENDING_PULLS: ReactiveFnSignal<any, any>[] = [];
+let PENDING_PULLS: Set<ReactiveFnSignal<any, any>> = new Set();
 let PENDING_ASYNC_PULLS: ReactiveFnSignal<any, any>[] = [];
 let PENDING_UNWATCH = new Map<ReactiveFnSignal<any, any>, number>();
 let PENDING_LISTENERS: (ReactiveFnSignal<any, any> | StateSignal<any>)[] = [];
@@ -41,8 +41,12 @@ export const setResolved = () => {
 };
 
 export const schedulePull = (signal: ReactiveFnSignal<any, any>) => {
-  PENDING_PULLS.push(signal);
+  PENDING_PULLS.add(signal);
   scheduleFlush(flushWatchers);
+};
+
+export const cancelPull = (signal: ReactiveFnSignal<any, any>) => {
+  PENDING_PULLS.delete(signal);
 };
 
 export const scheduleAsyncPull = (signal: ReactiveFnSignal<any, any>) => {
@@ -87,7 +91,7 @@ const flushWatchers = async () => {
 
   // Flush all auto-pulled signals recursively, clearing
   // the microtask queue until they are all settled
-  while (PROMISE_WAS_RESOLVED || PENDING_ASYNC_PULLS.length > 0 || PENDING_PULLS.length > 0) {
+  while (PROMISE_WAS_RESOLVED || PENDING_ASYNC_PULLS.length > 0 || PENDING_PULLS.size > 0) {
     PROMISE_WAS_RESOLVED = false;
     const asyncPulls = PENDING_ASYNC_PULLS;
 
@@ -99,7 +103,7 @@ const flushWatchers = async () => {
 
     const pulls = PENDING_PULLS;
 
-    PENDING_PULLS = [];
+    PENDING_PULLS = new Set();
 
     for (const pull of pulls) {
       checkAndRunListeners(pull);

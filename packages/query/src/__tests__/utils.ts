@@ -51,13 +51,8 @@ export function createMockFetch(): MockFetch {
   const calls: Array<{ url: string; options: RequestInit }> = [];
 
   const matchRoute = (url: string, method: string): MockRoute | undefined => {
-    // First try exact match
-    const exactMatch = routes.find(r => r.url === url && r.method === method && !r.used);
-    if (exactMatch) return exactMatch;
-
-    // Then try pattern matching (for URLs with query params or path segments)
-    return routes.find(r => {
-      if (r.method !== method || r.used) return false;
+    const isMatch = (r: MockRoute): boolean => {
+      if (r.method !== method) return false;
 
       // Simple pattern: check if the route URL is a prefix or matches the base path
       const routeBase = r.url.split('?')[0];
@@ -80,7 +75,20 @@ export function createMockFetch(): MockFetch {
       }
 
       return false;
-    });
+    };
+
+    // First try to find an unused match
+    const unusedMatch = routes.find(r => !r.used && isMatch(r));
+    if (unusedMatch) return unusedMatch;
+
+    // If no unused matches, reuse the last matching route
+    for (let i = routes.length - 1; i >= 0; i--) {
+      if (isMatch(routes[i])) {
+        return routes[i];
+      }
+    }
+
+    return undefined;
   };
 
   const mockFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
@@ -110,6 +118,14 @@ export function createMockFetch(): MockFetch {
     const status = route.options.status ?? 200;
     const headers = route.options.headers ?? {};
 
+    // Resolve response if it's a function
+    const resolveResponse = async () => {
+      if (typeof route.response === 'function') {
+        return await route.response();
+      }
+      return route.response;
+    };
+
     // Create a mock Response object
     const response = {
       ok: status >= 200 && status < 300,
@@ -120,11 +136,11 @@ export function createMockFetch(): MockFetch {
         if (route.options.jsonError) {
           throw route.options.jsonError;
         }
-        return route.response;
+        return await resolveResponse();
       },
-      text: async () => JSON.stringify(route.response),
-      blob: async () => new Blob([JSON.stringify(route.response)]),
-      arrayBuffer: async () => new TextEncoder().encode(JSON.stringify(route.response)).buffer,
+      text: async () => JSON.stringify(await resolveResponse()),
+      blob: async () => new Blob([JSON.stringify(await resolveResponse())]),
+      arrayBuffer: async () => new TextEncoder().encode(JSON.stringify(await resolveResponse())).buffer,
       clone: () => response,
     } as Response;
 

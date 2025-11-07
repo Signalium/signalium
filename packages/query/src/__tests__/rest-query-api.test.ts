@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
@@ -20,6 +20,10 @@ describe('REST Query API', () => {
     const store = new SyncQueryStore(new MemoryPersistentStore());
     mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any });
+  });
+
+  afterEach(() => {
+    client?.destroy();
   });
 
   describe('Basic Query Execution', () => {

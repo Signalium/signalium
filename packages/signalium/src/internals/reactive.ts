@@ -5,7 +5,7 @@ import { getUnknownSignalFnName } from './utils/debug-name.js';
 import { SignalScope } from './contexts.js';
 import { getSignal } from './get.js';
 import { Edge } from './edge.js';
-import { schedulePull, scheduleUnwatch } from './scheduling.js';
+import { cancelPull, schedulePull, scheduleUnwatch } from './scheduling.js';
 import { hashValue } from './utils/hash.js';
 import { stringifyValue } from './utils/stringify.js';
 import { Callback } from './callback.js';
@@ -178,6 +178,7 @@ export class ReactiveFnSignal<T, Args extends unknown[]> {
         current.delete(listener);
 
         if (current.size === 0) {
+          cancelPull(this);
           scheduleUnwatch(this);
           this.flags &= ~ReactiveFnFlags.isListener;
         }

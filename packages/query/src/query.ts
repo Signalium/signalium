@@ -67,6 +67,7 @@ interface RESTQueryDefinition {
   response: Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef;
 
   cache?: QueryCacheOptions;
+  refetchInterval?: number;
 }
 
 type ExtractTypesFromObjectOrTypeDef<S extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef | undefined> =
@@ -123,7 +124,7 @@ export function query<const QDef extends RESTQueryDefinition>(
       }
 
       if (queryDefinition === undefined) {
-        const { path, method = 'GET', response, cache } = queryDefinitionBuilder(t);
+        const { path, method = 'GET', response, cache, refetchInterval } = queryDefinitionBuilder(t);
 
         const id = `${method}:${path}`;
 

@@ -19,6 +19,7 @@ describe('Type Validation and Edge Cases', () => {
   let mockFetch: ReturnType<typeof createMockFetch>;
 
   beforeEach(() => {
+    client?.destroy();
     const store = new SyncQueryStore(new MemoryPersistentStore());
     mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any });

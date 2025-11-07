@@ -23,6 +23,7 @@ describe('React Query Integration', () => {
   let mockFetch: ReturnType<typeof createMockFetch>;
 
   beforeEach(() => {
+    client?.destroy();
     const store = new SyncQueryStore(new MemoryPersistentStore());
     mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any });
@@ -216,7 +217,7 @@ describe('React Query Integration', () => {
 
       await expect.element(getByText('Alice Updated')).toBeInTheDocument();
       expect(getByTestId(String(Counter.testId))).toBeDefined();
-      expect(Counter.renderCount).toBe(3);
+      expect(Counter.renderCount).toBe(2);
     });
 
     it('should keep multiple components in sync when sharing entity data', async () => {
@@ -906,16 +907,20 @@ describe('React Query Integration', () => {
       // Trigger refetch with delay
       await getByText('Refetch').click();
 
-      // During refetch, should show loading AND still have previous value
+      // During refetch, should show fetching AND still have previous value
       await sleep(10);
-      // Note: The value should still be accessible even during pending state
+      // Note: The value should still be accessible even during refetch state
       expect(itemQuery!.value?.data).toBe('first');
-      expect(itemQuery!.isPending).toBe(true);
+      expect(itemQuery!.isPending).toBe(false); // Not pending - we have data!
+      expect(itemQuery!.isRefetching).toBe(true); // But we are refetching
+      expect(itemQuery!.isFetching).toBe(true); // isFetching = isPending || isRefetching
 
       await sleep(100);
 
       // After refetch completes
       expect(getByTestId('data').element().textContent).toBe('second');
+      expect(itemQuery!.isRefetching).toBe(false);
+      expect(itemQuery!.isFetching).toBe(false);
     });
   });
 });
