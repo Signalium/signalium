@@ -48,9 +48,6 @@
   },
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "decoders": "^2.7.1"
-  },
   "devDependencies": {
     "@babel/core": "^7.23.6",
     "@babel/preset-react": "^7.23.3",
