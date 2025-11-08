@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore, refIdsKeyFor, refCountKeyFor } from '../QueryStore.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
-import { query, ExtractType } from '../query.js';
+import { query } from '../query.js';
+import type { ExtractType } from '../types.js';
 import { parseObjectEntities, parseArrayEntities, parseEntities } from '../parseEntities.js';
 import { createMockFetch, getClientEntityMap, getEntityMapSize, testWithClient } from './utils.js';
 import { hashValue } from 'signalium/utils';
@@ -49,7 +50,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUser = query(t => ({
+        const getUser = query(() => ({
           path: '/users/[id]',
           response: { user: User },
         }));
@@ -83,7 +84,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUser = query(t => ({
+        const getUser = query(() => ({
           path: '/users/[id]',
           response: { user: User },
         }));
@@ -125,7 +126,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUser = query(t => ({
+        const getUser = query(() => ({
           path: '/users/[id]',
           response: { user: User },
         }));
@@ -170,7 +171,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUsers = query(t => ({
+        const getUsers = query(() => ({
           path: '/users',
           response: {
             users: t.array(User),
@@ -211,17 +212,17 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUser = query(t => ({
+        const getUser = query(() => ({
           path: '/users/[id]',
           response: { user: User },
         }));
 
-        const listUsers = query(t => ({
+        const listUsers = query(() => ({
           path: '/users',
           response: { users: t.array(User) },
         }));
 
-        const getAuthor = query(t => ({
+        const getAuthor = query(() => ({
           path: '/author',
           response: { author: User },
         }));
@@ -285,7 +286,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUser = query(t => ({
+        const getUser = query(() => ({
           path: '/users/[id]',
           response: { user: User },
         }));
@@ -336,7 +337,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUser = query(t => ({
+        const getUser = query(() => ({
           path: '/users/[id]',
           response: { user: User },
         }));
@@ -443,7 +444,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUserMap = query(t => ({
+        const getUserMap = query(() => ({
           path: '/users/map',
           response: {
             userMap: t.record(User),
@@ -486,7 +487,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        const getPosts = query(t => ({
+        const getPosts = query(() => ({
           path: '/posts',
           response: {
             posts: t.array(PostUnion),
@@ -528,7 +529,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        const listUsers = query(t => ({
+        const listUsers = query(() => ({
           path: '/users',
           response: { users: t.array(User) },
         }));

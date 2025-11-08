@@ -30,7 +30,7 @@ describe('REST Query API', () => {
     it('should execute a GET query with path parameters', async () => {
       mockFetch.get('/users/[id]', { id: 123, name: 'Test User' });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: {
           id: t.number,
@@ -52,7 +52,7 @@ describe('REST Query API', () => {
     it('should execute a GET query with search parameters', async () => {
       mockFetch.get('/users', { users: [], page: 1, total: 0 });
 
-      const listUsers = query(t => ({
+      const listUsers = query(() => ({
         path: '/users',
         searchParams: {
           page: t.number,
@@ -86,7 +86,7 @@ describe('REST Query API', () => {
     it('should execute a GET query with both path and search params', async () => {
       mockFetch.get('/users/[userId]/posts', { posts: [], userId: 5 });
 
-      const getUserPosts = query(t => ({
+      const getUserPosts = query(() => ({
         path: '/users/[userId]/posts',
         searchParams: {
           status: t.string,
@@ -116,7 +116,7 @@ describe('REST Query API', () => {
     it('should execute POST requests', async () => {
       mockFetch.post('/users', { id: 456, name: 'New User', created: true });
 
-      const createUser = query(t => ({
+      const createUser = query(() => ({
         path: '/users',
         method: 'POST',
         response: {
@@ -140,7 +140,7 @@ describe('REST Query API', () => {
     it('should execute PUT requests', async () => {
       mockFetch.put('/users/[id]', { id: 123, name: 'Updated User', updated: true });
 
-      const updateUser = query(t => ({
+      const updateUser = query(() => ({
         path: '/users/[id]',
         method: 'PUT',
         response: {
@@ -163,7 +163,7 @@ describe('REST Query API', () => {
     it('should execute DELETE requests', async () => {
       mockFetch.delete('/users/[id]', { success: true, id: 123 });
 
-      const deleteUser = query(t => ({
+      const deleteUser = query(() => ({
         path: '/users/[id]',
         method: 'DELETE',
         response: {
@@ -189,7 +189,7 @@ describe('REST Query API', () => {
         patched: true,
       });
 
-      const patchUser = query(t => ({
+      const patchUser = query(() => ({
         path: '/users/[id]',
         method: 'PATCH',
         response: {
@@ -215,7 +215,7 @@ describe('REST Query API', () => {
       const error = new Error('Network connection failed');
       mockFetch.get('/users/[id]', null, { error });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: {
           id: t.number,
@@ -237,7 +237,7 @@ describe('REST Query API', () => {
         jsonError: new Error('Unexpected token in JSON'),
       });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: {
           id: t.number,
@@ -257,7 +257,7 @@ describe('REST Query API', () => {
     });
 
     it('should require QueryClient context', async () => {
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: {
           id: t.number,
@@ -274,7 +274,7 @@ describe('REST Query API', () => {
     it('should deduplicate identical queries', async () => {
       mockFetch.get('/users/[id]', { id: 123, name: 'Test User' });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: {
           id: t.number,
@@ -303,7 +303,7 @@ describe('REST Query API', () => {
       mockFetch.get('/users/1', { id: 1, name: 'User' });
       mockFetch.get('/users/2', { id: 2, name: 'User' });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: {
           id: t.number,
@@ -331,7 +331,7 @@ describe('REST Query API', () => {
     it('should handle primitive response types', async () => {
       mockFetch.get('/message', 'Hello, World!');
 
-      const getMessage = query(t => ({
+      const getMessage = query(() => ({
         path: '/message',
         response: t.string,
       }));
@@ -347,7 +347,7 @@ describe('REST Query API', () => {
     it('should handle array responses', async () => {
       mockFetch.get('/numbers', [1, 2, 3, 4, 5]);
 
-      const getNumbers = query(t => ({
+      const getNumbers = query(() => ({
         path: '/numbers',
         response: t.array(t.number),
       }));
@@ -371,7 +371,7 @@ describe('REST Query API', () => {
         },
       });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/user',
         response: {
           user: t.object({
@@ -412,7 +412,7 @@ describe('REST Query API', () => {
         },
       });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: {
           user: User,
@@ -446,7 +446,7 @@ describe('REST Query API', () => {
         ],
       });
 
-      const listUsers = query(t => ({
+      const listUsers = query(() => ({
         path: '/users',
         response: {
           users: t.array(User),
@@ -482,14 +482,14 @@ describe('REST Query API', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUser = query(t => ({
+        const getUser = query(() => ({
           path: '/users/[id]',
           response: {
             user: User,
           },
         }));
 
-        const listUsers = query(t => ({
+        const listUsers = query(() => ({
           path: '/users',
           response: {
             users: t.array(User),
@@ -515,7 +515,7 @@ describe('REST Query API', () => {
       mockFetch.get('/users', { users: [] });
 
       await testWithClient(client, async () => {
-        const listUsers = query(t => ({
+        const listUsers = query(() => ({
           path: '/users',
           searchParams: {
             page: t.union(t.number, t.undefined),
@@ -547,7 +547,7 @@ describe('REST Query API', () => {
     it('should infer correct types for path parameters', async () => {
       mockFetch.get('/items/[itemId]/details/[detailId]', { id: 1, name: 'Test' });
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/items/[itemId]/details/[detailId]',
         response: {
           id: t.number,

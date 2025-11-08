@@ -1,54 +1,17 @@
 import { getContext, reactive } from 'signalium';
 import {
   APITypes,
-  ArrayDef,
-  DiscriminatedQueryResult,
-  EntityDef,
+  QueryResult,
   Mask,
-  ObjectDef,
-  RecordDef,
   ObjectFieldTypeDef,
   UnionDef,
+  QueryFn,
+  InfiniteQueryFn,
+  ExtractTypesFromObjectOrUndefined,
 } from './types.js';
-import { QueryCacheOptions, QueryClientContext, QueryContext, QueryDefinition } from './QueryClient.js';
-import { entity, t, ValidatorDef } from './typeDefs.js';
+import { QueryCacheOptions, QueryClientContext, QueryContext, QueryDefinition, QueryParams } from './QueryClient.js';
+import { t, ValidatorDef } from './typeDefs.js';
 import { createPathInterpolator } from './pathInterpolator.js';
-
-type ExtractPrimitiveTypeFromMask<T extends number> = T extends Mask.UNDEFINED
-  ? undefined
-  : T extends Mask.NULL
-    ? null
-    : T extends Mask.NUMBER
-      ? number
-      : T extends Mask.STRING
-        ? string
-        : T extends Mask.BOOLEAN
-          ? boolean
-          : T extends Mask.ID
-            ? string
-            : never;
-
-export type ExtractType<T extends ObjectFieldTypeDef | string> = T extends number
-  ? ExtractPrimitiveTypeFromMask<T>
-  : T extends string
-    ? T
-    : T extends Set<infer TSet>
-      ? TSet
-      : T extends ObjectDef<infer S>
-        ? Prettify<ExtractTypesFromShape<S>>
-        : T extends EntityDef<infer S>
-          ? Prettify<ExtractTypesFromShape<S>>
-          : T extends ArrayDef<infer S>
-            ? ExtractType<S>[]
-            : T extends RecordDef<infer S>
-              ? Record<string, ExtractType<S>>
-              : T extends UnionDef<infer VS>
-                ? ExtractType<VS[number]>
-                : never;
-
-type ExtractTypesFromShape<S extends Record<string, ObjectFieldTypeDef | string>> = {
-  [K in keyof S]: ExtractType<S[K]>;
-};
 
 type IsParameter<Part> = Part extends `[${infer ParamName}]` ? ParamName : never;
 type FilteredParts<Path> = Path extends `${infer PartA}/${infer PartB}`
@@ -60,63 +23,53 @@ type PathParams<Path> = {
   [Key in FilteredParts<Path> as RemovePrefixDots<Key>]: ParamValue<Key>;
 };
 
-interface RESTQueryDefinition {
-  path: string;
+type SearchParamsType = Mask.NUMBER | Mask.STRING | Set<string | boolean | number>;
+type SearchParamsDefinition = Record<string, SearchParamsType | UnionDef<SearchParamsType[]>>;
+
+interface RESTQueryDefinition<
+  Path extends string,
+  SearchParams extends Record<string, ObjectFieldTypeDef>,
+  ResponseDef extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+> {
+  path: Path;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-  searchParams?: Record<string, ObjectFieldTypeDef>;
-  response: Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef;
+  searchParams?: SearchParams;
+  response: ResponseDef;
 
   cache?: QueryCacheOptions;
-  refetchInterval?: number;
 }
 
-type ExtractTypesFromObjectOrTypeDef<S extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef | undefined> =
-  S extends Record<string, ObjectFieldTypeDef>
-    ? {
-        [K in keyof S]: ExtractType<S[K]>;
-      }
-    : S extends ObjectFieldTypeDef
-      ? ExtractType<S>
-      : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-        {};
+interface InfiniteRESTQueryDefinition<
+  Path extends string,
+  SearchParams extends Record<string, ObjectFieldTypeDef>,
+  ResponseDef extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+> extends RESTQueryDefinition<Path, SearchParams, ResponseDef> {
+  pagination: {
+    getNextPageParams?(
+      lastPage: ExtractTypesFromObjectOrUndefined<ResponseDef>,
+      params?: ExtractTypesFromObjectOrUndefined<SearchParams> | undefined,
+    ): QueryParams | undefined;
+  };
+}
 
-type QueryParams<QDef extends RESTQueryDefinition> = PathParams<QDef['path']> &
-  ExtractTypesFromObjectOrTypeDef<QDef['searchParams']>;
+type ExtractQueryParams<Path extends string, SearchParams extends SearchParamsDefinition> = PathParams<Path> &
+  ExtractTypesFromObjectOrUndefined<SearchParams>;
 
-type QueryParamsOrUndefined<QDef extends RESTQueryDefinition> =
-  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-  {} extends QueryParams<QDef> ? undefined : QueryParams<QDef>;
-
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-type HasRequiredKeys<T> = {} extends T ? false : { [K in keyof T]: undefined } extends T ? false : true;
-
-type Optionalize<T> = T extends object
-  ? {
-      -readonly [K in keyof T as undefined extends T[K] ? never : K]: T[K];
-    } & {
-      -readonly [K in keyof T as undefined extends T[K] ? K : never]?: T[K];
-    }
-  : T;
-
-type Prettify<T> = T extends object
-  ? {
-      -readonly [K in keyof T]: T[K];
-    } & {}
-  : T;
-
-export function query<const QDef extends RESTQueryDefinition>(
-  queryDefinitionBuilder: (t: APITypes) => QDef,
-): (
-  ...args: HasRequiredKeys<QueryParams<QDef>> extends true
-    ? [params: Prettify<Optionalize<QueryParams<QDef>>>]
-    : [params?: Prettify<Optionalize<QueryParamsOrUndefined<QDef>>>]
-) => DiscriminatedQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrTypeDef<QDef['response']>>>> {
-  let queryDefinition:
-    | QueryDefinition<Record<string, unknown>, ExtractTypesFromObjectOrTypeDef<QDef['response']>>
-    | undefined;
+function buildQueryFn(
+  queryDefinitionBuilder: (
+    t: APITypes,
+  ) =>
+    | RESTQueryDefinition<string, SearchParamsDefinition, ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>>
+    | InfiniteRESTQueryDefinition<
+        string,
+        SearchParamsDefinition,
+        ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>
+      >,
+): QueryDefinition<QueryParams, unknown> {
+  let queryDefinition: any | undefined;
 
   return reactive(
-    (params: Record<string, unknown>): DiscriminatedQueryResult<ExtractTypesFromObjectOrTypeDef<QDef['response']>> => {
+    (params: QueryParams | undefined): QueryResult<unknown> => {
       const queryClient = getContext(QueryClientContext);
 
       if (queryClient === undefined) {
@@ -124,7 +77,13 @@ export function query<const QDef extends RESTQueryDefinition>(
       }
 
       if (queryDefinition === undefined) {
-        const { path, method = 'GET', response, cache, refetchInterval } = queryDefinitionBuilder(t);
+        const {
+          path,
+          method = 'GET',
+          response,
+          cache,
+          pagination,
+        } = queryDefinitionBuilder(t) as InfiniteRESTQueryDefinition<any, any, any>;
 
         const id = `${method}:${path}`;
 
@@ -136,7 +95,7 @@ export function query<const QDef extends RESTQueryDefinition>(
         // Create optimized path interpolator (parses template once)
         const interpolatePath = createPathInterpolator(path);
 
-        const fetchFn = async (context: QueryContext, params: Record<string, unknown>) => {
+        const fetchFn = async (context: QueryContext, params: QueryParams) => {
           // Interpolate path params and append search params automatically
           const url = interpolatePath(params);
 
@@ -151,14 +110,67 @@ export function query<const QDef extends RESTQueryDefinition>(
           id,
           shape,
           fetchFn,
+          pagination,
           cache,
         };
       }
 
-      return queryClient.getQuery(queryDefinition, params);
+      return queryClient.getQuery<unknown>(queryDefinition, params);
     },
     // TODO: Getting a lot of type errors due to infinite recursion here.
     // For now, we return as any to coerce to the external type signature,
     // and internally we manage the difference.
   ) as any;
 }
+
+export function query<
+  Path extends string,
+  SearchParams extends SearchParamsDefinition,
+  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+>(
+  queryDefinitionBuilder: () => RESTQueryDefinition<Path, SearchParams, Response>,
+): QueryFn<ExtractQueryParams<Path, SearchParams>, Response> {
+  return buildQueryFn(queryDefinitionBuilder) as any;
+}
+
+export function infiniteQuery<
+  Path extends string,
+  SearchParams extends SearchParamsDefinition,
+  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+>(
+  queryDefinitionBuilder: () => InfiniteRESTQueryDefinition<Path, SearchParams, Response>,
+): InfiniteQueryFn<ExtractQueryParams<Path, SearchParams>, Response> {
+  return buildQueryFn(queryDefinitionBuilder) as any;
+}
+
+const listItems = infiniteQuery(() => ({
+  path: '/items',
+  method: 'GET',
+  response: t.object({
+    users: t.array(
+      t.object({
+        id: t.string,
+        name: t.string,
+      }),
+    ),
+  }),
+  pagination: {
+    getNextPageParams: lastPage => ({ cursor: 123 }),
+  },
+}));
+
+const bQuery = infiniteQuery(() => ({
+  path: '/users',
+  method: 'GET',
+  response: t.object({
+    users: t.array(
+      t.object({
+        id: t.string,
+        name: t.string,
+      }),
+    ),
+  }),
+  pagination: {
+    getNextPageParams: lastPage => ({ cursor: 123 }),
+  },
+}));

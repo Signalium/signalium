@@ -1,5 +1,10 @@
 import { PendingReactivePromise, ReadyReactivePromise } from 'signalium';
 import { ReactivePromise } from 'signalium';
+import { HasRequiredKeys, Optionalize, Prettify } from './type-utils.js';
+
+// ================================
+// Type Definitions
+// ================================
 
 export enum RefetchInterval {
   Every1Second = 1000,
@@ -117,16 +122,117 @@ export interface APITypes {
   union: <VS extends readonly TypeDef[]>(...types: VS) => UnionDef<VS>;
 }
 
-type QueryResultExtensions<T> = {
+// ================================
+// Type Extraction
+// ================================
+
+type ExtractPrimitiveTypeFromMask<T extends number> = T extends Mask.UNDEFINED
+  ? undefined
+  : T extends Mask.NULL
+    ? null
+    : T extends Mask.NUMBER
+      ? number
+      : T extends Mask.STRING
+        ? string
+        : T extends Mask.BOOLEAN
+          ? boolean
+          : T extends Mask.ID
+            ? string
+            : never;
+
+type ExtractTypesFromShape<S extends Record<string, ObjectFieldTypeDef>> = {
+  [K in keyof S]: ExtractType<S[K]>;
+};
+
+export type ExtractType<T extends ObjectFieldTypeDef> = T extends number
+  ? ExtractPrimitiveTypeFromMask<T>
+  : T extends string
+    ? T
+    : T extends Set<infer TSet>
+      ? TSet
+      : T extends ObjectDef<infer S>
+        ? Prettify<ExtractTypesFromShape<S>>
+        : T extends EntityDef<infer S>
+          ? Prettify<ExtractTypesFromShape<S>>
+          : T extends ArrayDef<infer S>
+            ? ExtractType<S>[]
+            : T extends RecordDef<infer S>
+              ? Record<string, ExtractType<S>>
+              : T extends UnionDef<infer VS>
+                ? ExtractType<VS[number]>
+                : never;
+
+export type QueryType<T> = T extends () => infer Response ? (Response extends QueryResult<infer T> ? T : never) : never;
+
+// ================================
+// Query Types
+// ================================
+
+interface QueryResultExtensions<T> {
   refetch: () => Promise<T>;
   readonly isRefetching: boolean;
   readonly isFetching: boolean;
-};
+}
 
-export type QueryResult<T> = ReactivePromise<T> & QueryResultExtensions<T>;
+export type BaseQueryResult<T> = ReactivePromise<T> & QueryResultExtensions<T>;
 
 export type PendingQueryResult<T> = PendingReactivePromise<T> & QueryResultExtensions<T>;
 
 export type ReadyQueryResult<T> = ReadyReactivePromise<T> & QueryResultExtensions<T>;
 
-export type DiscriminatedQueryResult<T> = PendingQueryResult<T> | ReadyQueryResult<T>;
+export type QueryResult<T> = PendingQueryResult<T> | ReadyQueryResult<T>;
+
+export type ResponseTypeDef = Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef;
+
+export type ParamsOrUndefined<Params extends Record<string, unknown>> =
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  {} extends Params ? undefined : Params;
+
+export type ExtractTypesFromObjectOrUndefined<S extends ResponseTypeDef> =
+  S extends Record<string, ObjectFieldTypeDef>
+    ? {
+        [K in keyof S]: ExtractType<S[K]>;
+      }
+    : S extends ObjectFieldTypeDef
+      ? ExtractType<S>
+      : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+        {};
+
+export type QueryFn<Params extends Record<string, unknown>, Response extends ResponseTypeDef> =
+  HasRequiredKeys<Params> extends true
+    ? (
+        params: Prettify<Optionalize<Params>>,
+      ) => QueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>>
+    : (
+        params?: Prettify<Optionalize<ParamsOrUndefined<Params>>>,
+      ) => QueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>>;
+
+// ================================
+// Infinite Query Types
+// ================================
+
+interface InfiniteQueryResultExtensions<T> extends QueryResultExtensions<T> {
+  fetchNextPage: () => Promise<T>;
+  hasNextPage: boolean;
+  isFetchingMore: boolean;
+}
+
+export type BaseInfiniteQueryResult<T> = ReactivePromise<T> & InfiniteQueryResultExtensions<T>;
+
+export type PendingInfiniteQueryResult<T> = PendingReactivePromise<T> & InfiniteQueryResultExtensions<T>;
+
+export type ReadyInfiniteQueryResult<T> = ReadyReactivePromise<T> & InfiniteQueryResultExtensions<T>;
+
+export type InfiniteQueryResult<T> = PendingInfiniteQueryResult<T> | ReadyInfiniteQueryResult<T>;
+
+export type InfiniteQueryFn<
+  Params extends Record<string, unknown>,
+  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+> =
+  HasRequiredKeys<Params> extends true
+    ? (
+        params: Prettify<Optionalize<Params>>,
+      ) => InfiniteQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>[]>
+    : (
+        params?: Prettify<Optionalize<ParamsOrUndefined<Params>>>,
+      ) => InfiniteQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>[]>;

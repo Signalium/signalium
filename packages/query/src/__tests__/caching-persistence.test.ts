@@ -152,7 +152,7 @@ describe('Caching and Persistence', () => {
       mockFetch.get('/items/[id]', { id: 1, name: 'Test' });
 
       await testWithClient(client, async () => {
-        const getItem = query(t => ({
+        const getItem = query(() => ({
           path: '/items/[id]',
           response: { id: t.number, name: t.string },
         }));
@@ -185,7 +185,7 @@ describe('Caching and Persistence', () => {
         },
       );
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/items/[id]',
         response: { id: t.number, name: t.string },
       }));
@@ -218,7 +218,7 @@ describe('Caching and Persistence', () => {
     it('should persist across QueryClient instances', async () => {
       mockFetch.get('/item', { id: 1, value: 'Persistent' });
 
-      const getItem = query(t => ({
+      const getItem = query(() => ({
         path: '/item',
         response: { id: t.number, value: t.string },
       }));
@@ -273,7 +273,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUser = query(t => ({
+        const getUser = query(() => ({
           path: '/users/[id]',
           response: { user: User },
         }));
@@ -301,7 +301,7 @@ describe('Caching and Persistence', () => {
         name: t.string,
       }));
 
-      const getDocument = query(t => ({
+      const getDocument = query(() => ({
         path: '/document',
         response: { user: User },
       }));
@@ -371,7 +371,7 @@ describe('Caching and Persistence', () => {
         favoritePost: Post,
       }));
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: { user: User },
       }));
@@ -416,12 +416,12 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUser1 = query(t => ({
+        const getUser1 = query(() => ({
           path: '/user/profile',
           response: { user: User },
         }));
 
-        const getUser2 = query(t => ({
+        const getUser2 = query(() => ({
           path: '/user/details',
           response: { user: User },
         }));
@@ -454,7 +454,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUser = query(t => ({
+        const getUser = query(() => ({
           path: '/users/[id]',
           response: { user: User },
         }));
@@ -497,7 +497,7 @@ describe('Caching and Persistence', () => {
         favoritePost: Post,
       }));
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: { user: User },
       }));
@@ -542,7 +542,7 @@ describe('Caching and Persistence', () => {
       }));
 
       // Set up a query cache with maxCount of 2
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: { user: User },
         cache: { maxCount: 2 },
@@ -599,13 +599,13 @@ describe('Caching and Persistence', () => {
         name: t.string,
       }));
 
-      const getProfile = query(t => ({
+      const getProfile = query(() => ({
         path: '/user/profile/[id]',
         response: { user: User },
         cache: { maxCount: 1 },
       }));
 
-      const getDetails = query(t => ({
+      const getDetails = query(() => ({
         path: '/user/details/[id]',
         response: { user: User },
       }));
@@ -683,7 +683,7 @@ describe('Caching and Persistence', () => {
         },
       });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: { user: User },
         cache: { maxCount: 1 },
@@ -762,7 +762,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        const getUser = query(t => ({
+        const getUser = query(() => ({
           path: '/users/[id]',
           response: { user: User },
         }));
@@ -828,7 +828,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        const getPosts = query(t => ({
+        const getPosts = query(() => ({
           path: '/posts',
           response: { posts: t.array(Post) },
         }));
@@ -876,7 +876,7 @@ describe('Caching and Persistence', () => {
         },
       });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: { user: User },
         cache: { maxCount: 1 },
@@ -937,7 +937,7 @@ describe('Caching and Persistence', () => {
         },
       });
 
-      const getUser = query(t => ({
+      const getUser = query(() => ({
         path: '/users/[id]',
         response: { user: User },
         cache: { maxCount: 1 },
