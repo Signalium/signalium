@@ -21,8 +21,29 @@
         "default": "./dist/cjs/index.js"
       }
     },
+    "./stores/async": {
+      "types": "./dist/esm/stores/async.d.ts",
+      "import": "./dist/esm/stores/async.js",
+      "require": "./dist/cjs/stores/async.js",
+      "default": "./dist/esm/stores/async.js"
+    },
+    "./stores/sync": {
+      "types": "./dist/esm/stores/sync.d.ts",
+      "import": "./dist/esm/stores/sync.js",
+      "require": "./dist/cjs/stores/sync.js",
+      "default": "./dist/esm/stores/sync.js"
+    },
     "./package.json": "./package.json"
   },
+  "files": [
+    "dist/esm/**",
+    "dist/cjs/**",
+    "stores/**",
+    "index.d.ts",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE*"
+  ],
   "peerDependencies": {
     "react": ">=18.3.1",
     "signalium": ">=2.0.9"
@@ -42,7 +63,7 @@
     "test:transform": "vitest run --project transform",
     "test:react": "vitest run --project react",
     "check-types": "tsc --noEmit",
-    "build": "npm run build:esm && npm run build:cjs",
+    "build": "npm run build:esm && npm run build:cjs && node scripts/generate-legacy-entries.cjs",
     "build:esm": "tsc --build tsconfig.esm.json",
     "build:cjs": "tsc --build tsconfig.cjs.json"
   },
