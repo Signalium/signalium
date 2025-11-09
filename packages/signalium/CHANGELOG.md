@@ -1,5 +1,15 @@
 # signalium
 
+## 2.1.0
+
+### Minor Changes
+
+- e64597d: Add ability to suspend signal subtrees in React
+
+### Patch Changes
+
+- 4c35e93: Add Stream Query support
+
 ## 2.0.9
 
 ### Patch Changes
