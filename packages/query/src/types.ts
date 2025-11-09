@@ -15,6 +15,33 @@ export enum RefetchInterval {
   Every5Minutes = 300000,
 }
 
+export enum NetworkMode {
+  /**
+   * Always fetch regardless of network status
+   */
+  Always = 'always',
+  /**
+   * Only fetch when online (default)
+   */
+  Online = 'online',
+  /**
+   * Fetch if cached data exists, even when offline
+   */
+  OfflineFirst = 'offlineFirst',
+}
+
+export interface RetryConfig {
+  /**
+   * Number of retry attempts
+   */
+  retries: number;
+  /**
+   * Optional custom delay function (receives attempt index starting at 0)
+   * Default: exponential backoff (1000ms * 2^attempt)
+   */
+  retryDelay?: (attemptIndex: number) => number;
+}
+
 export const enum Mask {
   // Fundamental types
   UNDEFINED = 1 << 0,
@@ -172,6 +199,7 @@ interface QueryResultExtensions<T> {
   refetch: () => Promise<T>;
   readonly isRefetching: boolean;
   readonly isFetching: boolean;
+  readonly isPaused: boolean;
 }
 
 export type BaseQueryResult<T> = ReactivePromise<T> & QueryResultExtensions<T>;

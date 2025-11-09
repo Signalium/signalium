@@ -20,12 +20,15 @@ import {
   ObjectFieldTypeDef,
   ComplexTypeDef,
   RefetchInterval,
+  NetworkMode,
+  RetryConfig,
 } from './types.js';
 import { parseValue } from './proxy.js';
 import { parseEntities } from './parseEntities.js';
 import { EntityRecord, EntityStore } from './EntityMap.js';
 import { QueryStore } from './QueryStore.js';
 import { ValidatorDef } from './typeDefs.js';
+import { NetworkManager } from './NetworkManager.js';
 
 export interface QueryContext {
   fetch: typeof fetch;
@@ -38,6 +41,9 @@ export interface QueryCacheOptions {
   gcTime?: number; // milliseconds - only applies to on-disk/persistent storage cleanup
   staleTime?: number;
   refetchInterval?: RefetchInterval;
+  networkMode?: NetworkMode; // default: NetworkMode.Online
+  retry?: RetryConfig | number | false; // default: 3 on client, 0 on server
+  refreshStaleOnReconnect?: boolean; // default: true
 }
 
 export interface QueryPaginationOptions<Result> {
@@ -200,9 +206,11 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
 
   private refetchPromise: Promise<T> | undefined = undefined;
   private fetchMorePromise: Promise<T> | undefined = undefined;
+  private attemptCount: number = 0;
 
   private relay: DiscriminatedReactivePromise<T>;
   private _relayState: RelayState<any> | undefined = undefined;
+  private wasOffline: boolean = false;
 
   private get relayState(): RelayState<any> {
     const relayState = this._relayState;
@@ -269,10 +277,28 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
       // Load from cache first, then fetch fresh data
       this.queryClient.activateQuery(this);
 
+      // Track network status for reconnect handling
+      const networkManager = this.queryClient.networkManager;
+      const isOnline = networkManager.getOnlineSignal().value;
+
+      // Store initial offline state
+      this.wasOffline = !isOnline;
+
       if (this.initialized) {
-        if (this.isStale) {
+        // Check if we just came back online
+        if (!this.wasOffline && isOnline) {
+          // We're back online - check if we should refresh
+          const refreshStaleOnReconnect = this.def.cache?.refreshStaleOnReconnect ?? true;
+          if (refreshStaleOnReconnect && this.isStale) {
+            this.refetch();
+          }
+          // Reset attempt count on reconnect
+          this.attemptCount = 0;
+        } else if (this.isStale && !this.isPaused) {
           this.refetch();
         }
+        // Update wasOffline for next check
+        this.wasOffline = !isOnline;
       } else {
         this.initialize();
       }
@@ -280,7 +306,21 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
       // Return deactivation callback
       return {
         update: () => {
-          state.setPromise(this.runQuery(this.params, true));
+          // Network status changed - check if we should react
+          const currentlyOnline = networkManager.getOnlineSignal().value;
+
+          // If we just came back online
+          if (this.wasOffline && currentlyOnline) {
+            const refreshStaleOnReconnect = this.def.cache?.refreshStaleOnReconnect ?? true;
+            if (refreshStaleOnReconnect && this.isStale) {
+              state.setPromise(this.runQuery(this.params, true));
+            }
+            // Reset attempt count on reconnect
+            this.attemptCount = 0;
+          }
+
+          // Update wasOffline for next check
+          this.wasOffline = !currentlyOnline;
         },
         deactivate: () => {
           // Last subscriber left, deactivate refetch and schedule memory eviction
@@ -412,50 +452,86 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
    * Fetches fresh data, updates the cache, and updates updatedAt timestamp
    */
   private async runQuery(params: QueryParams | undefined, reset = false): Promise<T> {
-    const freshData = await this.def.fetchFn(this.queryClient.getContext(), params);
-
-    // Parse and cache the fresh data
-    let entityRefs;
-
-    if (this.def.pagination && !reset && this.refIds !== undefined) {
-      entityRefs = this.refIds;
-    } else {
-      entityRefs = new Set<number>();
+    // Check if paused before attempting fetch
+    if (this.isPaused) {
+      throw new Error('Query is paused due to network status');
     }
 
-    const shape = this.def.shape;
+    const { retries, retryDelay } = this.getRetryConfig();
+    let lastError: unknown;
 
-    const parsedData =
-      shape instanceof ValidatorDef
-        ? parseEntities(freshData, shape as ComplexTypeDef, this.queryClient, entityRefs)
-        : parseValue(freshData, shape, this.def.id);
+    // Attempt fetch with retries
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const freshData = await this.def.fetchFn(this.queryClient.getContext(), params);
 
-    let queryData;
+        // Success! Reset attempt count
+        this.attemptCount = 0;
 
-    if (this.def.pagination) {
-      const prevQueryData = this.relayState.value;
-      queryData = reset || prevQueryData === undefined ? [parsedData] : [...prevQueryData, parsedData];
-    } else {
-      queryData = parsedData;
+        // Parse and cache the fresh data
+        let entityRefs;
+
+        if (this.def.pagination && !reset && this.refIds !== undefined) {
+          entityRefs = this.refIds;
+        } else {
+          entityRefs = new Set<number>();
+        }
+
+        const shape = this.def.shape;
+
+        const parsedData =
+          shape instanceof ValidatorDef
+            ? parseEntities(freshData, shape as ComplexTypeDef, this.queryClient, entityRefs)
+            : parseValue(freshData, shape, this.def.id);
+
+        let queryData;
+
+        if (this.def.pagination) {
+          const prevQueryData = this.relayState.value;
+          queryData = reset || prevQueryData === undefined ? [parsedData] : [...prevQueryData, parsedData];
+        } else {
+          queryData = parsedData;
+        }
+
+        let updatedAt;
+
+        if (reset) {
+          updatedAt = this.updatedAt = Date.now();
+        } else {
+          updatedAt = this.updatedAt ??= Date.now();
+        }
+
+        this._nextPageParams = undefined;
+
+        // Cache the data (synchronous, fire-and-forget)
+        this.queryClient.saveQueryData(this.def, this.queryKey, queryData, updatedAt, entityRefs);
+
+        // Update the timestamp
+        this.updatedAt = Date.now();
+
+        return queryData as T;
+      } catch (error) {
+        lastError = error;
+        this.attemptCount = attempt + 1;
+
+        // If we've exhausted retries, throw the error
+        if (attempt >= retries) {
+          throw error;
+        }
+
+        // Wait before retrying (unless paused)
+        const delay = retryDelay(attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+
+        // Check if paused during retry delay
+        if (this.isPaused) {
+          throw new Error('Query is paused due to network status');
+        }
+      }
     }
 
-    let updatedAt;
-
-    if (reset) {
-      updatedAt = this.updatedAt = Date.now();
-    } else {
-      updatedAt = this.updatedAt ??= Date.now();
-    }
-
-    this._nextPageParams = undefined;
-
-    // Cache the data (synchronous, fire-and-forget)
-    this.queryClient.saveQueryData(this.def, this.queryKey, queryData, updatedAt, entityRefs);
-
-    // Update the timestamp
-    this.updatedAt = Date.now();
-
-    return queryData as T;
+    // Should never reach here, but TypeScript needs it
+    throw lastError;
   }
 
   // ======================================================
@@ -566,6 +642,54 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
     const staleTime = this.def.cache?.staleTime ?? 0;
     return Date.now() - this.updatedAt >= staleTime;
   }
+
+  get isPaused(): boolean {
+    const networkMode = this.def.cache?.networkMode ?? NetworkMode.Online;
+    const networkManager = this.queryClient.networkManager;
+
+    // Read the online signal to make this reactive
+    const isOnline = networkManager.getOnlineSignal().value;
+
+    switch (networkMode) {
+      case NetworkMode.Always:
+        return false;
+      case NetworkMode.Online:
+        return !isOnline;
+      case NetworkMode.OfflineFirst:
+        // Only paused if we have no cached data AND we're offline
+        return !isOnline && this.updatedAt === undefined;
+      default:
+        return false;
+    }
+  }
+
+  private getRetryConfig(): { retries: number; retryDelay: (attempt: number) => number } {
+    const retryOption = this.def.cache?.retry;
+    const isServer = this.queryClient.isServer;
+
+    // Default retry count: 3 on client, 0 on server
+    let retries: number;
+    let retryDelay: (attempt: number) => number;
+
+    if (retryOption === false) {
+      retries = 0;
+    } else if (retryOption === undefined) {
+      retries = isServer ? 0 : 3;
+    } else if (typeof retryOption === 'number') {
+      retries = retryOption;
+    } else {
+      retries = retryOption.retries;
+    }
+
+    // Default exponential backoff: 1000ms * 2^attempt
+    if (typeof retryOption === 'object' && retryOption.retryDelay) {
+      retryDelay = retryOption.retryDelay;
+    } else {
+      retryDelay = (attempt: number) => 1000 * Math.pow(2, attempt);
+    }
+
+    return { retries, retryDelay };
+  }
 }
 
 export class QueryClient {
@@ -573,13 +697,18 @@ export class QueryClient {
   queryInstances = new Map<number, QueryResultImpl<unknown>>();
   memoryEvictionManager: MemoryEvictionManager;
   refetchManager: RefetchManager;
+  networkManager: NetworkManager;
+  isServer: boolean;
 
   constructor(
     private store: QueryStore,
     private context: QueryContext = { fetch },
+    networkManager?: NetworkManager,
   ) {
     this.memoryEvictionManager = new MemoryEvictionManager(this, this.context.evictionMultiplier);
     this.refetchManager = new RefetchManager(this.context.refetchMultiplier);
+    this.networkManager = networkManager ?? new NetworkManager();
+    this.isServer = typeof window === 'undefined';
   }
 
   getContext(): QueryContext {

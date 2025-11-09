@@ -858,6 +858,7 @@ describe('React Query Integration with component()', () => {
       const getItem = query(() => ({
         path: '/item',
         response: { data: t.string },
+        cache: { retry: false }, // Disable retries for this test
       }));
 
       const Component = component(() => {
