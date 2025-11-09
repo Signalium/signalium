@@ -8,8 +8,19 @@ import {
   QueryFn,
   InfiniteQueryFn,
   ExtractTypesFromObjectOrUndefined,
+  EntityDef,
+  StreamQueryFn,
 } from './types.js';
-import { QueryCacheOptions, QueryClientContext, QueryContext, QueryDefinition, QueryParams } from './QueryClient.js';
+import {
+  QueryCacheOptions,
+  QueryClientContext,
+  QueryContext,
+  QueryDefinition,
+  QueryParams,
+  StreamQueryDefinition,
+  StreamCacheOptions,
+  QueryType,
+} from './QueryClient.js';
 import { t, ValidatorDef } from './typeDefs.js';
 import { createPathInterpolator } from './pathInterpolator.js';
 
@@ -25,6 +36,14 @@ type PathParams<Path> = {
 
 type SearchParamsType = Mask.NUMBER | Mask.STRING | Set<string | boolean | number>;
 type SearchParamsDefinition = Record<string, SearchParamsType | UnionDef<SearchParamsType[]>>;
+
+/**
+ * BIG TODO:
+ *
+ * All of the `any` types in this file need to be removed, but we need to figure
+ * out why we're getting so many infinite recursion errors with types first. When
+ * we remove them, the types should work without the `any`s.
+ */
 
 interface RESTQueryDefinition<
   Path extends string,
@@ -54,6 +73,19 @@ interface InfiniteRESTQueryDefinition<
 
 type ExtractQueryParams<Path extends string, SearchParams extends SearchParamsDefinition> = PathParams<Path> &
   ExtractTypesFromObjectOrUndefined<SearchParams>;
+
+interface StreamQueryDefinitionBuilder<
+  Params extends SearchParamsDefinition,
+  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+> {
+  params?: Params;
+  response: Response;
+  subscribe: (
+    params: ExtractTypesFromObjectOrUndefined<Params>,
+    onUpdate: (update: Partial<ExtractTypesFromObjectOrUndefined<Response>>) => void,
+  ) => () => void;
+  cache?: StreamCacheOptions;
+}
 
 function buildQueryFn(
   queryDefinitionBuilder: (
@@ -107,6 +139,7 @@ function buildQueryFn(
         };
 
         queryDefinition = {
+          type: pagination ? QueryType.InfiniteQuery : QueryType.Query,
           id,
           shape,
           fetchFn,
@@ -143,34 +176,45 @@ export function infiniteQuery<
   return buildQueryFn(queryDefinitionBuilder) as any;
 }
 
-const listItems = infiniteQuery(() => ({
-  path: '/items',
-  method: 'GET',
-  response: t.object({
-    users: t.array(
-      t.object({
-        id: t.string,
-        name: t.string,
-      }),
-    ),
-  }),
-  pagination: {
-    getNextPageParams: lastPage => ({ cursor: 123 }),
-  },
-}));
+export function streamQuery<
+  // TODO: This is a hack to get the type signature to work. We should find a better way to do this.
+  Path extends '',
+  Params extends SearchParamsDefinition,
+  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+>(
+  queryDefinitionBuilder: () => StreamQueryDefinitionBuilder<Params, Response>,
+): StreamQueryFn<ExtractQueryParams<Path, Params>, Response> {
+  let streamDefinition: any | undefined;
 
-const bQuery = infiniteQuery(() => ({
-  path: '/users',
-  method: 'GET',
-  response: t.object({
-    users: t.array(
-      t.object({
-        id: t.string,
-        name: t.string,
-      }),
-    ),
-  }),
-  pagination: {
-    getNextPageParams: lastPage => ({ cursor: 123 }),
-  },
-}));
+  return reactive((params: QueryParams | undefined): QueryResult<unknown> => {
+    const queryClient = getContext(QueryClientContext);
+
+    if (queryClient === undefined) {
+      throw new Error('QueryClient not found');
+    }
+
+    if (streamDefinition === undefined) {
+      const { response, subscribe, cache } = queryDefinitionBuilder();
+
+      // Validate that response is an EntityDef
+      if (!(response instanceof ValidatorDef) || (response.mask & Mask.ENTITY) === 0) {
+        throw new Error('Stream query response must be an EntityDef');
+      }
+
+      // Generate a unique ID for the stream
+      const id = `stream:${JSON.stringify(queryDefinitionBuilder.toString())}`;
+
+      streamDefinition = {
+        type: QueryType.Stream,
+        id,
+        shape: response as EntityDef,
+        subscribeFn: (context: QueryContext, params: QueryParams | undefined, onUpdate: any) => {
+          return (subscribe as any)(params as any, onUpdate);
+        },
+        cache,
+      };
+    }
+
+    return queryClient.getQuery<unknown>(streamDefinition, params);
+  }) as any;
+}

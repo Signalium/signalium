@@ -46,22 +46,54 @@ export interface QueryCacheOptions {
   refreshStaleOnReconnect?: boolean; // default: true
 }
 
+export interface StreamCacheOptions {
+  maxCount?: number;
+  gcTime?: number; // milliseconds - only applies to on-disk/persistent storage cleanup
+}
+
 export interface QueryPaginationOptions<Result> {
   getNextPageParams?(lastPage: Result, params?: QueryParams | undefined): QueryParams | undefined;
 }
 
 export type QueryParams = Record<string, string | number | boolean | undefined | null>;
 
+export const enum QueryType {
+  Query = 'query',
+  InfiniteQuery = 'infiniteQuery',
+  Stream = 'stream',
+}
+
 export interface QueryDefinition<Params extends QueryParams | undefined, Result> {
+  type: QueryType.Query;
   id: string;
   shape: ObjectFieldTypeDef;
   fetchFn: (context: QueryContext, params: Params, prevResult?: Result) => Promise<Result>;
-
-  pagination?: QueryPaginationOptions<Result>;
   cache?: QueryCacheOptions;
 }
 
-const queryKeyFor = (queryDef: QueryDefinition<any, any>, params: unknown): number => {
+export interface InfiniteQueryDefinition<Params extends QueryParams | undefined, Result> {
+  type: QueryType.InfiniteQuery;
+  id: string;
+  shape: ObjectFieldTypeDef;
+  fetchFn: (context: QueryContext, params: Params, prevResult?: Result) => Promise<Result>;
+  pagination: QueryPaginationOptions<Result>;
+  cache?: QueryCacheOptions;
+}
+
+export interface StreamQueryDefinition<Params extends QueryParams | undefined, Result> {
+  type: QueryType.Stream;
+  id: string;
+  shape: EntityDef; // Must be entity
+  subscribeFn: (context: QueryContext, params: Params, onUpdate: (update: Partial<Result>) => void) => () => void; // Returns unsubscribe function
+  cache?: StreamCacheOptions;
+}
+
+export type AnyQueryDefinition<Params extends QueryParams | undefined, Result> =
+  | QueryDefinition<Params, Result>
+  | InfiniteQueryDefinition<Params, Result>
+  | StreamQueryDefinition<Params, Result>;
+
+const queryKeyFor = (queryDef: AnyQueryDefinition<any, any>, params: unknown): number => {
   return hashValue([queryDef.id, params]);
 };
 
@@ -82,6 +114,10 @@ class RefetchManager {
   }
 
   addQuery(instance: QueryResultImpl<any>) {
+    if (instance.def.type === QueryType.Stream) {
+      return; // Streams don't have refetch intervals
+    }
+
     const interval = instance.def.cache?.refetchInterval;
 
     if (!interval) {
@@ -99,6 +135,10 @@ class RefetchManager {
   }
 
   removeQuery(query: QueryResultImpl<any>) {
+    if (query.def.type === QueryType.Stream) {
+      return; // Streams don't have refetch intervals
+    }
+
     const interval = query.def.cache?.refetchInterval;
 
     if (!interval) {
@@ -193,7 +233,7 @@ class MemoryEvictionManager {
  * This class combines the old QueryInstance and QueryResultImpl into a single entity.
  */
 export class QueryResultImpl<T> implements BaseQueryResult<T> {
-  def: QueryDefinition<any, any>;
+  def: AnyQueryDefinition<any, any>;
   queryKey: number;
 
   private queryClient: QueryClient;
@@ -207,6 +247,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   private refetchPromise: Promise<T> | undefined = undefined;
   private fetchMorePromise: Promise<T> | undefined = undefined;
   private attemptCount: number = 0;
+  private unsubscribe?: () => void = undefined;
 
   private relay: DiscriminatedReactivePromise<T>;
   private _relayState: RelayState<any> | undefined = undefined;
@@ -225,6 +266,11 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   private _nextPageParams: QueryParams | undefined | null = undefined;
 
   private get nextPageParams(): QueryParams | null {
+    // Streams don't have pagination
+    if (this.def.type === QueryType.Stream) {
+      return null;
+    }
+
     let params = this._nextPageParams;
 
     const value = this.relayState.value;
@@ -234,7 +280,8 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         throw new Error('Query result is not an array, this is a bug');
       }
 
-      const nextParams = this.def.pagination?.getNextPageParams?.(value[value.length - 1]);
+      const infiniteDef = this.def as InfiniteQueryDefinition<any, any>;
+      const nextParams = infiniteDef.pagination?.getNextPageParams?.(value[value.length - 1]);
 
       if (nextParams === undefined) {
         // store null to indicate that there is no next page, but we've already calculated
@@ -260,7 +307,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   }
 
   constructor(
-    def: QueryDefinition<any, any>,
+    def: AnyQueryDefinition<any, any>,
     queryClient: QueryClient,
     queryKey: number,
     params: QueryParams | undefined,
@@ -285,17 +332,21 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
       this.wasOffline = !isOnline;
 
       if (this.initialized) {
-        // Check if we just came back online
-        if (!this.wasOffline && isOnline) {
-          // We're back online - check if we should refresh
-          const refreshStaleOnReconnect = this.def.cache?.refreshStaleOnReconnect ?? true;
-          if (refreshStaleOnReconnect && this.isStale) {
+        if (this.def.type === QueryType.Stream) {
+          this.setupSubscription();
+        } else {
+          // Check if we just came back online
+          if (!this.wasOffline && isOnline) {
+            // We're back online - check if we should refresh
+            const refreshStaleOnReconnect = this.def.cache?.refreshStaleOnReconnect ?? true;
+            if (refreshStaleOnReconnect && this.isStale) {
+              this.refetch();
+            }
+            // Reset attempt count on reconnect
+            this.attemptCount = 0;
+          } else if (this.isStale && !this.isPaused) {
             this.refetch();
           }
-          // Reset attempt count on reconnect
-          this.attemptCount = 0;
-        } else if (this.isStale && !this.isPaused) {
-          this.refetch();
         }
         // Update wasOffline for next check
         this.wasOffline = !isOnline;
@@ -306,6 +357,12 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
       // Return deactivation callback
       return {
         update: () => {
+          // For streams, unsubscribe and resubscribe to re-establish connection
+          if (this.def.type === QueryType.Stream) {
+            this.setupSubscription();
+            return;
+          }
+
           // Network status changed - check if we should react
           const currentlyOnline = networkManager.getOnlineSignal().value;
 
@@ -324,7 +381,13 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         },
         deactivate: () => {
           // Last subscriber left, deactivate refetch and schedule memory eviction
-          if (this.def.cache?.refetchInterval) {
+          if (this.def.type === QueryType.Stream) {
+            // Unsubscribe from stream
+            if (this.unsubscribe) {
+              this.unsubscribe();
+              this.unsubscribe = undefined;
+            }
+          } else if (this.def.cache?.refetchInterval) {
             this.queryClient.refetchManager.removeQuery(this);
           }
 
@@ -417,6 +480,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
 
     try {
       this.initialized = true;
+
       // Load from cache first
       const cached = await this.queryClient.loadCachedQuery(this.def, this.queryKey);
 
@@ -432,20 +496,50 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
 
         // Set the cached reference IDs
         this.refIds = cached.refIds;
+      }
 
-        // Check if data is stale
-        if (this.isStale) {
-          // Data is stale, trigger background refetch
-          this.refetch();
-        }
+      if (this.def.type === QueryType.Stream) {
+        this.setupSubscription();
       } else {
-        // No cached data, fetch fresh
-        state.setPromise(this.runQuery(this.params, true));
+        if (cached !== undefined) {
+          // Check if data is stale
+          if (this.isStale) {
+            // Data is stale, trigger background refetch
+            this.refetch();
+          }
+        } else {
+          // No cached data, fetch fresh
+          state.setPromise(this.runQuery(this.params, true));
+        }
       }
     } catch (error) {
       // Relay will handle the error state automatically
       state.setError(error as Error);
     }
+  }
+
+  /**
+   * Handle stream updates by merging with existing entity.
+   * Deep merging is handled automatically by parseEntities/setEntity.
+   */
+  private setupSubscription(): void {
+    this.unsubscribe?.();
+
+    const streamDef = this.def as StreamQueryDefinition<any, any>;
+    this.unsubscribe = streamDef.subscribeFn(this.queryClient.getContext(), this.params, update => {
+      const shapeDef = this.def.shape as EntityDef;
+      const entityRefs = this.refIds ?? new Set<number>();
+
+      const parsedData = parseEntities(update, shapeDef as ComplexTypeDef, this.queryClient, entityRefs);
+
+      // Update the relay state
+      this.relayState.value = parsedData;
+      this.updatedAt = Date.now();
+      this.refIds = entityRefs;
+
+      // Cache the data
+      this.queryClient.saveQueryData(this.def, this.queryKey, parsedData, this.updatedAt, entityRefs);
+    });
   }
 
   /**
@@ -463,7 +557,8 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
     // Attempt fetch with retries
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const freshData = await this.def.fetchFn(this.queryClient.getContext(), params);
+        const queryDef = this.def as QueryDefinition<any, any> | InfiniteQueryDefinition<any, any>;
+        const freshData = await queryDef.fetchFn(this.queryClient.getContext(), params);
 
         // Success! Reset attempt count
         this.attemptCount = 0;
@@ -471,7 +566,9 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         // Parse and cache the fresh data
         let entityRefs;
 
-        if (this.def.pagination && !reset && this.refIds !== undefined) {
+        const isInfinite = this.def.type === QueryType.InfiniteQuery;
+
+        if (isInfinite && !reset && this.refIds !== undefined) {
           entityRefs = this.refIds;
         } else {
           entityRefs = new Set<number>();
@@ -486,7 +583,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
 
         let queryData;
 
-        if (this.def.pagination) {
+        if (isInfinite) {
           const prevQueryData = this.relayState.value;
           queryData = reset || prevQueryData === undefined ? [parsedData] : [...prevQueryData, parsedData];
         } else {
@@ -539,6 +636,10 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   // ======================================================
 
   refetch(): Promise<T> {
+    if (this.def.type === QueryType.Stream) {
+      throw new Error('Cannot refetch a stream query');
+    }
+
     if (this.fetchMorePromise) {
       throw new Error('Query is fetching more, cannot refetch');
     }
@@ -575,6 +676,10 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   }
 
   fetchNextPage(): Promise<T> {
+    if (this.def.type === QueryType.Stream) {
+      throw new Error('Cannot fetch next page on a stream query');
+    }
+
     if (this.refetchPromise) {
       return Promise.reject(new Error('Query is refetching, cannot fetch next page'));
     }
@@ -635,6 +740,11 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   }
 
   get isStale(): boolean {
+    // Streams are never stale - they're always receiving updates
+    if (this.def.type === QueryType.Stream) {
+      return false;
+    }
+
     if (this.updatedAt === undefined) {
       return true; // No data yet, needs fetch
     }
@@ -644,6 +754,11 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   }
 
   get isPaused(): boolean {
+    // Streams handle their own connection state
+    if (this.def.type === QueryType.Stream) {
+      return false;
+    }
+
     const networkMode = this.def.cache?.networkMode ?? NetworkMode.Online;
     const networkManager = this.queryClient.networkManager;
 
@@ -664,6 +779,11 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   }
 
   private getRetryConfig(): { retries: number; retryDelay: (attempt: number) => number } {
+    // Streams don't have retry config
+    if (this.def.type === QueryType.Stream) {
+      return { retries: 0, retryDelay: () => 0 };
+    }
+
     const retryOption = this.def.cache?.retry;
     const isServer = this.queryClient.isServer;
 
@@ -716,32 +836,36 @@ export class QueryClient {
   }
 
   saveQueryData(
-    queryDef: QueryDefinition<QueryParams | undefined, unknown>,
+    queryDef: AnyQueryDefinition<QueryParams | undefined, unknown>,
     queryKey: number,
     data: unknown,
     updatedAt: number,
     entityRefs: Set<number>,
   ): void {
-    this.store.saveQuery(queryDef, queryKey, data, updatedAt, entityRefs);
+    // QueryStore expects the base definition structure
+    this.store.saveQuery(queryDef as any, queryKey, data, updatedAt, entityRefs);
   }
 
   activateQuery(queryInstance: QueryResultImpl<unknown>): void {
     const { def, queryKey } = queryInstance;
-    this.store.activateQuery(def, queryKey);
+    this.store.activateQuery(def as any, queryKey);
 
-    this.refetchManager.addQuery(queryInstance);
+    // Only add to refetch manager if it's not a stream
+    if (def.type !== QueryType.Stream && def.cache?.refetchInterval) {
+      this.refetchManager.addQuery(queryInstance);
+    }
     this.memoryEvictionManager.cancelEviction(queryKey);
   }
 
-  loadCachedQuery(queryDef: QueryDefinition<QueryParams | undefined, unknown>, queryKey: number) {
-    return this.store.loadQuery(queryDef, queryKey, this.entityMap);
+  loadCachedQuery(queryDef: AnyQueryDefinition<QueryParams | undefined, unknown>, queryKey: number) {
+    return this.store.loadQuery(queryDef as any, queryKey, this.entityMap);
   }
 
   /**
    * Loads a query from the document store and returns a QueryResult
    * that triggers fetches and prepopulates with cached data
    */
-  getQuery<T>(queryDef: QueryDefinition<any, any>, params: QueryParams | undefined): QueryResult<T> {
+  getQuery<T>(queryDef: AnyQueryDefinition<any, any>, params: QueryParams | undefined): QueryResult<T> {
     const queryKey = queryKeyFor(queryDef, params);
 
     let queryInstance = this.queryInstances.get(queryKey) as QueryResultImpl<T> | undefined;

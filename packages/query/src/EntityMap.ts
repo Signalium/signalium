@@ -1,6 +1,6 @@
 import { Signal, signal } from 'signalium';
 import { EntityDef } from './types.js';
-import { createEntityProxy } from './proxy.js';
+import { createEntityProxy, mergeValues } from './proxy.js';
 
 export interface PreloadedEntityRecord {
   key: number;
@@ -36,7 +36,7 @@ export class EntityStore {
   setPreloadedEntity(key: number, obj: Record<string, unknown>): PreloadedEntityRecord {
     const record: PreloadedEntityRecord = {
       key,
-      signal: signal(obj),
+      signal: signal(obj, { equals: false }),
       cache: new Map(),
       proxy: undefined,
     };
@@ -54,7 +54,7 @@ export class EntityStore {
 
       record.proxy = createEntityProxy(key, record, shape);
     } else {
-      record.signal.value = obj;
+      record.signal.update(value => mergeValues(value, obj));
       record.cache.clear();
     }
 

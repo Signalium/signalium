@@ -16,6 +16,7 @@ import { extractShape, typeMaskOf } from './utils.js';
 import { PreloadedEntityRecord } from './EntityMap.js';
 
 const entries = Object.entries;
+const isArray = Array.isArray;
 
 const PROXY_BRAND = new WeakSet();
 
@@ -163,6 +164,27 @@ export function parseValue(value: unknown, propDef: ObjectFieldTypeDef, path: st
       return parseObjectValue(value as Record<string, unknown>, propDef as ObjectDef | EntityDef, path);
     }
   }
+}
+
+/**
+ * Deep merge two objects, with the update object taking precedence.
+ * Arrays are replaced, not merged.
+ * Handles nested objects recursively.
+ */
+export function mergeValues<T extends Record<string, unknown>>(
+  target: Record<string, unknown>,
+  update: Record<string, unknown>,
+): T {
+  // Iterate over update properties
+  for (const [key, value] of entries(update)) {
+    if (typeof value === 'object' && value !== null && !isArray(value) && !PROXY_BRAND.has(value)) {
+      mergeValues(target[key] as Record<string, unknown>, value as Record<string, unknown>);
+    } else {
+      target[key] = value;
+    }
+  }
+
+  return target as T;
 }
 
 const CustomNodeInspect = Symbol.for('nodejs.util.inspect.custom');

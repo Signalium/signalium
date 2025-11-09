@@ -554,4 +554,347 @@ describe('Entity System', () => {
       });
     });
   });
+
+  describe('Deep Merge on Entity Updates', () => {
+    it('should deep merge nested objects when entity is updated', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+        profile: t.object({
+          bio: t.string,
+          website: t.string,
+        }),
+        settings: t.object({
+          theme: t.string,
+          notifications: t.boolean,
+        }),
+      }));
+
+      // Initial fetch with complete data
+      mockFetch.get('/users/[id]', {
+        user: {
+          __typename: 'User',
+          id: 1,
+          name: 'Alice',
+          profile: {
+            bio: 'Software Engineer',
+            website: 'https://alice.dev',
+          },
+          settings: {
+            theme: 'dark',
+            notifications: true,
+          },
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: User },
+        }));
+
+        const relay1 = getUser({ id: '1' });
+        const result1 = await relay1;
+
+        // Verify initial data
+        expect(result1.user.name).toBe('Alice');
+        expect(result1.user.profile.bio).toBe('Software Engineer');
+        expect(result1.user.profile.website).toBe('https://alice.dev');
+        expect(result1.user.settings.theme).toBe('dark');
+        expect(result1.user.settings.notifications).toBe(true);
+
+        // Refetch with updated nested data
+        mockFetch.get('/users/[id]', {
+          user: {
+            __typename: 'User',
+            id: 1,
+            name: 'Alice Smith', // Updated name
+            profile: {
+              bio: 'Senior Software Engineer', // Updated bio
+              website: 'https://alice.dev', // Same website
+            },
+            settings: {
+              theme: 'light', // Updated theme
+              notifications: true, // Same notifications
+            },
+          },
+        });
+
+        const result2 = await relay1.refetch();
+
+        // Should have deep merged - all fields should be present with updated values
+        expect(result2.user.name).toBe('Alice Smith');
+        expect(result2.user.profile.bio).toBe('Senior Software Engineer');
+        expect(result2.user.profile.website).toBe('https://alice.dev');
+        expect(result2.user.settings.theme).toBe('light');
+        expect(result2.user.settings.notifications).toBe(true);
+
+        // Both results should reference the same entity proxy
+        expect(result1.user).toBe(result2.user);
+
+        // The first result should also reflect the updates (reactivity)
+        expect(result1.user.name).toBe('Alice Smith');
+        expect(result1.user.profile.bio).toBe('Senior Software Engineer');
+      });
+    });
+
+    it('should replace arrays, not merge them', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+        tags: t.array(t.string),
+      }));
+
+      // Initial fetch
+      mockFetch.get('/users/[id]', {
+        user: {
+          __typename: 'User',
+          id: 1,
+          name: 'Alice',
+          tags: ['engineer', 'javascript'],
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: User },
+        }));
+
+        const relay1 = getUser({ id: '1' });
+        const result1 = await relay1;
+
+        expect(result1.user.tags).toEqual(['engineer', 'javascript']);
+
+        // Refetch with different array
+        mockFetch.get('/users/[id]', {
+          user: {
+            __typename: 'User',
+            id: 1,
+            name: 'Alice',
+            tags: ['engineer', 'typescript', 'react'], // Different array
+          },
+        });
+
+        const result2 = await relay1.refetch();
+
+        // Array should be replaced, not merged
+        expect(result2.user.tags).toEqual(['engineer', 'typescript', 'react']);
+        expect(result2.user.tags.length).toBe(3);
+
+        // Should be the same entity
+        expect(result1.user).toBe(result2.user);
+      });
+    });
+
+    it('should handle multiple levels of nesting', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+        address: t.object({
+          street: t.string,
+          city: t.string,
+          coordinates: t.object({
+            lat: t.number,
+            lng: t.number,
+          }),
+        }),
+      }));
+
+      // Initial fetch
+      mockFetch.get('/users/[id]', {
+        user: {
+          __typename: 'User',
+          id: 1,
+          name: 'Alice',
+          address: {
+            street: '123 Main St',
+            city: 'Springfield',
+            coordinates: {
+              lat: 40.7128,
+              lng: -74.006,
+            },
+          },
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: User },
+        }));
+
+        const relay1 = getUser({ id: '1' });
+        const result1 = await relay1;
+
+        expect(result1.user.address.street).toBe('123 Main St');
+        expect(result1.user.address.city).toBe('Springfield');
+        expect(result1.user.address.coordinates.lat).toBe(40.7128);
+        expect(result1.user.address.coordinates.lng).toBe(-74.006);
+
+        // Refetch with partial nested update
+        mockFetch.get('/users/[id]', {
+          user: {
+            __typename: 'User',
+            id: 1,
+            name: 'Alice',
+            address: {
+              street: '456 Oak Ave', // Updated
+              city: 'Springfield', // Same
+              coordinates: {
+                lat: 40.7129, // Updated
+                lng: -74.006, // Same
+              },
+            },
+          },
+        });
+
+        const result2 = await relay1.refetch();
+
+        // All levels should be deep merged
+        expect(result2.user.address.street).toBe('456 Oak Ave');
+        expect(result2.user.address.city).toBe('Springfield');
+        expect(result2.user.address.coordinates.lat).toBe(40.7129);
+        expect(result2.user.address.coordinates.lng).toBe(-74.006);
+
+        // Same entity reference
+        expect(result1.user).toBe(result2.user);
+      });
+    });
+
+    it('should preserve unchanged nested fields when updating', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+        metadata: t.object({
+          createdAt: t.string,
+          updatedAt: t.string,
+          version: t.number,
+        }),
+      }));
+
+      // Initial fetch
+      mockFetch.get('/users/[id]', {
+        user: {
+          __typename: 'User',
+          id: 1,
+          name: 'Alice',
+          metadata: {
+            createdAt: '2024-01-01',
+            updatedAt: '2024-01-01',
+            version: 1,
+          },
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: User },
+        }));
+
+        const relay1 = getUser({ id: '1' });
+        const result1 = await relay1;
+
+        expect(result1.user.metadata.createdAt).toBe('2024-01-01');
+        expect(result1.user.metadata.updatedAt).toBe('2024-01-01');
+        expect(result1.user.metadata.version).toBe(1);
+
+        // Refetch with partial metadata update
+        mockFetch.get('/users/[id]', {
+          user: {
+            __typename: 'User',
+            id: 1,
+            name: 'Alice Smith',
+            metadata: {
+              createdAt: '2024-01-01', // Same
+              updatedAt: '2024-01-15', // Updated
+              version: 2, // Updated
+            },
+          },
+        });
+
+        const result2 = await relay1.refetch();
+
+        // createdAt should be preserved, others updated
+        expect(result2.user.name).toBe('Alice Smith');
+        expect(result2.user.metadata.createdAt).toBe('2024-01-01');
+        expect(result2.user.metadata.updatedAt).toBe('2024-01-15');
+        expect(result2.user.metadata.version).toBe(2);
+
+        // Same entity
+        expect(result1.user).toBe(result2.user);
+      });
+    });
+
+    it('should handle merging from multiple query sources', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+        email: t.string,
+        bio: t.string,
+      }));
+
+      // First query returns basic user info
+      mockFetch.get('/users/[id]/basic', {
+        user: {
+          __typename: 'User',
+          id: 1,
+          name: 'Alice',
+          email: 'alice@example.com',
+          bio: 'Engineer',
+        },
+      });
+
+      // Second query returns updated info for same user
+      mockFetch.get('/users/[id]/profile', {
+        user: {
+          __typename: 'User',
+          id: 1,
+          name: 'Alice Smith',
+          email: 'alice@example.com',
+          bio: 'Senior Software Engineer',
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getUserBasic = query(() => ({
+          path: '/users/[id]/basic',
+          response: { user: User },
+        }));
+
+        const getUserProfile = query(() => ({
+          path: '/users/[id]/profile',
+          response: { user: User },
+        }));
+
+        // Fetch basic info first
+        const relay1 = getUserBasic({ id: '1' });
+        const result1 = await relay1;
+
+        expect(result1.user.name).toBe('Alice');
+        expect(result1.user.email).toBe('alice@example.com');
+        expect(result1.user.bio).toBe('Engineer');
+
+        // Fetch profile info - should merge with existing entity
+        const relay2 = getUserProfile({ id: '1' });
+        const result2 = await relay2;
+
+        // Both results should have the merged data
+        expect(result2.user.name).toBe('Alice Smith');
+        expect(result2.user.email).toBe('alice@example.com');
+        expect(result2.user.bio).toBe('Senior Software Engineer');
+
+        // First query result should also reflect the merge (same entity)
+        expect(result1.user).toBe(result2.user);
+        expect(result1.user.name).toBe('Alice Smith');
+        expect(result1.user.bio).toBe('Senior Software Engineer');
+      });
+    });
+  });
 });
