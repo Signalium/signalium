@@ -195,11 +195,14 @@ export type QueryType<T> = T extends () => infer Response ? (Response extends Qu
 // Query Types
 // ================================
 
-interface QueryResultExtensions<T> {
-  refetch: () => Promise<T>;
-  readonly isRefetching: boolean;
+interface BaseQueryResultExtensions<T> {
   readonly isFetching: boolean;
   readonly isPaused: boolean;
+}
+
+interface QueryResultExtensions<T> extends BaseQueryResultExtensions<T> {
+  refetch: () => Promise<T>;
+  readonly isRefetching: boolean;
 }
 
 export type BaseQueryResult<T> = ReactivePromise<T> & QueryResultExtensions<T>;
@@ -264,3 +267,29 @@ export type InfiniteQueryFn<
     : (
         params?: Prettify<Optionalize<ParamsOrUndefined<Params>>>,
       ) => InfiniteQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>[]>;
+
+// ================================
+// Stream Query Types
+// ================================
+
+type StreamQueryResultExtensions<T> = BaseQueryResultExtensions<T>;
+
+export type BaseStreamQueryResult<T> = ReactivePromise<T> & StreamQueryResultExtensions<T>;
+
+export type PendingStreamQueryResult<T> = PendingReactivePromise<T> & StreamQueryResultExtensions<T>;
+
+export type ReadyStreamQueryResult<T> = ReadyReactivePromise<T> & StreamQueryResultExtensions<T>;
+
+export type StreamQueryResult<T> = PendingStreamQueryResult<T> | ReadyStreamQueryResult<T>;
+
+export type StreamQueryFn<
+  Params extends Record<string, unknown>,
+  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+> =
+  HasRequiredKeys<Params> extends true
+    ? (
+        params: Prettify<Optionalize<Params>>,
+      ) => StreamQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>>
+    : (
+        params?: Prettify<Optionalize<ParamsOrUndefined<Params>>>,
+      ) => StreamQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>>;

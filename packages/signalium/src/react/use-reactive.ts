@@ -13,9 +13,11 @@ import { getGlobalScope } from '../internals/contexts.js';
 const useStateSignal = <T>(signal: Signal<T>): T => {
   const suspended = useSignalsSuspended();
   return useSyncExternalStore(
-    suspended
-      ? () => () => {}
-      : useCallback(onStoreChange => (signal as StateSignal<T>).addListener(onStoreChange), [signal]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useCallback(suspended ? () => () => {} : onStoreChange => (signal as StateSignal<T>).addListener(onStoreChange), [
+      signal,
+      suspended,
+    ]),
     () => signal.value,
     () => signal.value,
   );

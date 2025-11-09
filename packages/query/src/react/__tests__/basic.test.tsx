@@ -1,14 +1,15 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
-import { ContextProvider, useReactive } from 'signalium/react';
-import React, { memo } from 'react';
+import { ContextProvider, SuspendSignalsProvider, useReactive } from 'signalium/react';
+import React, { memo, useState } from 'react';
 import { SyncQueryStore, MemoryPersistentStore } from '../../QueryStore.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { entity, t } from '../../typeDefs.js';
 import { query } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { createRenderCounter } from './utils.js';
-import { QueryResult } from '../../types.js';
+import { QueryResult, RefetchInterval } from '../../types.js';
+import { userEvent } from '@vitest/browser/context';
 
 /**
  * React Tests for Query Package
@@ -922,6 +923,174 @@ describe('React Query Integration', () => {
       expect(getByTestId('data').element().textContent).toBe('second');
       expect(itemQuery!.isRefetching).toBe(false);
       expect(itemQuery!.isFetching).toBe(false);
+    });
+  });
+
+  describe('Query Polling Suspension', () => {
+    it('should not re-render when toggled to suspended during polling', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+      }));
+
+      let fetchCount = 0;
+
+      const mockFetch = vi.fn(async (url: string) => {
+        fetchCount++;
+        return new Response(
+          JSON.stringify({
+            __typename: 'User',
+            id: '1',
+            name: `Alice ${fetchCount}`,
+          }),
+          { status: 200 },
+        );
+      });
+
+      const pollingClient = new QueryClient(
+        new SyncQueryStore(new MemoryPersistentStore()),
+        { fetch: mockFetch as any, refetchMultiplier: 0.05 }, // Speed up polling for tests
+      );
+
+      const getUser = query(() => ({
+        path: '/users/1',
+        response: User,
+        cache: {
+          refetchInterval: RefetchInterval.Every1Second, // Poll every 1 second (but 10ms with multiplier)
+        },
+      }));
+
+      function QueryComponent(): React.ReactNode {
+        const user = useReactive(getUser);
+
+        if (user.isPending) {
+          return <div>Loading...</div>;
+        }
+
+        return <div data-testid="user-name">{user.value!.name}</div>;
+      }
+
+      function Wrapper(): React.ReactNode {
+        const [suspended, setSuspended] = useState(false);
+
+        return (
+          <div>
+            <SuspendSignalsProvider value={suspended}>
+              <QueryComponent />
+            </SuspendSignalsProvider>
+            <button onClick={() => setSuspended(!suspended)}>Toggle Suspend</button>
+          </div>
+        );
+      }
+
+      const { getByTestId, getByText } = render(
+        <ContextProvider contexts={[[QueryClientContext, pollingClient]]}>
+          <Wrapper />
+        </ContextProvider>,
+      );
+
+      // Wait for initial fetch
+      await sleep(50);
+      await expect.element(getByTestId('user-name')).toHaveTextContent('Alice 1');
+      expect(fetchCount).toBeGreaterThanOrEqual(1);
+
+      // Suspend the query
+      await userEvent.click(getByText('Toggle Suspend'));
+
+      const fetchCountBeforeSuspend = fetchCount;
+
+      await sleep(50);
+
+      expect(fetchCount).toBe(fetchCountBeforeSuspend);
+
+      pollingClient.destroy();
+    });
+
+    it('should show latest value when re-enabled after suspension during polling', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+      }));
+
+      let fetchCount = 0;
+
+      const mockFetch = vi.fn(async (url: string) => {
+        fetchCount++;
+        return new Response(
+          JSON.stringify({
+            __typename: 'User',
+            id: '1',
+            name: `Alice ${fetchCount}`,
+          }),
+          { status: 200 },
+        );
+      });
+
+      const pollingClient = new QueryClient(
+        new SyncQueryStore(new MemoryPersistentStore()),
+        { fetch: mockFetch as any, refetchMultiplier: 0.05 }, // Speed up polling for tests
+      );
+
+      const getUser = query(() => ({
+        path: '/users/1',
+        response: User,
+        cache: {
+          refetchInterval: RefetchInterval.Every1Second, // Poll every 1 second (but 10ms with multiplier)
+        },
+      }));
+
+      function QueryComponent(): React.ReactNode {
+        const user = useReactive(getUser);
+
+        if (user.isPending) {
+          return <div>Loading...</div>;
+        }
+
+        return <div data-testid="user-name">{user.value!.name}</div>;
+      }
+
+      function Wrapper(): React.ReactNode {
+        const [suspended, setSuspended] = useState(false);
+
+        return (
+          <div>
+            <SuspendSignalsProvider value={suspended}>
+              <QueryComponent />
+            </SuspendSignalsProvider>
+            <button onClick={() => setSuspended(!suspended)}>Toggle Suspend</button>
+          </div>
+        );
+      }
+
+      const { getByTestId, getByText } = render(
+        <ContextProvider contexts={[[QueryClientContext, pollingClient]]}>
+          <Wrapper />
+        </ContextProvider>,
+      );
+
+      // Initial fetch
+      await sleep(50);
+      await expect.element(getByTestId('user-name')).toHaveTextContent('Alice 1');
+      expect(fetchCount).toBeGreaterThanOrEqual(1);
+
+      // Wait for polling to happen
+      // Suspend - polling continues but no re-renders
+      await userEvent.click(getByText('Toggle Suspend'));
+      const fetchCountBeforeSuspend = fetchCount;
+
+      await sleep(50);
+
+      expect(fetchCount).toBe(fetchCountBeforeSuspend);
+
+      // Re-enable - should show latest value from polling
+      await userEvent.click(getByText('Toggle Suspend'));
+      await sleep(50);
+
+      expect(fetchCount).toBeGreaterThan(fetchCountBeforeSuspend);
+
+      pollingClient.destroy();
     });
   });
 });

@@ -146,6 +146,10 @@ export function parseObjectEntities(
     const typename = entityDef.typenameValue;
     const id = obj[entityDef.idField];
 
+    if (id === undefined) {
+      throw new Error(`Entity id is required: ${typename}`);
+    }
+
     const desc = `${typename}:${id}`;
     const key = hashValue(desc);
 
