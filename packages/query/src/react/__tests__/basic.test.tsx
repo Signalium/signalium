@@ -800,6 +800,7 @@ describe('React Query Integration', () => {
       const getItem = query(() => ({
         path: '/item',
         response: { data: t.string },
+        cache: { retry: false }, // Disable retries for this test
       }));
 
       function Component(): React.ReactNode {

@@ -15,3 +15,4 @@ export {
 } from './QueryStore.js';
 export type { SyncPersistentStore, AsyncPersistentStore, AsyncQueryStoreConfig, StoreMessage } from './QueryStore.js';
 export { query, infiniteQuery } from './query.js';
+export { NetworkManager, defaultNetworkManager, NetworkManagerContext } from './NetworkManager.js';
