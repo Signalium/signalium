@@ -10,7 +10,7 @@ export function watchSignal(signal: ReactiveFnSignal<any, any>): void {
   // If > 0, already watching, return
   if (watchCount > 0) return;
 
-  // If signal is being watched again, remove from GC candidates
+  // If signal is being watched again, remove from GC candidates and add back to scope
   signal.scope?.removeFromGc(signal);
 
   for (const dep of signal.deps.keys()) {

@@ -71,6 +71,8 @@ export class ReactiveFnSignal<T, Args extends unknown[]> {
   private flags: number;
   scope: SignalScope | undefined = undefined;
 
+  id = ++ID;
+
   subs = new Map<WeakRef<ReactiveFnSignal<any, any>>, Edge>();
   deps = new Map<ReactiveFnSignal<any, any>, Edge>();
 

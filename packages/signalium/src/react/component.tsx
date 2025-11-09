@@ -1,14 +1,18 @@
-import { useMemo, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useScope } from './context.js';
+import { useSignalsSuspended } from './suspend-signals-context.js';
 import { createReactiveFnSignal, ReactiveFnSignal } from '../internals/reactive.js';
 import { runSignal } from '../internals/get.js';
 import { hashValue } from '../internals/utils/hash.js';
+
+const noopStore = () => () => {};
 
 export default function component<Props extends object>(
   fn: (props: Props) => React.ReactNode | React.ReactNode[] | null,
 ) {
   const Component = (props: Props) => {
     const scope = useScope();
+    const suspended = useSignalsSuspended();
 
     const fnSignalRef = useRef<ReactiveFnSignal<React.ReactNode | React.ReactNode[] | null, []> | undefined>(undefined);
     const propsRef = useRef<Props>(props);
@@ -37,7 +41,7 @@ export default function component<Props extends object>(
     // whether or not the result changed. This is because the signal is lazy,
     // so it will not be updated until the next render.
     useSyncExternalStore(
-      signal.addListenerLazy(),
+      suspended ? noopStore : signal.addListenerLazy(),
       () => signal.updatedCount,
       () => signal.updatedCount,
     );

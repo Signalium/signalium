@@ -364,3 +364,48 @@ Multiple contexts can be provided to the `ContextProvider` component, removing t
 ```
 
 The primary reason for this is for performance. Each time we add a new provider, we create a new scope and rerun all of the Reactive Functions in that scope. This is why it's generally better to flatten multiple Contexts into a single provider, rather than nesting them.
+
+## Suspending Signals
+
+In certain scenarios, particularly in React Native applications, you may need to temporarily pause signal updates without fully unmounting components. For example, React Native keeps tab screens mounted in the background, but you don't want those background screens consuming resources or receiving updates.
+
+Signalium provides `SuspendSignalsProvider` to handle this use case:
+
+```tsx
+import { SuspendSignalsProvider } from 'signalium/react';
+
+function TabNavigator() {
+  const [activeTab, setActiveTab] = useState('home');
+
+  return (
+    <>
+      <SuspendSignalsProvider value={activeTab !== 'home'}>
+        <HomeScreen />
+      </SuspendSignalsProvider>
+
+      <SuspendSignalsProvider value={activeTab !== 'profile'}>
+        <ProfileScreen />
+      </SuspendSignalsProvider>
+    </>
+  );
+}
+```
+
+### How Suspension Works
+
+When a signal subtree is suspended (`SuspendSignalsContext.Provider value={true}`):
+
+1. **No subscriptions**: Components don't subscribe to signal updates
+2. **No re-renders**: Signal updates don't trigger component re-renders
+3. **Value retention**: Signals maintain their last known value in the component
+4. **Automatic GC**: Signals are unwatched and may be garbage collected if not used elsewhere
+
+When the signal subtree is resumed (`value={false}`):
+
+1. **Resubscribe**: Components subscribe to signals again
+2. **Immediate sync**: Components immediately show the current signal values
+3. **Normal operation**: Signal updates resume triggering re-renders
+
+{% callout type="warning" title="Note" %}
+Suspended signals will still rerun if accessed manually. This means that if the component tree rerenders for any other reason, the signals will rerun as well. However, none of the Relays _within_ the suspended subtree will be reactivated, so it will recompute with the last known values for all Relays.
+{% /callout %}
