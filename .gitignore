@@ -3,4 +3,6 @@ dist
 .turbo
 packages/signalium/*.js
 packages/signalium/*.d.ts
+packages/query/**/*.d.ts
+packages/query/**/*.js
 __screenshots__/
