@@ -7,19 +7,24 @@ import { ReactiveFnSignal } from '../internals/reactive.js';
 import { isReactivePromise, isRelay, ReactivePromiseImpl } from '../internals/async.js';
 import { StateSignal } from '../internals/signal.js';
 import { useScope } from './context.js';
+import { useSignalsSuspended } from './suspend-signals-context.js';
 import { getGlobalScope } from '../internals/contexts.js';
 
 const useStateSignal = <T>(signal: Signal<T>): T => {
+  const suspended = useSignalsSuspended();
   return useSyncExternalStore(
-    useCallback(onStoreChange => (signal as StateSignal<T>).addListener(onStoreChange), [signal]),
+    suspended
+      ? () => () => {}
+      : useCallback(onStoreChange => (signal as StateSignal<T>).addListener(onStoreChange), [signal]),
     () => signal.value,
     () => signal.value,
   );
 };
 
 const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveFnSignal<R, Args>): ReactiveValue<R> => {
+  const suspended = useSignalsSuspended();
   return useSyncExternalStore(
-    signal.addListenerLazy(),
+    suspended ? () => () => {} : signal.addListenerLazy(),
     () => signal.value,
     () => signal.value,
   );

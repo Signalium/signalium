@@ -309,3 +309,81 @@ const App = component(() => (
 | contexts | `[...ContextPair<unknown[]>]` | Contexts to provide                 |
 | inherit  | `boolean`                     | Inherit parent scope (default true) |
 | children | `React.ReactNode`             | Children                            |
+
+### SuspendSignalsProvider
+
+```tsx
+export function SuspendSignalsProvider(props: {
+  value: boolean;
+  children: React.ReactNode;
+}): React.ReactElement;
+```
+
+Temporarily suspend signal subscriptions for an entire React subtree. When `value={true}`, components in the subtree will not subscribe to signal updates, preventing re-renders and allowing signals to be garbage collected if not used elsewhere. When `value={false}`, components resume normal signal subscription.
+
+This is particularly useful for React Native applications where screens remain mounted but inactive (e.g., background tabs), or when you need to temporarily pause expensive computations for performance reasons.
+
+```tsx
+import { component, SuspendSignalsProvider, useSignal } from 'signalium/react';
+import { reactive } from 'signalium';
+
+const expensiveComputation = reactive((input: Signal<number>) => {
+  // Heavy computation
+  return input.value * Math.random();
+});
+
+const TabNavigator = component(() => {
+  const [activeTab, setActiveTab] = useState('home');
+  const data = useSignal(0);
+
+  return (
+    <>
+      {/* Home tab - active when selected */}
+      <SuspendSignalsProvider value={activeTab !== 'home'}>
+        <div style={{ display: activeTab === 'home' ? 'block' : 'none' }}>
+          <HomeTab data={data} />
+        </div>
+      </SuspendSignalsProvider>
+
+      {/* Profile tab - suspended when not selected */}
+      <SuspendSignalsProvider value={activeTab !== 'profile'}>
+        <div style={{ display: activeTab === 'profile' ? 'block' : 'none' }}>
+          <ProfileTab data={data} />
+        </div>
+      </SuspendSignalsProvider>
+
+      <button onClick={() => setActiveTab('home')}>Home</button>
+      <button onClick={() => setActiveTab('profile')}>Profile</button>
+    </>
+  );
+});
+
+// React Native example with navigation
+import { useIsFocused } from '@react-navigation/native';
+
+const TabScreen = component(() => {
+  const isFocused = useIsFocused();
+
+  return (
+    <SuspendSignalsProvider value={!isFocused}>
+      <YourTabContent />
+    </SuspendSignalsProvider>
+  );
+});
+```
+
+**Behavior:**
+
+- **Suspended (`value={true}`)**: Components don't subscribe to signals, updates don't trigger re-renders, last known values are retained, signals may be garbage collected
+- **Active (`value={false}`)**: Normal signal subscription, updates trigger re-renders, signals show current values
+
+**Important notes:**
+
+- Suspended signals will still rerun if the component tree re-renders for other reasons (e.g., prop changes), but they will compute with the last known values for any Relays in the suspended subtree
+- For permanent cleanup, unmount the component normally — suspension is for temporary pauses
+- Works with both `useReactive` and `component()` which are the primary signal entry points in React
+
+| Prop     | Type              | Description                      |
+| -------- | ----------------- | -------------------------------- |
+| value    | `boolean`         | Whether to suspend (true) or not |
+| children | `React.ReactNode` | Children to suspend/resume       |

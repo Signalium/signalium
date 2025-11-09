@@ -123,6 +123,13 @@ export class SignalScope {
 
   removeFromGc(signal: ReactiveFnSignal<any, any>) {
     this.gcCandidates.delete(signal);
+
+    const { key } = signal;
+
+    // if the signal has a key, add it back to the signals map so we can re-use it
+    if (key) {
+      this.signals.set(key, signal);
+    }
   }
 
   forceGc(signal: ReactiveFnSignal<any, any>) {
@@ -130,9 +137,11 @@ export class SignalScope {
   }
 
   sweepGc() {
+    const signals = this.signals;
+
     for (const signal of this.gcCandidates) {
       if (signal.watchCount === 0) {
-        this.signals.delete(signal.key!);
+        signals.delete(signal.key!);
       }
     }
 

@@ -121,7 +121,7 @@ export default defineConfig({
           }),
         ],
         test: {
-          include: ['src/react/__tests__/**/*.test.ts(x)'],
+          include: ['src/react/__tests__/**/*.test.tsx'],
           name: 'react',
           browser: {
             enabled: true,
