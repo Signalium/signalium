@@ -13,6 +13,7 @@ export {
   updatedAtKeyFor,
   queueKeyFor,
 } from './QueryStore.js';
+export { t } from './typeDefs.js';
 export type { SyncPersistentStore, AsyncPersistentStore, AsyncQueryStoreConfig, StoreMessage } from './QueryStore.js';
 export { query, infiniteQuery, streamQuery } from './query.js';
 export { NetworkManager, defaultNetworkManager, NetworkManagerContext } from './NetworkManager.js';
