@@ -1,6 +1,6 @@
 {
   "name": "@signalium/docs",
-  "version": "0.0.27",
+  "version": "0.0.28",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -36,7 +36,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-highlight-words": "^0.20.0",
-    "signalium": "2.0.9",
+    "signalium": "2.1.0",
     "simple-functional-loader": "^1.2.1",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.3.3"
