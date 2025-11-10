@@ -1,5 +1,11 @@
 # @signalium/query
 
+## 1.0.4
+
+### Patch Changes
+
+- e202f05: Fix package.json main export
+
 ## 1.0.3
 
 ### Patch Changes
