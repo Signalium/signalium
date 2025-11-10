@@ -1,5 +1,11 @@
 # @signalium/query
 
+## 1.0.2
+
+### Patch Changes
+
+- 5f34de3: Add exports for entity and registerFormat
+
 ## 1.0.1
 
 ### Patch Changes
