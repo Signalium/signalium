@@ -1,6 +1,6 @@
 export * from './types.js';
 
-export { QueryClient, QueryResultImpl as QueryResult } from './QueryClient.js';
+export { QueryClient, QueryClientContext, QueryResultImpl as QueryResult } from './QueryClient.js';
 export type { QueryContext } from './QueryClient.js';
 export type { QueryStore, CachedQuery } from './QueryStore.js';
 export {
