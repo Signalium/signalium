@@ -1,5 +1,11 @@
 # @signalium/query
 
+## 1.0.3
+
+### Patch Changes
+
+- cfe249d: Export QueryClientContext
+
 ## 1.0.2
 
 ### Patch Changes
