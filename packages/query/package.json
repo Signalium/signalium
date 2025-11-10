@@ -12,14 +12,10 @@
   "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/types/index.d.ts",
-      "import": {
-        "development": "./src/index.ts",
-        "default": "./dist/esm/index.js"
-      },
-      "require": {
-        "default": "./dist/cjs/index.js"
-      }
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "default": "./dist/esm/index.js"
     },
     "./stores/async": {
       "types": "./dist/esm/stores/async.d.ts",
