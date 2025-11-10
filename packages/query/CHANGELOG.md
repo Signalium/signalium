@@ -1,5 +1,11 @@
 # @signalium/query
 
+## 1.0.1
+
+### Patch Changes
+
+- 39d3df8: Export type definitions for queries
+
 ## 1.0.0
 
 ### Minor Changes
