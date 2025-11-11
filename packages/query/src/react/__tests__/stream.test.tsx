@@ -35,6 +35,7 @@ describe('React Stream Integration', () => {
       }));
 
       const streamUser = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           setTimeout(() => {
@@ -77,6 +78,7 @@ describe('React Stream Integration', () => {
       }));
 
       const streamUser = streamQuery(() => ({
+        id: 'user-stream',
         params: { userId: t.string },
         response: User,
         subscribe: (params, onUpdate) => {
@@ -120,6 +122,7 @@ describe('React Stream Integration', () => {
       }));
 
       const streamUser1 = streamQuery(() => ({
+        id: 'user-stream',
         params: { userId: t.string },
         response: User,
         subscribe: (params, onUpdate) => {
@@ -136,6 +139,7 @@ describe('React Stream Integration', () => {
       }));
 
       const streamUser2 = streamQuery(() => ({
+        id: 'user-stream',
         params: { userId: t.string },
         response: User,
         subscribe: (params, onUpdate) => {
@@ -192,6 +196,7 @@ describe('React Stream Integration', () => {
       let updateCallback: ((update: any) => void) | undefined;
 
       const streamUser = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           subscribeCount++;
@@ -278,6 +283,7 @@ describe('React Stream Integration', () => {
       let unsubscribeCount = 0;
 
       const streamUser = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           subscribeCount++;
@@ -357,6 +363,7 @@ describe('React Stream Integration', () => {
       let updateCallback: ((update: any) => void) | undefined;
 
       const streamUser = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           updateCallback = onUpdate;
@@ -445,6 +452,7 @@ describe('React Stream Integration', () => {
       }));
 
       const streamUser = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           setTimeout(() => {
@@ -500,6 +508,7 @@ describe('React Stream Integration', () => {
       let unsubscribeCount = 0;
 
       const streamUser = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           setTimeout(() => {

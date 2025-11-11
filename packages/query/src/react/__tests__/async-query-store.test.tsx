@@ -6,9 +6,8 @@ import React from 'react';
 import { AsyncQueryStore, AsyncPersistentStore, StoreMessage, valueKeyFor } from '../../QueryStore.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { entity, t } from '../../typeDefs.js';
-import { query } from '../../query.js';
+import { query, queryKeyForFn } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
-import { hashValue } from 'signalium/utils';
 
 /**
  * React Integration Tests for AsyncQueryStore
@@ -151,8 +150,7 @@ describe('React AsyncQueryStore Integration', () => {
       await sleep(200);
 
       // Verify data was persisted (as entity reference in query, entity data stored separately)
-      const queryDefId = 'GET:/users/[id]';
-      const queryKey = hashValue([queryDefId, { id: '1' }]);
+      const queryKey = queryKeyForFn(getUser, { id: '1' });
       const persistedValue = await mockDelegate.getString(valueKeyFor(queryKey));
 
       expect(persistedValue).toBeDefined();
@@ -353,8 +351,8 @@ describe('React AsyncQueryStore Integration', () => {
       await sleep(250);
 
       // Verify both were persisted (as entity references)
-      const userQueryKey = hashValue(['GET:/users/[id]', { id: '1' }]);
-      const postQueryKey = hashValue(['GET:/posts/[id]', { id: '100' }]);
+      const userQueryKey = queryKeyForFn(getUser, { id: '1' });
+      const postQueryKey = queryKeyForFn(getPost, { id: '100' });
 
       const persistedUser = await mockDelegate.getString(valueKeyFor(userQueryKey));
       const persistedPost = await mockDelegate.getString(valueKeyFor(postQueryKey));
@@ -421,7 +419,7 @@ describe('React AsyncQueryStore Integration', () => {
       await sleep(200);
 
       // Verify updated data was persisted (as entity reference)
-      const queryKey = hashValue(['GET:/users/[id]', { id: '1' }]);
+      const queryKey = queryKeyForFn(getUser, { id: '1' });
       const persistedValue = await mockDelegate.getString(valueKeyFor(queryKey));
 
       expect(JSON.parse(persistedValue!)).toHaveProperty('__entityRef');

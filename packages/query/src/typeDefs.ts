@@ -10,68 +10,123 @@ import {
   RECORD_KEY,
   RecordDef,
   TypeDef,
-  ObjectFieldTypeDef,
   UnionDef,
   UnionTypeDefs,
 } from './types.js';
-import { extractShape, extractShapeMetadata } from './utils.js';
+import { hashValue } from 'signalium/utils';
+
+const entries = Object.entries;
+const isArray = Array.isArray;
+
+const enum ComplexTypeDefKind {
+  OBJECT = 0,
+  UNION = 1,
+  PRIMITIVE_UNION = 2,
+  ARRAY = 3,
+  RECORD = 4,
+  ENTITY = 5,
+}
 
 export class ValidatorDef<T> {
+  private kind: ComplexTypeDefKind;
+  public mask: Mask;
   private _optional: ValidatorDef<T | undefined> | undefined;
   private _nullable: ValidatorDef<T | null> | undefined;
   private _nullish: ValidatorDef<T | null | undefined> | undefined;
+  private _shapeKey: number | undefined = undefined;
+  private _shape: TypeDef | ObjectShape | UnionTypeDefs | (() => ObjectShape) | ComplexTypeDef[] | undefined;
+  public subEntityPaths: undefined | string | string[] = undefined;
+  public typenameField: string | undefined = undefined;
+  public typenameValue: string | undefined = undefined;
+  public idField: string | undefined = undefined;
+  public values: Set<string | boolean | number> | undefined = undefined;
 
   constructor(
-    public mask: Mask,
-    public shape: ObjectFieldTypeDef | ObjectShape | ((t: APITypes) => ObjectShape) | UnionTypeDefs | undefined,
-    public subEntityPaths: undefined | string | string[] = undefined,
-    public values: Set<string | boolean | number> | undefined = undefined,
-    public typenameField: string | undefined = undefined,
-    public typenameValue: string | undefined = undefined,
-    public idField: string | undefined = undefined,
-  ) {}
+    kind: ComplexTypeDefKind,
+    mask: Mask,
+    shape: TypeDef | ObjectShape | UnionTypeDefs | (() => ObjectShape) | ComplexTypeDef[] | undefined,
+    values: Set<string | boolean | number> | undefined = undefined,
+  ) {
+    this.kind = kind;
+    this.mask = mask;
+    this._shape = shape;
+    this.values = values;
+  }
+
+  static cloneWith(
+    def: ValidatorDef<any>,
+    mask: Mask,
+    values: Set<string | boolean | number> | undefined = undefined,
+  ): ValidatorDef<any> {
+    const newDef = new ValidatorDef(def.kind, mask | def.mask, def._shape, values);
+    newDef.subEntityPaths = def.subEntityPaths;
+    newDef.values = def.values;
+    newDef.typenameField = def.typenameField;
+    newDef.typenameValue = def.typenameValue;
+    newDef.idField = def.idField;
+    return newDef;
+  }
+
+  reifyShape() {
+    if (this._shapeKey === undefined) {
+      switch (this.kind) {
+        case ComplexTypeDefKind.ENTITY: {
+          const shape = (this._shape as () => ObjectShape)();
+          this._shape = reifyObjectShape(this, shape);
+          break;
+        }
+        case ComplexTypeDefKind.OBJECT:
+          this._shape = reifyObjectShape(this, this._shape as ObjectShape);
+          break;
+        case ComplexTypeDefKind.UNION:
+          this._shape = reifyUnionShape(this, this._shape as ComplexTypeDef[]);
+          break;
+        case ComplexTypeDefKind.ARRAY:
+        case ComplexTypeDefKind.RECORD: {
+          const shape = this._shape as ComplexTypeDef;
+          this._shapeKey = hashValue([this.mask, this.values, shape.shapeKey]);
+          if (shape.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
+            this.mask |= Mask.HAS_SUB_ENTITY;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  get shape(): TypeDef | ObjectShape | UnionTypeDefs | undefined {
+    this.reifyShape();
+
+    return this._shape as TypeDef | ObjectShape | UnionTypeDefs | undefined;
+  }
+
+  get shapeKey(): number {
+    this.reifyShape();
+
+    return this._shapeKey!;
+  }
+
+  set shapeKey(key: number) {
+    this._shapeKey = key >>> 0;
+  }
 
   get optional(): ValidatorDef<T | undefined> {
     if (this._optional === undefined) {
-      this._optional = new ValidatorDef(
-        this.mask | Mask.UNDEFINED,
-        this.shape,
-        this.subEntityPaths,
-        this.values,
-        this.typenameField,
-        this.typenameValue,
-        this.idField,
-      );
+      this._optional = ValidatorDef.cloneWith(this, Mask.UNDEFINED);
     }
     return this._optional;
   }
 
   get nullable(): ValidatorDef<T | null> {
     if (this._nullable === undefined) {
-      this._nullable = new ValidatorDef(
-        this.mask | Mask.NULL,
-        this.shape,
-        this.subEntityPaths,
-        this.values,
-        this.typenameField,
-        this.typenameValue,
-        this.idField,
-      );
+      this._nullable = ValidatorDef.cloneWith(this, Mask.NULL);
     }
     return this._nullable;
   }
 
   get nullish(): ValidatorDef<T | null | undefined> {
     if (this._nullish === undefined) {
-      this._nullish = new ValidatorDef(
-        this.mask | Mask.UNDEFINED | Mask.NULL,
-        this.shape,
-        this.subEntityPaths,
-        this.values,
-        this.typenameField,
-        this.typenameValue,
-        this.idField,
-      );
+      this._nullish = ValidatorDef.cloneWith(this, Mask.UNDEFINED | Mask.NULL);
     }
     return this._nullish;
   }
@@ -82,121 +137,22 @@ export class ValidatorDef<T> {
 // -----------------------------------------------------------------------------
 
 export function defineArray<T extends TypeDef>(shape: T): ArrayDef<T> {
-  let mask = Mask.ARRAY;
-
-  // Propagate HAS_SUB_ENTITY flag if the shape contains entities
-  if (shape instanceof ValidatorDef && (shape.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) !== 0) {
-    mask |= Mask.HAS_SUB_ENTITY;
-  }
-
-  return new ValidatorDef(mask, shape) as unknown as ArrayDef<T>;
+  return new ValidatorDef(ComplexTypeDefKind.ARRAY, Mask.ARRAY, shape) as unknown as ArrayDef<T>;
 }
 
 export function defineRecord<T extends TypeDef>(shape: T): RecordDef<T> {
-  // The mask should be OBJECT | RECORD so that values match when compared
-  let mask = Mask.RECORD | Mask.OBJECT;
-
-  // Propagate HAS_SUB_ENTITY flag if the shape contains entities
-  if (shape instanceof ValidatorDef && (shape.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) !== 0) {
-    mask |= Mask.HAS_SUB_ENTITY;
-  }
-
-  return new ValidatorDef(mask, shape) as unknown as RecordDef<T>;
+  return new ValidatorDef(ComplexTypeDefKind.RECORD, Mask.RECORD | Mask.OBJECT, shape) as unknown as RecordDef<T>;
 }
 
 export function defineObject<T extends ObjectShape>(shape: T): ObjectDef<T> {
-  const def = new ValidatorDef(Mask.OBJECT, shape);
-
-  extractShapeMetadata(def, shape);
-
-  return def as unknown as ObjectDef<T>;
+  return new ValidatorDef(ComplexTypeDefKind.OBJECT, Mask.OBJECT, shape) as unknown as ObjectDef<T>;
 }
-
-const addShapeToUnion = (
-  shape: UnionTypeDefs,
-  definition: ObjectDef | EntityDef | RecordDef | UnionDef | ArrayDef,
-  unionTypenameField: string | undefined,
-) => {
-  const mask = definition.mask;
-
-  if ((mask & Mask.UNION) !== 0) {
-    // Merge nested union into parent union
-    const nestedUnion = definition as UnionDef;
-
-    // Check typename field consistency
-    if (nestedUnion.typenameField !== undefined) {
-      if (unionTypenameField !== undefined && unionTypenameField !== nestedUnion.typenameField) {
-        throw new Error(
-          `Union typename field conflict: Cannot merge unions with different typename fields ('${unionTypenameField}' vs '${nestedUnion.typenameField}')`,
-        );
-      }
-      unionTypenameField = nestedUnion.typenameField;
-    }
-
-    // Merge nested union's shape into parent
-    if (nestedUnion.shape !== undefined) {
-      for (const key of [...Object.keys(nestedUnion.shape), ARRAY_KEY, RECORD_KEY] as const) {
-        // Check for conflicts
-        const value = nestedUnion.shape[key];
-
-        if (shape[key] !== undefined && shape[key] !== value) {
-          throw new Error(
-            `Union merge conflict: Duplicate typename value '${String(key)}' found when merging nested unions`,
-          );
-        }
-
-        // coerce type because we know the value is the same type as the key
-        shape[key] = value as any;
-      }
-    }
-
-    return unionTypenameField;
-  } else if ((mask & Mask.ARRAY) !== 0) {
-    if (shape[ARRAY_KEY] !== undefined) {
-      throw new Error('Array shape already defined');
-    }
-
-    shape[ARRAY_KEY] = definition.shape as TypeDef;
-
-    return unionTypenameField;
-  } else if ((mask & Mask.RECORD) !== 0) {
-    if (shape[RECORD_KEY] !== undefined) {
-      throw new Error('Record shape already defined');
-    }
-
-    shape[RECORD_KEY] = definition.shape as TypeDef;
-
-    return unionTypenameField;
-  } else {
-    // Make sure the type is fully extracted, so we can get the typename field and value
-    extractShape(definition);
-
-    // definition is ObjectDef | EntityDef
-    const typenameField = (definition as ObjectDef).typenameField;
-    const typename = (definition as ObjectDef).typenameValue;
-
-    if (typename === undefined) {
-      throw new Error(
-        'Object definitions must have a typename to be in a union with other objects, records, or arrays',
-      );
-    }
-
-    if (unionTypenameField !== undefined && typenameField !== unionTypenameField) {
-      throw new Error('Object definitions must have the same typename field to be in the same union');
-    }
-
-    shape[typename] = definition as ObjectDef;
-
-    return typenameField;
-  }
-};
 
 function defineUnion<T extends readonly TypeDef[]>(...types: T): UnionDef<T> {
   let mask = 0;
-  let definition: ObjectDef | EntityDef | RecordDef | UnionDef | ArrayDef | undefined;
-  let shape: UnionTypeDefs | undefined;
+  let definition: ComplexTypeDef | undefined;
+  let shape: ComplexTypeDef[] | undefined;
   let values: Set<string | boolean | number> | undefined;
-  let unionTypenameField: string | undefined;
 
   for (const type of types) {
     if (typeof type === 'number') {
@@ -204,61 +160,213 @@ function defineUnion<T extends readonly TypeDef[]>(...types: T): UnionDef<T> {
       continue;
     }
 
-    const isSet = type instanceof Set;
-    const typeValues = isSet ? type : type.values;
-
-    // Handle Set-based constants/enums
-    if (typeValues !== undefined) {
+    if (type instanceof Set) {
       if (values === undefined) {
-        values = new Set(typeValues);
+        values = new Set(type);
       } else {
-        for (const val of typeValues) {
+        for (const val of type) {
           values.add(val);
         }
       }
 
-      if (isSet) {
-        continue;
-      }
+      continue;
     }
 
-    // We know it's a complex type at this point because if it was a Set,
-    // we would have already handled it above.
-    const typeDef = type as ComplexTypeDef;
-
-    mask |= typeDef.mask;
-
     if (definition === undefined) {
-      definition = typeDef;
+      definition = type;
       continue;
     }
 
     if (shape === undefined) {
-      shape = Object.create(null) as UnionTypeDefs;
-
-      unionTypenameField = addShapeToUnion(shape, definition, unionTypenameField);
+      shape = [definition];
     }
 
-    unionTypenameField = addShapeToUnion(shape, typeDef, unionTypenameField);
+    shape.push(type);
   }
 
-  // It was a union of primitives, so return the mask
-  if (definition === undefined && values === undefined) {
-    // This type coercion is incorrect, but we can't return the mask as a Mask
-    // because that loses the type information about the union, which breaks
-    // inference.
-    //
-    // TODO: Figure out how to make this correct type-wise
-    return mask as unknown as UnionDef<T>;
+  if (definition === undefined) {
+    // It was a union of primitives, so return the mask
+    if (values === undefined) {
+      // This type coercion is incorrect, but we can't return the mask as a Mask
+      // because that loses the type information about the union, which breaks
+      // inference.
+      //
+      // TODO: Figure out how to make this correct type-wise
+      return mask as unknown as UnionDef<T>;
+    }
+
+    // It was a union of enums/constants, so return the value as a Set
+    if (mask === 0) {
+      // This type coercion is incorrect, but we can't return the mask as a Mask
+      // because that loses the type information about the union, which breaks
+      // inference.
+      //
+      // TODO: Figure out how to make this correct type-wise
+
+      return values as unknown as UnionDef<T>;
+    }
+
+    // It was a union of primitives and enums, so return the mask and values as a new ValidatorDef
+    return new ValidatorDef(ComplexTypeDefKind.PRIMITIVE_UNION, mask | Mask.UNION, undefined, values) as UnionDef;
   }
 
-  return new ValidatorDef(
-    mask | Mask.UNION,
-    shape ?? definition?.shape,
-    undefined,
-    values,
-    unionTypenameField,
-  ) as UnionDef;
+  // It was a single complex type, so return the clone with the new mask and values
+  if (shape === undefined) {
+    return ValidatorDef.cloneWith(definition as ValidatorDef<any>, mask | Mask.UNION, values) as UnionDef<T>;
+  }
+
+  return new ValidatorDef(ComplexTypeDefKind.UNION, mask | Mask.UNION, shape, values) as UnionDef;
+}
+
+// -----------------------------------------------------------------------------
+// Shape Reification
+// -----------------------------------------------------------------------------
+
+export function reifyObjectShape(def: ValidatorDef<any>, shape: ObjectShape): ObjectShape {
+  // create a hash of the shape, starting with the object mask as the base
+  let shapeKey = hashValue([def.mask, def.values]);
+
+  for (const [key, value] of entries(shape)) {
+    switch (typeof value) {
+      case 'number':
+        if ((value & Mask.ID) !== 0) {
+          if (def.idField !== undefined) {
+            throw new Error(`Duplicate id field: ${key}`);
+          }
+
+          def.idField = key;
+        }
+
+        // Add to shape key (order independent operation)
+        shapeKey += hashValue(key) ^ value;
+        break;
+      case 'string':
+        // This is a typename field (plain string value)
+        if (def.typenameField !== undefined && def.typenameField !== key) {
+          throw new Error(`Duplicate typename field: ${key}`);
+        }
+
+        def.typenameField = key;
+        def.typenameValue = value;
+
+        // Add to shape key (order independent operation)
+        shapeKey += hashValue(key) ^ hashValue(value);
+        break;
+      case 'object':
+        if (value instanceof Set) {
+          shapeKey ^= hashValue(key) ^ hashValue(value);
+          break;
+        }
+
+        // Add to shape key (order independent operation)
+        shapeKey += hashValue(key) ^ value.shapeKey;
+
+        if (value.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
+          def.mask |= Mask.HAS_SUB_ENTITY;
+          if (def.subEntityPaths === undefined) {
+            def.subEntityPaths = key;
+          } else if (isArray(def.subEntityPaths)) {
+            def.subEntityPaths.push(key);
+          } else {
+            def.subEntityPaths = [def.subEntityPaths, key];
+          }
+        }
+        break;
+    }
+  }
+
+  // Convert to unsigned 32-bit integer
+  def.shapeKey = shapeKey >>> 0;
+
+  return shape;
+}
+
+function reifyUnionShape(def: ValidatorDef<any>, defs: ComplexTypeDef[]): UnionTypeDefs {
+  let mask = def.mask;
+
+  let shape: UnionTypeDefs = Object.create(null);
+  let unionTypenameField: string | undefined;
+
+  // Start with the union mask and any values as the base
+  let shapeKey = hashValue([mask, def.values]);
+
+  for (const nestedDef of defs) {
+    const nestedMask = nestedDef.mask;
+
+    mask |= nestedMask;
+
+    // load the shape key and also reify the shape if not yet reified
+    shapeKey += nestedDef.shapeKey;
+
+    if ((nestedMask & Mask.UNION) !== 0) {
+      // Merge nested union into parent union
+      const nestedUnion = nestedDef as UnionDef;
+
+      // Check typename field consistency
+      if (nestedUnion.typenameField !== undefined) {
+        if (unionTypenameField !== undefined && unionTypenameField !== nestedUnion.typenameField) {
+          throw new Error(
+            `Union typename field conflict: Cannot merge unions with different typename fields ('${unionTypenameField}' vs '${nestedUnion.typenameField}')`,
+          );
+        }
+        unionTypenameField = nestedUnion.typenameField;
+      }
+
+      const nestedShape = nestedUnion.shape;
+
+      // Merge nested union's shape into parent
+      if (nestedShape !== undefined) {
+        for (const key of [...Object.keys(nestedShape), ARRAY_KEY, RECORD_KEY] as const) {
+          // Check for conflicts
+          const value = nestedShape[key];
+
+          if (shape[key] !== undefined && shape[key] !== value) {
+            throw new Error(
+              `Union merge conflict: Duplicate typename value '${String(key)}' found when merging nested unions (${String(shape[key])} vs ${String(value)})`,
+            );
+          }
+
+          // coerce type because we know the value is the same type as the key
+          shape[key] = value as any;
+        }
+      }
+    } else if ((nestedMask & Mask.ARRAY) !== 0) {
+      if (shape[ARRAY_KEY] !== undefined) {
+        throw new Error('Array shape already defined');
+      }
+
+      shape[ARRAY_KEY] = nestedDef.shape as TypeDef;
+    } else if ((nestedMask & Mask.RECORD) !== 0) {
+      if (shape[RECORD_KEY] !== undefined) {
+        throw new Error('Record shape already defined');
+      }
+
+      shape[RECORD_KEY] = nestedDef.shape as TypeDef;
+    } else {
+      // definition is ObjectDef | EntityDef
+      const typenameField = (nestedDef as ObjectDef).typenameField;
+      const typename = (nestedDef as ObjectDef).typenameValue;
+
+      if (typename === undefined) {
+        throw new Error(
+          'Object definitions must have a typename to be in a union with other objects, records, or arrays',
+        );
+      }
+
+      if (unionTypenameField !== undefined && typenameField !== unionTypenameField) {
+        throw new Error('Object definitions must have the same typename field to be in the same union');
+      }
+
+      unionTypenameField = typenameField;
+      shape[typename] = nestedDef as ObjectDef;
+    }
+  }
+
+  def.typenameField = unionTypenameField;
+  def.shapeKey = shapeKey >>> 0;
+  def.mask = mask;
+
+  return shape;
 }
 
 // -----------------------------------------------------------------------------
@@ -325,8 +433,9 @@ export function registerFormat<Input extends string | boolean, T>(
 // Entity Definitions
 // -----------------------------------------------------------------------------
 
-export function entity<T extends ObjectShape>(shape: (t: APITypes) => T): EntityDef<T> {
+export function entity<T extends ObjectShape>(shape: () => T): EntityDef<T> {
   return new ValidatorDef(
+    ComplexTypeDefKind.ENTITY,
     // The mask should be OBJECT | ENTITY so that values match when compared
     Mask.ENTITY | Mask.OBJECT,
     shape,

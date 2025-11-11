@@ -12,7 +12,7 @@ import {
   UnionDef,
   TypeDef,
 } from './types.js';
-import { extractShape, typeMaskOf } from './utils.js';
+import { typeMaskOf } from './utils.js';
 import { PreloadedEntityRecord } from './EntityMap.js';
 
 const entries = Object.entries;
@@ -81,7 +81,7 @@ export function parseObjectValue(object: Record<string, unknown>, objectShape: O
     return object;
   }
 
-  const shape = extractShape(objectShape);
+  const shape = objectShape.shape;
 
   for (const [key, propShape] of entries(shape)) {
     // parse and replace the property in place
@@ -196,7 +196,7 @@ export function createEntityProxy(
   desc?: string,
 ): Record<string, unknown> {
   // Cache for nested proxies - each proxy gets its own cache
-  const shape = extractShape(def);
+  const shape = def.shape;
 
   const toJSON = () => ({
     __entityRef: id,

@@ -215,7 +215,7 @@ describe('React Query Integration with component()', () => {
 
   describe('Entity Updates and Reactivity', () => {
     it('should update component when entity data changes', async () => {
-      const User = entity(t => ({
+      const User = entity(() => ({
         __typename: t.typename('User'),
         id: t.id,
         name: t.string,
@@ -261,7 +261,7 @@ describe('React Query Integration with component()', () => {
     });
 
     it('should keep multiple components in sync when sharing entity data', async () => {
-      const User = entity(t => ({
+      const User = entity(() => ({
         __typename: t.typename('User'),
         id: t.id,
         name: t.string,
@@ -328,14 +328,14 @@ describe('React Query Integration with component()', () => {
     });
 
     it('should sync entity updates across different queries that reference the same entity', async () => {
-      const User = entity(t => ({
+      const User = entity(() => ({
         __typename: t.typename('User'),
         id: t.id,
         name: t.string,
         email: t.string,
       }));
 
-      const Post = entity(t => ({
+      const Post = entity(() => ({
         __typename: t.typename('Post'),
         id: t.id,
         title: t.string,
@@ -460,7 +460,7 @@ describe('React Query Integration with component()', () => {
     });
 
     it('should not rerender parent components when only child components change', async () => {
-      const User = entity(t => ({
+      const User = entity(() => ({
         __typename: t.typename('User'),
         id: t.id,
         name: t.string,
@@ -564,13 +564,13 @@ describe('React Query Integration with component()', () => {
     });
 
     it('should handle nested entities correctly', async () => {
-      const User = entity(t => ({
+      const User = entity(() => ({
         __typename: t.typename('User'),
         id: t.id,
         name: t.string,
       }));
 
-      const Post = entity(t => ({
+      const Post = entity(() => ({
         __typename: t.typename('Post'),
         id: t.id,
         title: t.string,
@@ -621,7 +621,7 @@ describe('React Query Integration with component()', () => {
     });
 
     it('should conditionally render based on entity data', async () => {
-      const User = entity(t => ({
+      const User = entity(() => ({
         __typename: t.typename('User'),
         id: t.id,
         name: t.string,

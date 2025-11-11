@@ -92,6 +92,7 @@ export interface UnionTypeDefs {
 
 export interface BaseTypeDef {
   mask: Mask;
+  shapeKey: number;
   typenameField: string;
   typenameValue: string;
   idField: string;
@@ -105,7 +106,7 @@ export interface BaseTypeDef {
 
 export interface EntityDef<T extends ObjectShape = ObjectShape> extends BaseTypeDef {
   mask: Mask.ENTITY;
-  shape: T | ((t: APITypes) => T);
+  shape: T;
 }
 
 export interface ObjectDef<T extends ObjectShape = ObjectShape> extends BaseTypeDef {

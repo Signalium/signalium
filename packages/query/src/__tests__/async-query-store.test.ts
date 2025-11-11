@@ -11,7 +11,7 @@ import {
 } from '../QueryStore.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
-import { query } from '../query.js';
+import { query, queryKeyForFn } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 
@@ -159,8 +159,8 @@ describe('AsyncQueryStore', () => {
       }));
 
       const queryDefId = 'GET:/users/[id]';
-      const queryKey1 = hashValue([queryDefId, { id: '1' }]);
-      const queryKey2 = hashValue([queryDefId, { id: '2' }]);
+      const queryKey1 = queryKeyForFn(getUser, { id: '1' });
+      const queryKey2 = queryKeyForFn(getUser, { id: '2' });
 
       const user1 = { id: '1', name: 'Alice' };
       const user2 = { id: '2', name: 'Bob' };
