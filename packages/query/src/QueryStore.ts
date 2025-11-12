@@ -239,9 +239,7 @@ export class SyncQueryStore implements QueryStore {
         queue = new Uint32Array(maxCount);
         this.kv.setBuffer(queueKeyFor(queryDef.id), queue);
       } else if (queue.length !== maxCount) {
-        const newQueue = new Uint32Array(maxCount);
-        newQueue.set(queue);
-        queue = newQueue;
+        queue = new Uint32Array(queue.buffer, 0, maxCount);
         this.kv.setBuffer(queueKeyFor(queryDef.id), queue);
       }
 
@@ -601,9 +599,7 @@ export class AsyncQueryStore implements QueryStore {
         queue = new Uint32Array(maxCount);
         await this.delegate!.setBuffer(queueKeyFor(queryDefId), queue);
       } else if (queue.length !== maxCount) {
-        const newQueue = new Uint32Array(maxCount);
-        newQueue.set(queue);
-        queue = newQueue;
+        queue = new Uint32Array(queue.buffer, 0, maxCount);
         await this.delegate!.setBuffer(queueKeyFor(queryDefId), queue);
       }
 

@@ -10,7 +10,7 @@ import {
 } from '../QueryStore.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
-import { query } from '../query.js';
+import { query, queryKeyForFn } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, testWithClient, createTestWatcher, getClientEntityMap, sleep } from './utils.js';
 
@@ -122,12 +122,13 @@ function deleteDocument(kv: any, key: number) {
 }
 
 // Helper to set up a query result in the store
-function setQuery(kv: any, [queryDefId, params]: [string, any], result: unknown, refIds?: Set<number>) {
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+function setQuery(kv: any, queryFn: Function, params: unknown, result: unknown, refIds?: Set<number>) {
   if (typeof params === 'object' && params !== null && Object.keys(params).length === 0) {
     params = undefined;
   }
 
-  const queryKey = hashValue([queryDefId, params]);
+  const queryKey = queryKeyForFn(queryFn, params);
   setDocument(kv, queryKey, result, refIds);
   kv.setNumber(updatedAtKeyFor(queryKey), Date.now());
 }
@@ -162,7 +163,7 @@ describe('Caching and Persistence', () => {
         await relay;
 
         // Verify data is in document store
-        const queryKey = hashValue(['GET:/items/[id]', { id: '1' }]);
+        const queryKey = queryKeyForFn(getItem, { id: '1' });
         const cached = getDocument(kv, queryKey);
 
         expect(cached).toEqual({ id: 1, name: 'Test' });
@@ -170,7 +171,12 @@ describe('Caching and Persistence', () => {
     });
 
     it('should load query results from cache', async () => {
-      const queryKey = hashValue(['GET:/items/[id]', { id: '1' }]);
+      const getItem = query(() => ({
+        path: '/items/[id]',
+        response: { id: t.number, name: t.string },
+      }));
+
+      const queryKey = queryKeyForFn(getItem, { id: '1' });
       const cachedData = { id: 1, name: 'Cached Data' };
 
       // Pre-populate cache
@@ -184,11 +190,6 @@ describe('Caching and Persistence', () => {
           delay: 10,
         },
       );
-
-      const getItem = query(() => ({
-        path: '/items/[id]',
-        response: { id: t.number, name: t.string },
-      }));
 
       await testWithClient(client, async () => {
         const relay = getItem({ id: '1' });
@@ -320,7 +321,7 @@ describe('Caching and Persistence', () => {
       const queryResult = {
         user: { __entityRef: userKey },
       };
-      setQuery(kv, ['GET:/document', {}], queryResult, new Set([userKey]));
+      setQuery(kv, getDocument, {}, queryResult, new Set([userKey]));
 
       // Query returns entity reference
       mockFetch.get(
@@ -463,7 +464,7 @@ describe('Caching and Persistence', () => {
         await relay;
 
         // Check that query and entity are stored
-        const queryKey = hashValue(['GET:/users/[id]', { id: '1' }]);
+        const queryKey = queryKeyForFn(getUser, { id: '1' });
         const userKey = hashValue('User:1');
 
         const queryValue = getDocument(kv, queryKey);
@@ -560,9 +561,9 @@ describe('Caching and Persistence', () => {
         const relay2 = getUser({ id: '2' });
         await relay2;
 
-        const query1Key = hashValue(['GET:/users/[id]', { id: '1' }]);
-        const query2Key = hashValue(['GET:/users/[id]', { id: '2' }]);
-        const query3Key = hashValue(['GET:/users/[id]', { id: '3' }]);
+        const query1Key = queryKeyForFn(getUser, { id: '1' });
+        const query2Key = queryKeyForFn(getUser, { id: '2' });
+        const query3Key = queryKeyForFn(getUser, { id: '3' });
 
         const user1Key = hashValue('User:1');
         const user2Key = hashValue('User:2');
@@ -839,7 +840,7 @@ describe('Caching and Persistence', () => {
         expect(result.posts.length).toEqual(3);
 
         const postKey = hashValue('Post:1');
-        const queryKey = hashValue(['GET:/posts', undefined]);
+        const queryKey = queryKeyForFn(getPosts, undefined);
 
         // Query should reference post 1
         const refs = await kv.getBuffer(refIdsKeyFor(queryKey));
@@ -886,7 +887,7 @@ describe('Caching and Persistence', () => {
         const relay1 = getUser({ id: '1' });
         await relay1;
 
-        const queryKey = hashValue(['GET:/users/[id]', { id: '1' }]);
+        const queryKey = queryKeyForFn(getUser, { id: '1' });
 
         // Verify all keys exist for the query
         expect(await kv.getString(valueKeyFor(queryKey))).toBeDefined();

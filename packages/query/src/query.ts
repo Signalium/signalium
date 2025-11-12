@@ -1,6 +1,5 @@
 import { getContext, reactive } from 'signalium';
 import {
-  APITypes,
   QueryResult,
   Mask,
   ObjectFieldTypeDef,
@@ -10,6 +9,7 @@ import {
   ExtractTypesFromObjectOrUndefined,
   EntityDef,
   StreamQueryFn,
+  TypeDef,
 } from './types.js';
 import {
   QueryCacheOptions,
@@ -17,12 +17,13 @@ import {
   QueryContext,
   QueryDefinition,
   QueryParams,
-  StreamQueryDefinition,
   StreamCacheOptions,
   QueryType,
+  queryKeyFor,
 } from './QueryClient.js';
 import { t, ValidatorDef } from './typeDefs.js';
 import { createPathInterpolator } from './pathInterpolator.js';
+import { hashValue } from 'signalium/utils';
 
 type IsParameter<Part> = Part extends `[${infer ParamName}]` ? ParamName : never;
 type FilteredParts<Path> = Path extends `${infer PartA}/${infer PartB}`
@@ -36,6 +37,21 @@ type PathParams<Path> = {
 
 type SearchParamsType = Mask.NUMBER | Mask.STRING | Set<string | boolean | number>;
 type SearchParamsDefinition = Record<string, SearchParamsType | UnionDef<SearchParamsType[]>>;
+
+// Map for getting query definitions by function reference, for testing
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+const QUERY_DEFINITION_MAP = new Map<Function, () => QueryDefinition<any, any>>();
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+export const queryKeyForFn = (fn: Function, params: unknown): number => {
+  const queryDef = QUERY_DEFINITION_MAP.get(fn);
+
+  if (queryDef === undefined) {
+    throw new Error('Query definition not found');
+  }
+
+  return queryKeyFor(queryDef(), params);
+};
 
 /**
  * BIG TODO:
@@ -78,6 +94,7 @@ interface StreamQueryDefinitionBuilder<
   Params extends SearchParamsDefinition,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
 > {
+  id: string;
   params?: Params;
   response: Response;
   subscribe: (
@@ -88,9 +105,7 @@ interface StreamQueryDefinitionBuilder<
 }
 
 function buildQueryFn(
-  queryDefinitionBuilder: (
-    t: APITypes,
-  ) =>
+  queryDefinitionBuilder: () =>
     | RESTQueryDefinition<string, SearchParamsDefinition, ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>>
     | InfiniteRESTQueryDefinition<
         string,
@@ -100,7 +115,66 @@ function buildQueryFn(
 ): QueryDefinition<QueryParams, unknown> {
   let queryDefinition: any | undefined;
 
-  return reactive(
+  const getQueryDefinition = () => {
+    if (queryDefinition === undefined) {
+      const {
+        path,
+        method = 'GET',
+        response,
+        cache,
+        pagination,
+      } = queryDefinitionBuilder() as InfiniteRESTQueryDefinition<any, any, any>;
+
+      const id = `${method}:${path}`;
+
+      let shape: TypeDef;
+      let shapeKey: number;
+
+      if (typeof response === 'object') {
+        if (response instanceof ValidatorDef) {
+          shape = response as TypeDef;
+          shapeKey = response.shapeKey;
+        } else if (response instanceof Set) {
+          shape = response;
+          shapeKey = hashValue(response);
+        } else {
+          shape = t.object(response as Record<string, ObjectFieldTypeDef>);
+          shapeKey = shape.shapeKey;
+        }
+      } else {
+        shape = response as Mask;
+        shapeKey = hashValue(shape);
+      }
+
+      // Create optimized path interpolator (parses template once)
+      const interpolatePath = createPathInterpolator(path);
+
+      const fetchFn = async (context: QueryContext, params: QueryParams) => {
+        // Interpolate path params and append search params automatically
+        const url = interpolatePath(params);
+
+        const response = await context.fetch(url, {
+          method,
+        });
+
+        return response.json();
+      };
+
+      queryDefinition = {
+        type: pagination ? QueryType.InfiniteQuery : QueryType.Query,
+        id,
+        shape,
+        shapeKey,
+        fetchFn,
+        pagination,
+        cache,
+      };
+    }
+
+    return queryDefinition;
+  };
+
+  const queryFn = reactive(
     (params: QueryParams | undefined): QueryResult<unknown> => {
       const queryClient = getContext(QueryClientContext);
 
@@ -108,52 +182,16 @@ function buildQueryFn(
         throw new Error('QueryClient not found');
       }
 
-      if (queryDefinition === undefined) {
-        const {
-          path,
-          method = 'GET',
-          response,
-          cache,
-          pagination,
-        } = queryDefinitionBuilder(t) as InfiniteRESTQueryDefinition<any, any, any>;
-
-        const id = `${method}:${path}`;
-
-        const shape: ObjectFieldTypeDef =
-          typeof response === 'object' && !(response instanceof ValidatorDef)
-            ? t.object(response as Record<string, ObjectFieldTypeDef>)
-            : (response as ObjectFieldTypeDef);
-
-        // Create optimized path interpolator (parses template once)
-        const interpolatePath = createPathInterpolator(path);
-
-        const fetchFn = async (context: QueryContext, params: QueryParams) => {
-          // Interpolate path params and append search params automatically
-          const url = interpolatePath(params);
-
-          const response = await context.fetch(url, {
-            method,
-          });
-
-          return response.json();
-        };
-
-        queryDefinition = {
-          type: pagination ? QueryType.InfiniteQuery : QueryType.Query,
-          id,
-          shape,
-          fetchFn,
-          pagination,
-          cache,
-        };
-      }
-
-      return queryClient.getQuery<unknown>(queryDefinition, params);
+      return queryClient.getQuery<unknown>(getQueryDefinition(), params);
     },
     // TODO: Getting a lot of type errors due to infinite recursion here.
     // For now, we return as any to coerce to the external type signature,
     // and internally we manage the difference.
   ) as any;
+
+  QUERY_DEFINITION_MAP.set(queryFn, getQueryDefinition);
+
+  return queryFn;
 }
 
 export function query<
@@ -186,35 +224,40 @@ export function streamQuery<
 ): StreamQueryFn<ExtractQueryParams<Path, Params>, Response> {
   let streamDefinition: any | undefined;
 
-  return reactive((params: QueryParams | undefined): QueryResult<unknown> => {
-    const queryClient = getContext(QueryClientContext);
-
-    if (queryClient === undefined) {
-      throw new Error('QueryClient not found');
-    }
-
+  const getStreamDefinition = () => {
     if (streamDefinition === undefined) {
-      const { response, subscribe, cache } = queryDefinitionBuilder();
+      const { id, response, subscribe, cache } = queryDefinitionBuilder();
 
       // Validate that response is an EntityDef
       if (!(response instanceof ValidatorDef) || (response.mask & Mask.ENTITY) === 0) {
         throw new Error('Stream query response must be an EntityDef');
       }
 
-      // Generate a unique ID for the stream
-      const id = `stream:${JSON.stringify(queryDefinitionBuilder.toString())}`;
-
       streamDefinition = {
         type: QueryType.Stream,
         id,
         shape: response as EntityDef,
+        shapeKey: response.shapeKey,
         subscribeFn: (context: QueryContext, params: QueryParams | undefined, onUpdate: any) => {
           return (subscribe as any)(params as any, onUpdate);
         },
         cache,
       };
     }
+    return streamDefinition;
+  };
 
-    return queryClient.getQuery<unknown>(streamDefinition, params);
+  const streamFn = reactive((params: QueryParams | undefined): QueryResult<unknown> => {
+    const queryClient = getContext(QueryClientContext);
+
+    if (queryClient === undefined) {
+      throw new Error('QueryClient not found');
+    }
+
+    return queryClient.getQuery<unknown>(getStreamDefinition(), params);
   }) as any;
+
+  QUERY_DEFINITION_MAP.set(streamFn, getStreamDefinition);
+
+  return streamFn;
 }

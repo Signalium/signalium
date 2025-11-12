@@ -53,6 +53,7 @@ describe('Stream-Query Cross-Compatibility', () => {
       }));
 
       const streamUserStatus = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           streamUpdateCallback = onUpdate;
@@ -143,6 +144,7 @@ describe('Stream-Query Cross-Compatibility', () => {
       }));
 
       const streamUser = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           streamUpdateCallback = onUpdate;
@@ -222,6 +224,7 @@ describe('Stream-Query Cross-Compatibility', () => {
       }));
 
       const streamUser = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           streamUpdateCallback = onUpdate;
@@ -316,6 +319,7 @@ describe('Stream-Query Cross-Compatibility', () => {
       }));
 
       const streamUserPresence = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           streamUpdateCallback = onUpdate;

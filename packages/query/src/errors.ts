@@ -46,18 +46,11 @@ export function typeToString(type: ObjectFieldTypeDef): string {
   }
 
   // Handle complex types - CHECK UNION FIRST since it contains other types
-  const mask = type.mask;
+  let mask = type.mask;
 
   if (mask & Mask.UNION) {
     const unionType = type as UnionDef;
     const parts: string[] = [];
-
-    // Add primitive types from the mask
-    if (mask & Mask.UNDEFINED) parts.push('undefined');
-    if (mask & Mask.NULL) parts.push('null');
-    if (mask & Mask.NUMBER) parts.push('number');
-    if (mask & Mask.STRING) parts.push('string');
-    if (mask & Mask.BOOLEAN) parts.push('boolean');
 
     // Add const/enum values from the values Set
     if (unionType.values !== undefined && unionType.values.size > 0) {
@@ -85,6 +78,15 @@ export function typeToString(type: ObjectFieldTypeDef): string {
         }
       }
     }
+
+    mask = unionType.mask;
+
+    // Add primitive types from the mask
+    if (mask & Mask.UNDEFINED) parts.push('undefined');
+    if (mask & Mask.NULL) parts.push('null');
+    if (mask & Mask.NUMBER) parts.push('number');
+    if (mask & Mask.STRING) parts.push('string');
+    if (mask & Mask.BOOLEAN) parts.push('boolean');
 
     if (parts.length === 0) {
       return 'union';

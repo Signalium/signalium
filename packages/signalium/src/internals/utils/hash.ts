@@ -128,6 +128,33 @@ function hashObject(obj: object) {
   return sum >>> 0;
 }
 
+function hashSet(set: Set<unknown>) {
+  let sum = HashType.SET;
+  for (const value of set) {
+    sum += hashValue(value);
+  }
+  return sum >>> 0;
+}
+
+function hashMap(map: Map<unknown, unknown>) {
+  let sum = HashType.MAP;
+
+  for (const [key, value] of map) {
+    sum += hashValue(key) ^ hashValue(value);
+  }
+
+  return sum >>> 0;
+}
+
+function hashDate(date: Date) {
+  return hashNumber(date.getTime(), HashType.DATE);
+}
+
+function hashRegExp(regexp: RegExp) {
+  const h = hashStr(regexp.source + regexp.flags, HashType.REGEXP);
+  return (h ^ regexp.lastIndex) >>> 0;
+}
+
 const enum HashType {
   UNDEFINED = 0,
   NULL = 1,
@@ -141,6 +168,10 @@ const enum HashType {
   REFERENCE = 9,
   SYMBOL = 10,
   CYCLE = 11,
+  MAP = 12,
+  SET = 13,
+  DATE = 14,
+  REGEXP = 15,
 }
 
 const UNDEFINED = hashStr('undefined', HashType.UNDEFINED);
@@ -155,6 +186,10 @@ const getObjectProto = Object.getPrototypeOf;
 const PROTO_TO_HASH = new Map<object, (obj: any) => number>([
   [Object.prototype, hashObject],
   [Array.prototype, hashArray],
+  [Map.prototype, hashMap],
+  [Set.prototype, hashSet],
+  [Date.prototype, hashDate],
+  [RegExp.prototype, hashRegExp],
 ]);
 
 export const registerCustomHash = <T>(ctor: { new (): T }, hashFn: (obj: T) => number) => {

@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore, valueKeyFor } from '../QueryStore.js';
 import { QueryClient } from '../QueryClient.js';
-import { query } from '../query.js';
+import { query, queryKeyForFn } from '../query.js';
 import { t, entity } from '../typeDefs.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import { hashValue } from 'signalium/utils';
@@ -85,7 +85,7 @@ describe('GC Time', () => {
         const relay = getItem();
         await relay;
 
-        const queryKey = hashValue(['GET:/active', undefined]);
+        const queryKey = queryKeyForFn(getItem, undefined);
 
         // Wait past GC time
         await sleep(60);
@@ -128,9 +128,9 @@ describe('GC Time', () => {
         const relay3 = getUser({ id: '3' });
         await relay3;
 
-        const query1Key = hashValue(['GET:/users/[id]', { id: '1' }]);
-        const query2Key = hashValue(['GET:/users/[id]', { id: '2' }]);
-        const query3Key = hashValue(['GET:/users/[id]', { id: '3' }]);
+        const query1Key = queryKeyForFn(getUser, { id: '1' });
+        const query2Key = queryKeyForFn(getUser, { id: '2' });
+        const query3Key = queryKeyForFn(getUser, { id: '3' });
 
         // All should be in memory initially
         expect(client.queryInstances.has(query1Key)).toBe(true);
@@ -155,7 +155,7 @@ describe('GC Time', () => {
 
       mockFetch.get('/item', { value: 'test' });
 
-      const queryKey = hashValue(['GET:/item', undefined]);
+      const queryKey = queryKeyForFn(getItem, undefined);
 
       await testWithClient(client, async () => {
         const relay = getItem();
@@ -179,7 +179,7 @@ describe('GC Time', () => {
 
       mockFetch.get('/reactivate', { n: 1 });
 
-      const queryKey = hashValue(['GET:/reactivate', undefined]);
+      const queryKey = queryKeyForFn(getItem, undefined);
 
       await testWithClient(client, async () => {
         const relay = getItem();
@@ -268,7 +268,7 @@ describe('GC Time', () => {
 
       mockFetch.get('/no-gc', { data: 'test' });
 
-      const queryKey = hashValue(['GET:/no-gc', undefined]);
+      const queryKey = queryKeyForFn(getItem, undefined);
 
       await testWithClient(client, async () => {
         const relay = getItem();
@@ -289,7 +289,7 @@ describe('GC Time', () => {
 
       mockFetch.get('/short-gc', { value: 42 });
 
-      const queryKey = hashValue(['GET:/short-gc', undefined]);
+      const queryKey = queryKeyForFn(getItem, undefined);
 
       await testWithClient(client, async () => {
         const relay = getItem();
@@ -309,7 +309,7 @@ describe('GC Time', () => {
 
       mockFetch.get('/long-gc', { data: 'persisted' });
 
-      const queryKey = hashValue(['GET:/long-gc', undefined]);
+      const queryKey = queryKeyForFn(getItem, undefined);
 
       await testWithClient(client, async () => {
         const relay = getItem();

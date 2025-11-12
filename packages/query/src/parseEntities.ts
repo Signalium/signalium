@@ -15,7 +15,7 @@ import {
   RecordDef,
   UnionDef,
 } from './types.js';
-import { extractShape, typeMaskOf } from './utils.js';
+import { typeMaskOf } from './utils.js';
 
 const entries = Object.entries;
 
@@ -123,7 +123,7 @@ export function parseObjectEntities(
   const childRefs = mask & Mask.ENTITY ? new Set<number>() : entityRefs;
 
   // Extract shape first to resolve lazy definitions and set subEntityPaths
-  const shape = extractShape(objectShape);
+  const shape = objectShape.shape;
   const subEntityPaths = objectShape.subEntityPaths;
 
   if (subEntityPaths !== undefined) {

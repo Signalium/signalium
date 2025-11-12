@@ -37,6 +37,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             // Send initial data after a delay
@@ -89,6 +90,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             // Store the callback so we can trigger updates
@@ -156,6 +158,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             updateCallback = onUpdate;
@@ -227,6 +230,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           params: { userId: t.string },
           response: User,
           subscribe: (params, onUpdate) => {
@@ -269,6 +273,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             subscribeCount++;
@@ -312,6 +317,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             subscribeCount++;
@@ -358,6 +364,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             setTimeout(() => {
@@ -391,6 +398,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             setTimeout(() => {
@@ -445,6 +453,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             setTimeout(() => {
@@ -478,6 +487,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             setTimeout(() => {
@@ -511,6 +521,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             setTimeout(() => {
@@ -544,6 +555,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             setTimeout(() => {
@@ -581,6 +593,7 @@ describe('Stream Query', () => {
 
       await testWithClient(client, async () => {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           params: { userId: t.string },
           response: User,
           subscribe: (params, onUpdate) => {
@@ -637,6 +650,7 @@ describe('Stream Query', () => {
       let subscribeCount = 0;
 
       const streamUser = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           subscribeCount++;
@@ -702,6 +716,7 @@ describe('Stream Query', () => {
 
       try {
         const streamUser = streamQuery(() => ({
+          id: 'user-stream',
           response: User,
           subscribe: (params, onUpdate) => {
             subscribeCount++;
@@ -764,6 +779,7 @@ describe('Stream Query', () => {
       let subscribeCount = 0;
 
       const streamUser = streamQuery(() => ({
+        id: 'user-stream',
         response: User,
         subscribe: (params, onUpdate) => {
           subscribeCount++;
