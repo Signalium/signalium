@@ -1,5 +1,5 @@
 ---
-'signalium': minor
+'signalium': patch
 '@signalium/query': patch
 ---
 
