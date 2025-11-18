@@ -157,7 +157,8 @@ export class QueryClient {
     memoryEvictionManager?: MemoryEvictionManager,
     refetchManager?: RefetchManager,
   ) {
-    this.memoryEvictionManager = memoryEvictionManager ?? new MemoryEvictionManager(this, this.context.evictionMultiplier);
+    this.memoryEvictionManager =
+      memoryEvictionManager ?? new MemoryEvictionManager(this, this.context.evictionMultiplier);
     this.refetchManager = refetchManager ?? new RefetchManager(this.context.refetchMultiplier);
     this.networkManager = networkManager ?? new NetworkManager();
     this.isServer = typeof window === 'undefined';
