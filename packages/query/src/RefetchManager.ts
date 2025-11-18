@@ -85,3 +85,18 @@ export class RefetchManager {
     clearTimeout(this.intervalId);
   }
 }
+
+// No-op implementation for SSR environments where timers are not needed
+export class NoOpRefetchManager {
+  addQuery(_instance: QueryResultImpl<any>): void {
+    // No-op: do nothing
+  }
+
+  removeQuery(_query: QueryResultImpl<any>): void {
+    // No-op: do nothing
+  }
+
+  destroy(): void {
+    // No-op: do nothing
+  }
+}

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-expressions */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
 import { QueryClient } from '../QueryClient.js';

@@ -113,6 +113,31 @@ export class NetworkManager {
   }
 }
 
+// No-op implementation for SSR environments where network status tracking is not needed
+export class NoOpNetworkManager {
+  private static readonly onlineSignal: Signal<boolean> = signal(true);
+
+  get isOnline(): boolean {
+    return true;
+  }
+
+  setNetworkStatus(_online: boolean): void {
+    // No-op: do nothing
+  }
+
+  clearManualOverride(): void {
+    // No-op: do nothing
+  }
+
+  getOnlineSignal(): Signal<boolean> {
+    return NoOpNetworkManager.onlineSignal;
+  }
+
+  destroy(): void {
+    // No-op: do nothing
+  }
+}
+
 // Default singleton instance for convenience
 export const defaultNetworkManager = new NetworkManager();
 
