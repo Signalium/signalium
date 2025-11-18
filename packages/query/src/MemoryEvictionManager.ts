@@ -44,3 +44,18 @@ export class MemoryEvictionManager {
     clearInterval(this.intervalId);
   }
 }
+
+// No-op implementation for SSR environments where timers are not needed
+export class NoOpMemoryEvictionManager {
+  scheduleEviction(_queryKey: number): void {
+    // No-op: do nothing
+  }
+
+  cancelEviction(_queryKey: number): void {
+    // No-op: do nothing
+  }
+
+  destroy(): void {
+    // No-op: do nothing
+  }
+}

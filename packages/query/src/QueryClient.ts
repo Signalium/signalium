@@ -154,9 +154,11 @@ export class QueryClient {
     private store: QueryStore,
     private context: QueryContext = { fetch },
     networkManager?: NetworkManager,
+    memoryEvictionManager?: MemoryEvictionManager,
+    refetchManager?: RefetchManager,
   ) {
-    this.memoryEvictionManager = new MemoryEvictionManager(this, this.context.evictionMultiplier);
-    this.refetchManager = new RefetchManager(this.context.refetchMultiplier);
+    this.memoryEvictionManager = memoryEvictionManager ?? new MemoryEvictionManager(this, this.context.evictionMultiplier);
+    this.refetchManager = refetchManager ?? new RefetchManager(this.context.refetchMultiplier);
     this.networkManager = networkManager ?? new NetworkManager();
     this.isServer = typeof window === 'undefined';
   }
