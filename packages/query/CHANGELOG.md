@@ -1,5 +1,11 @@
 # @signalium/query
 
+## 1.0.8
+
+### Patch Changes
+
+- f76ade3: Add support for stream and infinite queries for useQuery results
+
 ## 1.0.7
 
 ### Patch Changes
