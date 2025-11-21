@@ -42,7 +42,8 @@ if (!fs.existsSync(storesDir)) {
   fs.mkdirSync(storesDir, { recursive: true });
 }
 
-// Generate store entries
+// Generate legacy entries
+write(path.join(pkgRoot, 'react.js'), makeReexportWrapper('./dist/cjs/react/index.js'));
 write(path.join(storesDir, 'async.js'), makeReexportWrapper('../dist/cjs/stores/async.js'));
 write(path.join(storesDir, 'sync.js'), makeReexportWrapper('../dist/cjs/stores/sync.js'));
 
@@ -51,6 +52,7 @@ write(path.join(pkgRoot, 'dist/cjs/package.json'), JSON.stringify({ type: 'commo
 
 // Type re-export wrappers for legacy entry points
 write(path.join(pkgRoot, 'index.d.ts'), makeTypeReexportWrapper('./dist/esm/index.js'));
+write(path.join(pkgRoot, 'react.d.ts'), makeTypeReexportWrapper('./dist/esm/react/index.js'));
 write(path.join(storesDir, 'async.d.ts'), makeTypeReexportWrapper('../dist/esm/stores/async.js'));
 write(path.join(storesDir, 'sync.d.ts'), makeTypeReexportWrapper('../dist/esm/stores/sync.js'));
 

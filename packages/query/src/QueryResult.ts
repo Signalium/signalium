@@ -431,7 +431,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   // Public methods
   // ======================================================
 
-  refetch(): Promise<T> {
+  refetch = (): Promise<T> => {
     if (this.def.type === QueryType.Stream) {
       throw new Error('Cannot refetch a stream query');
     }
@@ -469,9 +469,9 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
 
     this.refetchPromise = promise;
     return promise;
-  }
+  };
 
-  fetchNextPage(): Promise<T> {
+  fetchNextPage = (): Promise<T> => {
     if (this.def.type === QueryType.Stream) {
       throw new Error('Cannot fetch next page on a stream query');
     }
@@ -513,7 +513,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
 
     this.fetchMorePromise = promise;
     return promise;
-  }
+  };
 
   // ======================================================
   // Public properties
