@@ -1,6 +1,6 @@
 import { useReactive } from 'signalium/react';
 import { reactive } from 'signalium';
-import { QueryResult } from '../types.js';
+import { QueryResult, InfiniteQueryResult, StreamQueryResult } from '../types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type Narrowable = string | number | boolean | null | undefined | bigint | symbol | {};
@@ -36,10 +36,15 @@ function cloneDeep<T>(value: T): T {
   return value;
 }
 
-const clonedResult = reactive((result: QueryResult<unknown>) => cloneDeep(result.value));
+const clonedResult = reactive(
+  (result: QueryResult<unknown> | InfiniteQueryResult<unknown> | StreamQueryResult<unknown>) => cloneDeep(result.value),
+);
 
 const riefiedQuery = reactive(
-  <R, Args extends readonly Narrowable[]>(fn: (...args: Args) => QueryResult<R>, ...args: Args): QueryResult<R> => {
+  <R, Args extends readonly Narrowable[]>(
+    fn: (...args: Args) => QueryResult<R> | InfiniteQueryResult<R> | StreamQueryResult<R>,
+    ...args: Args
+  ): QueryResult<R> | InfiniteQueryResult<R> | StreamQueryResult<R> => {
     const queryResult = fn(...args);
 
     return new Proxy(queryResult, {
@@ -56,11 +61,33 @@ const riefiedQuery = reactive(
   },
 );
 
+// Overload for standard query
 export function useQuery<R, Args extends readonly Narrowable[]>(
   fn: (...args: Args) => QueryResult<R>,
   ...args: Args
-): QueryResult<R> {
-  const result = useReactive(riefiedQuery, fn, ...args) as QueryResult<R>;
+): QueryResult<R>;
+
+// Overload for infinite query
+export function useQuery<R, Args extends readonly Narrowable[]>(
+  fn: (...args: Args) => InfiniteQueryResult<R>,
+  ...args: Args
+): InfiniteQueryResult<R>;
+
+// Overload for stream query
+export function useQuery<R, Args extends readonly Narrowable[]>(
+  fn: (...args: Args) => StreamQueryResult<R>,
+  ...args: Args
+): StreamQueryResult<R>;
+
+// Implementation
+export function useQuery<R, Args extends readonly Narrowable[]>(
+  fn: (...args: Args) => QueryResult<R> | InfiniteQueryResult<R> | StreamQueryResult<R>,
+  ...args: Args
+): QueryResult<R> | InfiniteQueryResult<R> | StreamQueryResult<R> {
+  const result = useReactive(riefiedQuery, fn, ...args) as
+    | QueryResult<R>
+    | InfiniteQueryResult<R>
+    | StreamQueryResult<R>;
 
   useReactive(() => result.value);
 
