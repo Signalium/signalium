@@ -17,6 +17,12 @@
       "require": "./dist/cjs/index.js",
       "default": "./dist/esm/index.js"
     },
+    "./react": {
+      "types": "./dist/esm/react/index.d.ts",
+      "import": "./dist/esm/react/index.js",
+      "require": "./dist/cjs/react/index.js",
+      "default": "./dist/esm/react/index.js"
+    },
     "./stores/async": {
       "types": "./dist/esm/stores/async.d.ts",
       "import": "./dist/esm/stores/async.js",
