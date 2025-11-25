@@ -148,6 +148,10 @@ export interface APITypes {
   record: <T extends TypeDef>(shape: T) => RecordDef<T>;
 
   union: <VS extends readonly TypeDef[]>(...types: VS) => UnionDef<VS>;
+
+  nullish: <T extends TypeDef>(type: T) => T | Mask.UNDEFINED | Mask.NULL;
+  optional: <T extends TypeDef>(type: T) => T | Mask.UNDEFINED;
+  nullable: <T extends TypeDef>(type: T) => T | Mask.NULL;
 }
 
 // ================================

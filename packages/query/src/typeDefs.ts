@@ -218,6 +218,45 @@ function defineUnion<T extends readonly TypeDef[]>(...types: T): UnionDef<T> {
   return new ValidatorDef(ComplexTypeDefKind.UNION, mask | Mask.UNION, shape, values) as UnionDef;
 }
 
+function defineNullish<T extends TypeDef>(type: T): T | Mask.UNDEFINED | Mask.NULL {
+  if (typeof type === 'number') {
+    return (type | Mask.UNDEFINED | Mask.NULL) as T | Mask.UNDEFINED | Mask.NULL;
+  }
+
+  if (type instanceof Set) {
+    return defineUnion(type, Mask.UNDEFINED, Mask.NULL) as T | Mask.UNDEFINED | Mask.NULL;
+  }
+
+  // Complex type - use the cached property
+  return type.nullish as T | Mask.UNDEFINED | Mask.NULL;
+}
+
+function defineOptional<T extends TypeDef>(type: T): T | Mask.UNDEFINED {
+  if (typeof type === 'number') {
+    return (type | Mask.UNDEFINED) as T | Mask.UNDEFINED;
+  }
+
+  if (type instanceof Set) {
+    return defineUnion(type, Mask.UNDEFINED) as T | Mask.UNDEFINED;
+  }
+
+  // Complex type - use the cached property
+  return type.optional as T | Mask.UNDEFINED;
+}
+
+function defineNullable<T extends TypeDef>(type: T): T | Mask.NULL {
+  if (typeof type === 'number') {
+    return (type | Mask.NULL) as T | Mask.NULL;
+  }
+
+  if (type instanceof Set) {
+    return defineUnion(type, Mask.NULL) as T | Mask.NULL;
+  }
+
+  // Complex type - use the cached property
+  return type.nullable as T | Mask.NULL;
+}
+
 // -----------------------------------------------------------------------------
 // Shape Reification
 // -----------------------------------------------------------------------------
@@ -457,4 +496,7 @@ export const t: APITypes = {
   object: defineObject,
   record: defineRecord,
   union: defineUnion,
+  nullish: defineNullish,
+  optional: defineOptional,
+  nullable: defineNullable,
 };
