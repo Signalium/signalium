@@ -64,6 +64,11 @@ export interface QueryDefinition<Params extends QueryParams | undefined, Result>
   shapeKey: number;
   fetchFn: (context: QueryContext, params: Params, prevResult?: Result) => Promise<Result>;
   cache?: QueryCacheOptions;
+  stream?: {
+    shape: TypeDef;
+    shapeKey: number;
+    subscribeFn: (context: QueryContext, params: Params, onUpdate: (update: unknown) => void) => () => void;
+  };
 }
 
 export interface InfiniteQueryDefinition<Params extends QueryParams | undefined, Result> {
@@ -74,6 +79,11 @@ export interface InfiniteQueryDefinition<Params extends QueryParams | undefined,
   fetchFn: (context: QueryContext, params: Params, prevResult?: Result) => Promise<Result>;
   pagination: QueryPaginationOptions<Result>;
   cache?: QueryCacheOptions;
+  stream?: {
+    shape: TypeDef;
+    shapeKey: number;
+    subscribeFn: (context: QueryContext, params: Params, onUpdate: (update: unknown) => void) => () => void;
+  };
 }
 
 export interface StreamQueryDefinition<Params extends QueryParams | undefined, Result> {
