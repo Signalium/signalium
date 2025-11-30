@@ -39,11 +39,14 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   private updatedAt: number | undefined = undefined;
   private params: QueryParams | undefined = undefined;
   private refIds: Set<number> | undefined = undefined;
+  private allRefIds: Set<number> = new Set();
+  private orphansSignal: Signal<unknown[]> = signal([]);
 
   private refetchPromise: Promise<T> | undefined = undefined;
   private fetchMorePromise: Promise<T> | undefined = undefined;
   private attemptCount: number = 0;
   private unsubscribe?: () => void = undefined;
+  private streamUnsubscribe?: () => void = undefined;
 
   private relay: DiscriminatedReactivePromise<T>;
   private _relayState: RelayState<any> | undefined = undefined;
@@ -159,6 +162,11 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
             return;
           }
 
+          // For queries with streams, also re-establish the stream
+          if ((this.def as QueryDefinition<any, any> | InfiniteQueryDefinition<any, any>).stream) {
+            this.setupQueryStreamSubscription();
+          }
+
           // Network status changed - check if we should react
           const currentlyOnline = networkManager.getOnlineSignal().value;
 
@@ -183,8 +191,16 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
               this.unsubscribe();
               this.unsubscribe = undefined;
             }
-          } else if (this.def.cache?.refetchInterval) {
-            this.queryClient.refetchManager.removeQuery(this);
+          } else {
+            // Unsubscribe from query stream if configured
+            if (this.streamUnsubscribe) {
+              this.streamUnsubscribe();
+              this.streamUnsubscribe = undefined;
+            }
+
+            if (this.def.cache?.refetchInterval) {
+              this.queryClient.refetchManager.removeQuery(this);
+            }
           }
 
           // Schedule removal from memory using the global eviction manager
@@ -269,6 +285,120 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   // ======================================================
 
   /**
+   * Recursively collects all entity references from parsed data.
+   * This includes deeply nested entities in arrays, records, and unions.
+   */
+  private collectAllEntityRefs(data: unknown, allRefs: Set<number>): void {
+    if (data === null || data === undefined) {
+      return;
+    }
+
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        this.collectAllEntityRefs(item, allRefs);
+      }
+      return;
+    }
+
+    if (typeof data === 'object') {
+      const obj = data as Record<string, unknown>;
+
+      // Check if this object has an entity ref
+      const entityRefId = obj.__entityRef as number;
+      if (typeof entityRefId === 'number') {
+        allRefs.add(entityRefId);
+        // Entity proxies have reactive properties, we still need to traverse
+        // them to find nested entities
+      }
+
+      // Recursively process object properties
+      for (const value of Object.values(obj)) {
+        this.collectAllEntityRefs(value, allRefs);
+      }
+    }
+  }
+
+  /**
+   * Reconcile orphans array by removing entities that are now in the query response.
+   */
+  private reconcileOrphans(): void {
+    const currentOrphans = this.orphansSignal.value;
+
+    if (currentOrphans.length === 0) {
+      return;
+    }
+
+    // Filter out entities that are now in the response
+    const newOrphans = currentOrphans.filter(orphan => {
+      if (typeof orphan !== 'object' || orphan === null) {
+        return false;
+      }
+
+      const entityRefId = (orphan as Record<string, unknown>).__entityRef as number;
+
+      // Keep in orphans if entity ref is NOT in the response
+      return typeof entityRefId === 'number' && !this.allRefIds.has(entityRefId);
+    });
+
+    // Only update signal if the array changed
+    if (newOrphans.length !== currentOrphans.length) {
+      this.orphansSignal.value = newOrphans;
+    }
+  }
+
+  /**
+   * Setup stream subscription for query/infiniteQuery (not streamQuery).
+   * Handles stream events and manages orphans.
+   */
+  private setupQueryStreamSubscription(): void {
+    // Clean up existing subscription if any
+    this.streamUnsubscribe?.();
+
+    const streamDef = (this.def as QueryDefinition<any, any> | InfiniteQueryDefinition<any, any>).stream;
+
+    if (!streamDef) {
+      return;
+    }
+
+    this.streamUnsubscribe = streamDef.subscribeFn(this.queryClient.getContext(), this.params, update => {
+      const streamShape = streamDef.shape;
+
+      // Create a temporary set to collect entity refs from the stream event
+      const streamEntityRefs = new Set<number>();
+
+      // Parse the stream event
+      const parsedUpdate =
+        streamShape instanceof ValidatorDef
+          ? parseEntities(update, streamShape as ComplexTypeDef, this.queryClient, streamEntityRefs)
+          : parseValue(update, streamShape, this.def.id);
+
+      // For each entity in the stream event, check if it's in the current response
+      for (const entityRefId of streamEntityRefs) {
+        if (!this.allRefIds.has(entityRefId)) {
+          // Entity is not in the response, add to orphans
+          const entityProxy = this.queryClient.hydrateEntity(entityRefId, streamShape as EntityDef).proxy;
+
+          // Check if already in orphans (by reference ID)
+          const currentOrphans = this.orphansSignal.value;
+          const existingIndex = currentOrphans.findIndex(orphan => {
+            const orphanRefId = (orphan as Record<string, unknown>).__entityRef as number;
+            return orphanRefId === entityRefId;
+          });
+
+          if (existingIndex === -1) {
+            // Add new orphan
+            this.orphansSignal.value = [...currentOrphans, entityProxy];
+          }
+          // If already in orphans, the entity update already happened via EntityMap
+        }
+      }
+
+      // Note: Entities already in the response are automatically updated via EntityMap
+      // so we don't need to do anything special for them
+    });
+  }
+
+  /**
    * Initialize the query by loading from cache and fetching if stale
    */
   private async initialize(): Promise<void> {
@@ -297,6 +427,11 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
       if (this.def.type === QueryType.Stream) {
         this.setupSubscription();
       } else {
+        // Setup query stream if configured
+        if ((this.def as QueryDefinition<any, any> | InfiniteQueryDefinition<any, any>).stream) {
+          this.setupQueryStreamSubscription();
+        }
+
         if (cached !== undefined) {
           // Check if data is stale
           if (this.isStale) {
@@ -402,6 +537,17 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         // Update the timestamp
         this.updatedAt = Date.now();
 
+        // Collect all entity references (including deeply nested ones)
+        const allRefs = new Set<number>();
+        this.collectAllEntityRefs(queryData, allRefs);
+        this.allRefIds = allRefs;
+
+        // Update refIds for next iteration
+        this.refIds = entityRefs;
+
+        // Reconcile orphans after query update
+        this.reconcileOrphans();
+
         return queryData as T;
       } catch (error) {
         lastError = error;
@@ -446,6 +592,9 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
 
     // Clear memoized nextPageParams so it's recalculated after refetch
     this._nextPageParams = undefined;
+
+    // Clear orphans on full refetch
+    this.orphansSignal.value = [];
 
     // Set the signal before any async operations so it's immediately visible
     // Use untrack to avoid reactive violations when called from reactive context
@@ -533,6 +682,10 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
 
   get hasNextPage(): boolean {
     return this.nextPageParams !== null;
+  }
+
+  get orphans(): readonly unknown[] {
+    return this.orphansSignal.value;
   }
 
   get isStale(): boolean {
