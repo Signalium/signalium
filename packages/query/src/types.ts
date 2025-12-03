@@ -194,29 +194,11 @@ export type ExtractType<T extends ObjectFieldTypeDef> = T extends number
                 ? ExtractType<VS[number]>
                 : never;
 
-export type QueryType<T> = T extends () => infer Response ? (Response extends QueryResult<infer T> ? T : never) : never;
-
-// ================================
-// Query Types
-// ================================
-
-interface BaseQueryResultExtensions<T> {
-  readonly isFetching: boolean;
-  readonly isPaused: boolean;
-}
-
-interface QueryResultExtensions<T> extends BaseQueryResultExtensions<T> {
-  refetch: () => Promise<T>;
-  readonly isRefetching: boolean;
-}
-
-export type BaseQueryResult<T> = ReactivePromise<T> & QueryResultExtensions<T>;
-
-export type PendingQueryResult<T> = PendingReactivePromise<T> & QueryResultExtensions<T>;
-
-export type ReadyQueryResult<T> = ReadyReactivePromise<T> & QueryResultExtensions<T>;
-
-export type QueryResult<T> = PendingQueryResult<T> | ReadyQueryResult<T>;
+export type QueryType<T> = T extends () => infer Response
+  ? Response extends QueryResult<infer T, unknown, unknown>
+    ? T
+    : never
+  : never;
 
 export type ResponseTypeDef = Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef;
 
@@ -224,7 +206,7 @@ export type ParamsOrUndefined<Params extends Record<string, unknown>> =
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   {} extends Params ? undefined : Params;
 
-export type ExtractTypesFromObjectOrUndefined<S extends ResponseTypeDef> =
+export type ExtractTypesFromObjectOrEntity<S extends ResponseTypeDef> =
   S extends Record<string, ObjectFieldTypeDef>
     ? {
         [K in keyof S]: ExtractType<S[K]>;
@@ -234,50 +216,124 @@ export type ExtractTypesFromObjectOrUndefined<S extends ResponseTypeDef> =
       : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
         {};
 
-export type QueryFn<Params extends Record<string, unknown>, Response extends ResponseTypeDef> =
+export type ExtractTypesFromEntityOrUndefined<S extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined> =
+  S extends EntityDef<infer S>
+    ? Prettify<ExtractTypesFromShape<S>>
+    : S extends UnionDef<infer VS>
+      ? ExtractType<VS[number]>
+      : undefined;
+
+// ================================
+// Query Extra Types
+// ================================
+
+export type QueryExtra<StreamType, OptimisticInsertType> = {
+  streamOrphans: StreamType extends undefined ? undefined : ReadonlySet<StreamType>;
+  optimisticInserts: OptimisticInsertType extends undefined ? undefined : ReadonlySet<OptimisticInsertType>;
+};
+
+// ================================
+// Query Types
+// ================================
+
+interface BaseQueryResultExtensions<T, StreamType, OptimisticUpdateType> {
+  readonly isFetching: boolean;
+  readonly isPaused: boolean;
+  readonly extra: QueryExtra<StreamType, OptimisticUpdateType>;
+}
+
+interface QueryResultExtensions<T, StreamType, OptimisticUpdateType>
+  extends BaseQueryResultExtensions<T, StreamType, OptimisticUpdateType> {
+  refetch: () => Promise<T>;
+  readonly isRefetching: boolean;
+}
+
+export type BaseQueryResult<T, StreamType, OptimisticUpdateType> = ReactivePromise<T> &
+  QueryResultExtensions<T, StreamType, OptimisticUpdateType>;
+
+export type PendingQueryResult<T, StreamType, OptimisticUpdateType> = PendingReactivePromise<T> &
+  QueryResultExtensions<T, StreamType, OptimisticUpdateType>;
+
+export type ReadyQueryResult<T, StreamType, OptimisticUpdateType> = ReadyReactivePromise<T> &
+  QueryResultExtensions<T, StreamType, OptimisticUpdateType>;
+
+export type QueryResult<T, StreamType = undefined, OptimisticUpdateType = undefined> =
+  | PendingQueryResult<T, StreamType, OptimisticUpdateType>
+  | ReadyQueryResult<T, StreamType, OptimisticUpdateType>;
+
+export type QueryFn<
+  Params extends Record<string, unknown>,
+  Response extends ResponseTypeDef,
+  StreamType extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
+  OptimisticUpdateType extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
+> =
   HasRequiredKeys<Params> extends true
     ? (
         params: Prettify<Optionalize<Params>>,
-      ) => QueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>>
+      ) => QueryResult<
+        Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>,
+        Readonly<Prettify<ExtractTypesFromEntityOrUndefined<StreamType>>>,
+        Readonly<Prettify<ExtractTypesFromEntityOrUndefined<OptimisticUpdateType>>>
+      >
     : (
         params?: Prettify<Optionalize<ParamsOrUndefined<Params>>>,
-      ) => QueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>>;
+      ) => QueryResult<
+        Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>,
+        Readonly<Prettify<ExtractTypesFromEntityOrUndefined<StreamType>>>,
+        Readonly<Prettify<ExtractTypesFromEntityOrUndefined<OptimisticUpdateType>>>
+      >;
 
 // ================================
 // Infinite Query Types
 // ================================
 
-interface InfiniteQueryResultExtensions<T> extends QueryResultExtensions<T> {
+interface InfiniteQueryResultExtensions<T, StreamType, OptimisticUpdateType>
+  extends QueryResultExtensions<T, StreamType, OptimisticUpdateType> {
   fetchNextPage: () => Promise<T>;
   hasNextPage: boolean;
   isFetchingMore: boolean;
 }
 
-export type BaseInfiniteQueryResult<T> = ReactivePromise<T> & InfiniteQueryResultExtensions<T>;
+export type BaseInfiniteQueryResult<T, StreamType, OptimisticUpdateType> = ReactivePromise<T> &
+  InfiniteQueryResultExtensions<T, StreamType, OptimisticUpdateType>;
 
-export type PendingInfiniteQueryResult<T> = PendingReactivePromise<T> & InfiniteQueryResultExtensions<T>;
+export type PendingInfiniteQueryResult<T, StreamType, OptimisticUpdateType> = PendingReactivePromise<T> &
+  InfiniteQueryResultExtensions<T, StreamType, OptimisticUpdateType>;
 
-export type ReadyInfiniteQueryResult<T> = ReadyReactivePromise<T> & InfiniteQueryResultExtensions<T>;
+export type ReadyInfiniteQueryResult<T, StreamType, OptimisticUpdateType> = ReadyReactivePromise<T> &
+  InfiniteQueryResultExtensions<T, StreamType, OptimisticUpdateType>;
 
-export type InfiniteQueryResult<T> = PendingInfiniteQueryResult<T> | ReadyInfiniteQueryResult<T>;
+export type InfiniteQueryResult<T, StreamType = undefined, OptimisticUpdateType = undefined> =
+  | PendingInfiniteQueryResult<T, StreamType, OptimisticUpdateType>
+  | ReadyInfiniteQueryResult<T, StreamType, OptimisticUpdateType>;
 
 export type InfiniteQueryFn<
   Params extends Record<string, unknown>,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+  StreamType extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
+  OptimisticUpdateType extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 > =
   HasRequiredKeys<Params> extends true
     ? (
         params: Prettify<Optionalize<Params>>,
-      ) => InfiniteQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>[]>
+      ) => InfiniteQueryResult<
+        Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>[],
+        Readonly<Prettify<ExtractTypesFromEntityOrUndefined<StreamType>>>,
+        Readonly<Prettify<ExtractTypesFromEntityOrUndefined<OptimisticUpdateType>>>
+      >
     : (
         params?: Prettify<Optionalize<ParamsOrUndefined<Params>>>,
-      ) => InfiniteQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>[]>;
+      ) => InfiniteQueryResult<
+        Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>[],
+        Readonly<Prettify<ExtractTypesFromEntityOrUndefined<StreamType>>>,
+        Readonly<Prettify<ExtractTypesFromEntityOrUndefined<OptimisticUpdateType>>>
+      >;
 
 // ================================
 // Stream Query Types
 // ================================
 
-type StreamQueryResultExtensions<T> = BaseQueryResultExtensions<T>;
+type StreamQueryResultExtensions<T> = BaseQueryResultExtensions<T, undefined, undefined>;
 
 export type BaseStreamQueryResult<T> = ReactivePromise<T> & StreamQueryResultExtensions<T>;
 
@@ -287,14 +343,11 @@ export type ReadyStreamQueryResult<T> = ReadyReactivePromise<T> & StreamQueryRes
 
 export type StreamQueryResult<T> = PendingStreamQueryResult<T> | ReadyStreamQueryResult<T>;
 
-export type StreamQueryFn<
-  Params extends Record<string, unknown>,
-  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
-> =
+export type StreamQueryFn<Params extends Record<string, unknown>, Response extends EntityDef | UnionDef<EntityDef[]>> =
   HasRequiredKeys<Params> extends true
     ? (
         params: Prettify<Optionalize<Params>>,
-      ) => StreamQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>>
+      ) => StreamQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>>
     : (
         params?: Prettify<Optionalize<ParamsOrUndefined<Params>>>,
-      ) => StreamQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrUndefined<Response>>>>;
+      ) => StreamQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>>;

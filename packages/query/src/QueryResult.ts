@@ -1,35 +1,333 @@
-import { relay, type RelayState, context, DiscriminatedReactivePromise, type Context, Signal, signal } from 'signalium';
-import { hashValue, setReactivePromise } from 'signalium/utils';
 import {
-  QueryResult,
-  EntityDef,
-  BaseQueryResult,
-  ObjectFieldTypeDef,
-  ComplexTypeDef,
-  RefetchInterval,
-  NetworkMode,
-  RetryConfig,
-} from './types.js';
-import { parseValue } from './proxy.js';
-import { parseEntities } from './parseEntities.js';
+  relay,
+  type RelayState,
+  DiscriminatedReactivePromise,
+  Signal,
+  signal,
+  ReadonlySignal,
+  reactiveSignal,
+  Notifier,
+  notifier,
+} from 'signalium';
+import { setReactivePromise } from 'signalium/utils';
+import { EntityDef, BaseQueryResult, ComplexTypeDef, NetworkMode, QueryExtra } from './types.js';
+import { getProxyId, parseValue } from './proxy.js';
+import { parseEntities, parseObjectEntities } from './parseEntities.js';
 import { ValidatorDef } from './typeDefs.js';
 import {
   InfiniteQueryDefinition,
   QueryDefinition,
   QueryType,
-  StreamQueryDefinition,
+  StreamSubscribeFn,
   type AnyQueryDefinition,
   type QueryClient,
   type QueryParams,
 } from './QueryClient.js';
+import { CachedQueryExtra } from './QueryStore.js';
+
+// ======================================================
+// QueryResultExtra - Manages stream orphans and optimistic inserts
+// ======================================================
+
+/**
+ * Manages extra data for a query result: stream orphans and optimistic inserts.
+ * Created lazily when first needed.
+ */
+class QueryResultExtra {
+  private _streamOrphansNotifier: Notifier | undefined = undefined;
+  private _streamOrphans: Set<Record<string, unknown>> | undefined = undefined;
+
+  private _optimisticInsertsNotifier: Notifier | undefined = undefined;
+  private _optimisticInserts: Set<Record<string, unknown>> | undefined = undefined;
+
+  private onChanged: () => void;
+
+  constructor(onChanged: () => void) {
+    this.onChanged = onChanged;
+  }
+
+  private get streamOrphansNotifier(): Notifier {
+    return this._streamOrphansNotifier ?? (this._streamOrphansNotifier = notifier());
+  }
+
+  private get optimisticInsertsNotifier(): Notifier {
+    return this._optimisticInsertsNotifier ?? (this._optimisticInsertsNotifier = notifier());
+  }
+
+  get streamOrphans(): Set<Record<string, unknown>> {
+    return this._streamOrphans ?? (this._streamOrphans = new Set());
+  }
+
+  get optimisticInserts(): Set<Record<string, unknown>> {
+    return this._optimisticInserts ?? (this._optimisticInserts = new Set());
+  }
+
+  /**
+   * Returns the QueryExtra object for public API consumption.
+   * Consumes the notifiers to establish reactive tracking.
+   */
+  getExtra(): QueryExtra<unknown, unknown> {
+    this.streamOrphansNotifier.consume();
+    this.optimisticInsertsNotifier.consume();
+    return {
+      streamOrphans: this.streamOrphans,
+      optimisticInserts: this.optimisticInserts,
+    };
+  }
+
+  /**
+   * Add a stream orphan entity.
+   * Returns true if the orphan was added (not a duplicate).
+   */
+  addStreamOrphan(entity: Record<string, unknown>): boolean {
+    const orphans = this.streamOrphans;
+    const sizeBefore = orphans.size;
+    orphans.add(entity);
+
+    if (orphans.size !== sizeBefore) {
+      this.streamOrphansNotifier.notify();
+
+      // Check if this orphan was an optimistic insert - if so, remove it
+      const proxyId = getProxyId(entity);
+      if (proxyId !== undefined) {
+        this.removeOptimisticInsertById(proxyId);
+      }
+
+      this.onChanged();
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Add an optimistic insert entity.
+   * Returns true if the insert was added (not a duplicate).
+   */
+  addOptimisticInsert(entity: Record<string, unknown>): boolean {
+    const inserts = this.optimisticInserts;
+    const sizeBefore = inserts.size;
+    inserts.add(entity);
+
+    if (inserts.size !== sizeBefore) {
+      this.optimisticInsertsNotifier.notify();
+      this.onChanged();
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Remove an optimistic insert by its entity.
+   * Returns true if the insert was removed.
+   */
+  removeOptimisticInsert(entity: Record<string, unknown>): boolean {
+    const proxyId = getProxyId(entity);
+    if (proxyId === undefined) {
+      return false;
+    }
+
+    return this.removeOptimisticInsertById(proxyId);
+  }
+
+  /**
+   * Remove an optimistic insert by proxy ID.
+   */
+  private removeOptimisticInsertById(proxyId: number): boolean {
+    const inserts = this._optimisticInserts;
+    if (inserts === undefined || inserts.size === 0) {
+      return false;
+    }
+
+    for (const existing of inserts) {
+      if (getProxyId(existing) === proxyId) {
+        inserts.delete(existing);
+        this.optimisticInsertsNotifier.notify();
+        this.onChanged();
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if a proxy ID exists in stream orphans.
+   */
+  hasOrphanWithId(proxyId: number): boolean {
+    const orphans = this._streamOrphans;
+    if (orphans === undefined) {
+      return false;
+    }
+
+    for (const orphan of orphans) {
+      if (getProxyId(orphan) === proxyId) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Reconcile orphans and optimistic inserts against the main response entity refs.
+   * Removes any that now exist in the main response.
+   */
+  reconcile(allRefIds: Set<number>): void {
+    // Check stream orphans for entities that now exist in main response
+    const orphans = this._streamOrphans;
+    if (orphans !== undefined && orphans.size > 0) {
+      let orphansChanged = false;
+
+      for (const orphan of orphans) {
+        const entityRefId = getProxyId(orphan);
+        if (entityRefId !== undefined && allRefIds.has(entityRefId)) {
+          orphans.delete(orphan);
+          orphansChanged = true;
+        }
+      }
+
+      if (orphansChanged) {
+        this.streamOrphansNotifier.notify();
+      }
+    }
+
+    // Check optimistic inserts for entities that now exist in main response or stream orphans
+    const inserts = this._optimisticInserts;
+    if (inserts !== undefined && inserts.size > 0) {
+      let insertsChanged = false;
+
+      for (const insert of inserts) {
+        const entityRefId = getProxyId(insert);
+        if (entityRefId !== undefined) {
+          // Remove if entity is now in main response
+          if (allRefIds.has(entityRefId)) {
+            inserts.delete(insert);
+            insertsChanged = true;
+          }
+          // Also remove if entity is now in stream orphans
+          else if (orphans !== undefined && orphans.has(insert)) {
+            inserts.delete(insert);
+            insertsChanged = true;
+          }
+        }
+      }
+
+      if (insertsChanged) {
+        this.optimisticInsertsNotifier.notify();
+      }
+    }
+  }
+
+  /**
+   * Clear all stream orphans and optimistic inserts.
+   * Called on refetch.
+   */
+  clear(): void {
+    let changed = false;
+
+    if (this._streamOrphans !== undefined && this._streamOrphans.size > 0) {
+      this._streamOrphans = undefined;
+      this.streamOrphansNotifier.notify();
+      changed = true;
+    }
+
+    if (this._optimisticInserts !== undefined && this._optimisticInserts.size > 0) {
+      this._optimisticInserts = undefined;
+      this.optimisticInsertsNotifier.notify();
+      changed = true;
+    }
+
+    if (changed) {
+      this.onChanged();
+    }
+  }
+
+  /**
+   * Load extra data from cached values.
+   */
+  loadFromCache(
+    cachedExtra: CachedQueryExtra,
+    queryClient: QueryClient,
+    streamShape: EntityDef | undefined,
+    optimisticInsertsShape: EntityDef | undefined,
+  ): void {
+    if (cachedExtra.streamOrphanRefs && cachedExtra.streamOrphanRefs.length > 0 && streamShape) {
+      const orphans = this.streamOrphans;
+      for (const refId of cachedExtra.streamOrphanRefs) {
+        const entityRecord = queryClient.hydrateEntity(refId, streamShape);
+        orphans.add(entityRecord.proxy);
+      }
+    }
+
+    if (cachedExtra.optimisticInsertRefs && cachedExtra.optimisticInsertRefs.length > 0 && optimisticInsertsShape) {
+      const inserts = this.optimisticInserts;
+      for (const refId of cachedExtra.optimisticInsertRefs) {
+        const entityRecord = queryClient.hydrateEntity(refId, optimisticInsertsShape);
+        inserts.add(entityRecord.proxy);
+      }
+    }
+  }
+
+  /**
+   * Get extra data for persistence (converts Sets to arrays of entity ref IDs).
+   */
+  getForPersistence(): CachedQueryExtra | undefined {
+    const orphans = this._streamOrphans;
+    const inserts = this._optimisticInserts;
+
+    if ((orphans === undefined || orphans.size === 0) && (inserts === undefined || inserts.size === 0)) {
+      return undefined;
+    }
+
+    const extra: CachedQueryExtra = {};
+
+    if (orphans !== undefined && orphans.size > 0) {
+      extra.streamOrphanRefs = [];
+      for (const orphan of orphans) {
+        const refId = getProxyId(orphan);
+        if (refId !== undefined) {
+          extra.streamOrphanRefs.push(refId);
+        }
+      }
+    }
+
+    if (inserts !== undefined && inserts.size > 0) {
+      extra.optimisticInsertRefs = [];
+      for (const insert of inserts) {
+        const refId = getProxyId(insert);
+        if (refId !== undefined) {
+          extra.optimisticInsertRefs.push(refId);
+        }
+      }
+    }
+
+    return extra;
+  }
+
+  /**
+   * Check if there's any extra data.
+   */
+  get hasData(): boolean {
+    return (
+      (this._streamOrphans !== undefined && this._streamOrphans.size > 0) ||
+      (this._optimisticInserts !== undefined && this._optimisticInserts.size > 0)
+    );
+  }
+}
+
+// ======================================================
+// QueryResultImpl
+// ======================================================
 
 /**
  * QueryResult wraps a DiscriminatedReactivePromise and adds additional functionality
  * like refetch, while forwarding all the base relay properties.
  * This class combines the old QueryInstance and QueryResultImpl into a single entity.
  */
-export class QueryResultImpl<T> implements BaseQueryResult<T> {
-  def: AnyQueryDefinition<any, any>;
+export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> {
+  def: AnyQueryDefinition<any, any, any>;
   queryKey: number;
 
   private queryClient: QueryClient;
@@ -40,10 +338,13 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   private params: QueryParams | undefined = undefined;
   private refIds: Set<number> | undefined = undefined;
 
+  private allNestedRefIdsSignal: ReadonlySignal<Set<number>> | undefined = undefined;
+
   private refetchPromise: Promise<T> | undefined = undefined;
   private fetchMorePromise: Promise<T> | undefined = undefined;
   private attemptCount: number = 0;
   private unsubscribe?: () => void = undefined;
+  private streamUnsubscribe?: () => void = undefined;
 
   private relay: DiscriminatedReactivePromise<T>;
   private _relayState: RelayState<any> | undefined = undefined;
@@ -59,11 +360,17 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
     return relayState;
   }
 
+  private _extra: QueryResultExtra | undefined = undefined;
+
+  private get extraData(): QueryResultExtra {
+    return this._extra ?? (this._extra = new QueryResultExtra(() => this.persistExtraData()));
+  }
+
   private _nextPageParams: QueryParams | undefined | null = undefined;
 
   private get nextPageParams(): QueryParams | null {
-    // Streams don't have pagination
-    if (this.def.type === QueryType.Stream) {
+    // Streams and non-infinite queries don't have pagination
+    if (this.def.type !== QueryType.InfiniteQuery) {
       return null;
     }
 
@@ -76,7 +383,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         throw new Error('Query result is not an array, this is a bug');
       }
 
-      const infiniteDef = this.def as InfiniteQueryDefinition<any, any>;
+      const infiniteDef = this.def as InfiniteQueryDefinition<any, any, any>;
       const nextParams = infiniteDef.pagination?.getNextPageParams?.(value[value.length - 1]);
 
       if (nextParams === undefined) {
@@ -103,7 +410,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   }
 
   constructor(
-    def: AnyQueryDefinition<any, any>,
+    def: AnyQueryDefinition<any, any, any>,
     queryClient: QueryClient,
     queryKey: number,
     params: QueryParams | undefined,
@@ -128,9 +435,15 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
       this.wasOffline = !isOnline;
 
       if (this.initialized) {
-        if (this.def.type === QueryType.Stream) {
+        // For any query with streams, resubscribe on reactivation
+        if (
+          this.def.type === QueryType.Stream ||
+          (this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>).stream
+        ) {
           this.setupSubscription();
-        } else {
+        }
+
+        if (this.def.type !== QueryType.Stream) {
           // Check if we just came back online
           if (!this.wasOffline && isOnline) {
             // We're back online - check if we should refresh
@@ -153,9 +466,16 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
       // Return deactivation callback
       return {
         update: () => {
-          // For streams, unsubscribe and resubscribe to re-establish connection
-          if (this.def.type === QueryType.Stream) {
+          // For any query with streams, unsubscribe and resubscribe to re-establish connection
+          if (
+            this.def.type === QueryType.Stream ||
+            (this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>).stream
+          ) {
             this.setupSubscription();
+          }
+
+          // For StreamQuery, we're done - it doesn't react to network status
+          if (this.def.type === QueryType.Stream) {
             return;
           }
 
@@ -177,13 +497,18 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         },
         deactivate: () => {
           // Last subscriber left, deactivate refetch and schedule memory eviction
-          if (this.def.type === QueryType.Stream) {
-            // Unsubscribe from stream
-            if (this.unsubscribe) {
-              this.unsubscribe();
-              this.unsubscribe = undefined;
-            }
-          } else if (this.def.cache?.refetchInterval) {
+          // Unsubscribe from any active streams
+          if (this.unsubscribe) {
+            this.unsubscribe();
+            this.unsubscribe = undefined;
+          }
+          if (this.streamUnsubscribe) {
+            this.streamUnsubscribe();
+            this.streamUnsubscribe = undefined;
+          }
+
+          // Remove from refetch manager if configured
+          if (this.def.type !== QueryType.Stream && this.def.cache?.refetchInterval) {
             this.queryClient.refetchManager.removeQuery(this);
           }
 
@@ -268,6 +593,36 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   // Internal fetch methods
   // ======================================================
 
+  private getAllEntityRefs(): Set<number> {
+    let allNestedRefIdsSignal = this.allNestedRefIdsSignal;
+
+    if (!allNestedRefIdsSignal) {
+      const queryClient = this.queryClient;
+
+      this.allNestedRefIdsSignal = allNestedRefIdsSignal = reactiveSignal(() => {
+        // Entangle the relay value. Whenever the relay value is updated, the
+        // allNestedRefIdsSignal will be updated, so no need for a second signal.
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+        this.relay.value;
+
+        const allRefIds = new Set<number>();
+
+        if (this.refIds !== undefined) {
+          for (const refId of this.refIds) {
+            queryClient.getNestedEntityRefIds(refId, allRefIds);
+          }
+        }
+
+        // Reconcile extra data against the main response
+        this.extraData.reconcile(allRefIds);
+
+        return allRefIds;
+      });
+    }
+
+    return allNestedRefIdsSignal.value;
+  }
+
   /**
    * Initialize the query by loading from cache and fetching if stale
    */
@@ -281,22 +636,42 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
       const cached = await this.queryClient.loadCachedQuery(this.def, this.queryKey);
 
       if (cached !== undefined) {
-        const shape = this.def.shape;
-        state.value =
-          shape instanceof ValidatorDef
-            ? parseEntities(cached.value, shape as ComplexTypeDef, this.queryClient, new Set())
-            : parseValue(cached.value, shape, this.def.id);
-
         // Set the cached timestamp
         this.updatedAt = cached.updatedAt;
 
         // Set the cached reference IDs
         this.refIds = cached.refIds;
+
+        // Load extra data (stream orphans and optimistic inserts) BEFORE setting state.value
+        // because setting state.value resolves the relay
+        if (cached.extra) {
+          const def = this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>;
+          this.extraData.loadFromCache(
+            cached.extra,
+            this.queryClient,
+            def.stream?.shape as EntityDef | undefined,
+            def.optimisticInserts?.shape as EntityDef | undefined,
+          );
+        }
+
+        // Set the value last - this resolves the relay
+        const shape = this.def.shape;
+        state.value =
+          shape instanceof ValidatorDef
+            ? parseEntities(cached.value, shape as ComplexTypeDef, this.queryClient, new Set())
+            : parseValue(cached.value, shape, this.def.id);
       }
 
-      if (this.def.type === QueryType.Stream) {
+      // Setup subscriptions (handles both StreamQuery and Query/InfiniteQuery with stream)
+      if (
+        this.def.type === QueryType.Stream ||
+        (this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>).stream
+      ) {
         this.setupSubscription();
-      } else {
+      }
+
+      // For non-stream queries, fetch if stale or no cache
+      if (this.def.type !== QueryType.Stream) {
         if (cached !== undefined) {
           // Check if data is stale
           if (this.isStale) {
@@ -315,26 +690,49 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   }
 
   /**
-   * Handle stream updates by merging with existing entity.
-   * Deep merging is handled automatically by parseEntities/setEntity.
+   * Handle stream updates. This method handles both StreamQuery and Query/InfiniteQuery with stream options.
+   * - For StreamQuery: directly updates the relay state with the entity
+   * - For Query/InfiniteQuery with stream: updates entities in response or adds to orphans
    */
   private setupSubscription(): void {
     this.unsubscribe?.();
 
-    const streamDef = this.def as StreamQueryDefinition<any, any>;
-    this.unsubscribe = streamDef.subscribeFn(this.queryClient.getContext(), this.params, update => {
-      const shapeDef = this.def.shape as EntityDef;
-      const entityRefs = this.refIds ?? new Set<number>();
+    let subscribeFn: StreamSubscribeFn<any, any>;
+    let shapeDef: EntityDef;
 
-      const parsedData = parseEntities(update, shapeDef as ComplexTypeDef, this.queryClient, entityRefs);
+    if (this.def.type === QueryType.Stream) {
+      shapeDef = this.def.shape as EntityDef;
+      subscribeFn = this.def.subscribeFn;
+    } else {
+      const stream = (this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>).stream;
+
+      if (!stream) {
+        return;
+      }
+
+      shapeDef = stream.shape as EntityDef;
+      subscribeFn = stream.subscribeFn;
+    }
+
+    this.unsubscribe = subscribeFn(this.queryClient.getContext(), this.params, update => {
+      const parsedData = parseObjectEntities(update, shapeDef, this.queryClient);
 
       // Update the relay state
-      this.relayState.value = parsedData;
-      this.updatedAt = Date.now();
-      this.refIds = entityRefs;
+      if (this.def.type === QueryType.Stream) {
+        this.relayState.value = parsedData;
+        this.updatedAt = Date.now();
 
-      // Cache the data
-      this.queryClient.saveQueryData(this.def, this.queryKey, parsedData, this.updatedAt, entityRefs);
+        // Cache the data
+        this.queryClient.saveQueryData(this.def, this.queryKey, parsedData, this.updatedAt);
+      } else {
+        const allRefIds = this.getAllEntityRefs();
+        const proxyId = getProxyId(parsedData);
+
+        // Add to orphans if not in main response
+        if (proxyId !== undefined && !allRefIds.has(proxyId)) {
+          this.extraData.addStreamOrphan(parsedData);
+        }
+      }
     });
   }
 
@@ -353,7 +751,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
     // Attempt fetch with retries
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const queryDef = this.def as QueryDefinition<any, any> | InfiniteQueryDefinition<any, any>;
+        const queryDef = this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>;
         const freshData = await queryDef.fetchFn(this.queryClient.getContext(), params);
 
         // Success! Reset attempt count
@@ -367,7 +765,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         if (isInfinite && !reset && this.refIds !== undefined) {
           entityRefs = this.refIds;
         } else {
-          entityRefs = new Set<number>();
+          entityRefs = this.refIds = new Set<number>();
         }
 
         const shape = this.def.shape;
@@ -397,7 +795,14 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         this._nextPageParams = undefined;
 
         // Cache the data (synchronous, fire-and-forget)
-        this.queryClient.saveQueryData(this.def, this.queryKey, queryData, updatedAt, entityRefs);
+        this.queryClient.saveQueryData(
+          this.def,
+          this.queryKey,
+          queryData,
+          updatedAt,
+          entityRefs,
+          this.getExtraForPersistence(),
+        );
 
         // Update the timestamp
         this.updatedAt = Date.now();
@@ -455,6 +860,12 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
     const promise = this.runQuery(this.params, true)
       .then(result => {
         this.relayState.value = result;
+
+        // Clear stream orphans and optimistic inserts on refetch
+        if (this._extra !== undefined) {
+          this._extra.clear();
+        }
+
         return result;
       })
       .catch((error: unknown) => {
@@ -533,6 +944,83 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
 
   get hasNextPage(): boolean {
     return this.nextPageParams !== null;
+  }
+
+  get extra(): QueryExtra<unknown, unknown> {
+    this.getAllEntityRefs();
+    return this.extraData.getExtra();
+  }
+
+  /**
+   * Persist the current extra data to the store
+   */
+  private persistExtraData(): void {
+    if (this.updatedAt === undefined) {
+      return; // Query not initialized yet
+    }
+
+    const extra = this._extra?.getForPersistence();
+    this.queryClient.saveQueryData(this.def, this.queryKey, this.relayState.value, this.updatedAt, this.refIds, extra);
+  }
+
+  /**
+   * Get extra data for persistence (converts Sets to arrays of entity ref IDs)
+   */
+  private getExtraForPersistence(): CachedQueryExtra | undefined {
+    return this._extra?.getForPersistence();
+  }
+
+  /**
+   * Add an optimistic insert to the query result.
+   * The insert will be automatically removed when:
+   * - The entity appears in a refetched response
+   * - The entity appears as a stream orphan
+   * - refetch() is called
+   */
+  addOptimisticInsert(insert: Record<string, unknown>): void {
+    // Check that the query has optimisticInserts configured
+    const def = this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>;
+    const optimisticInsertsConfig = def.optimisticInserts;
+
+    if (optimisticInsertsConfig === undefined) {
+      throw new Error(
+        'Query does not have optimisticInserts configured. Add optimisticInserts: { type: YourEntity } to the query definition.',
+      );
+    }
+
+    let proxyId = getProxyId(insert);
+    let parsedInsert = insert;
+
+    // If not already a proxy, parse it through the optimisticInserts shape
+    if (proxyId === undefined) {
+      parsedInsert = parseObjectEntities(insert, optimisticInsertsConfig.shape as EntityDef, this.queryClient);
+      proxyId = getProxyId(parsedInsert);
+
+      if (proxyId === undefined) {
+        throw new Error('Optimistic insert must be or produce an entity proxy');
+      }
+    }
+
+    // Check if already in main response
+    const allRefIds = this.getAllEntityRefs();
+    if (allRefIds.has(proxyId)) {
+      return; // Already in response, no-op
+    }
+
+    // Check if already in stream orphans
+    if (this.extraData.hasOrphanWithId(proxyId)) {
+      return; // Already in stream orphans, no-op
+    }
+
+    this.extraData.addOptimisticInsert(parsedInsert);
+  }
+
+  /**
+   * Remove an optimistic insert from the query result.
+   * This is a no-op if the insert has already been removed.
+   */
+  removeOptimisticInsert(insert: Record<string, unknown>): void {
+    this.extraData.removeOptimisticInsert(insert);
   }
 
   get isStale(): boolean {

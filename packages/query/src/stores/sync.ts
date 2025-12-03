@@ -74,7 +74,11 @@ export class SyncQueryStore implements QueryStore {
 
   constructor(private readonly kv: SyncPersistentStore) {}
 
-  loadQuery(queryDef: QueryDefinition<any, any>, queryKey: number, entityMap: EntityStore): CachedQuery | undefined {
+  loadQuery(
+    queryDef: QueryDefinition<any, any, any>,
+    queryKey: number,
+    entityMap: EntityStore,
+  ): CachedQuery | undefined {
     const updatedAt = this.kv.getNumber(updatedAtKeyFor(queryKey));
 
     if (updatedAt === undefined || updatedAt < Date.now() - (queryDef.cache?.gcTime ?? DEFAULT_GC_TIME)) {
@@ -124,7 +128,7 @@ export class SyncQueryStore implements QueryStore {
   }
 
   saveQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     value: unknown,
     updatedAt: number,
@@ -139,7 +143,7 @@ export class SyncQueryStore implements QueryStore {
     this.setValue(entityKey, value, refIds);
   }
 
-  activateQuery(queryDef: QueryDefinition<any, any>, queryKey: number): void {
+  activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void {
     if (!this.kv.has(valueKeyFor(queryKey))) {
       // Query not in store, nothing to do. This can happen if the query has
       // been evicted from the cache, but is still active in memory.

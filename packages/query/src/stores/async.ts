@@ -127,7 +127,7 @@ export class AsyncQueryStore implements QueryStore {
   }
 
   async loadQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     entityMap: EntityStore,
   ): Promise<CachedQuery | undefined> {
@@ -188,7 +188,7 @@ export class AsyncQueryStore implements QueryStore {
   }
 
   saveQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     value: unknown,
     updatedAt: number,
@@ -225,7 +225,7 @@ export class AsyncQueryStore implements QueryStore {
     }
   }
 
-  activateQuery(queryDef: QueryDefinition<any, any>, queryKey: number): void {
+  activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void {
     const message: StoreMessage = {
       type: 'activateQuery',
       queryDefId: queryDef.id,
