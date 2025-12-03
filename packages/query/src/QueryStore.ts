@@ -25,7 +25,7 @@ export interface QueryStore {
    * May return undefined if the document is not in the store.
    */
   loadQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     entityMap: EntityStore,
   ): MaybePromise<CachedQuery | undefined>;
@@ -35,7 +35,7 @@ export interface QueryStore {
    * This is fire-and-forget for async implementations.
    */
   saveQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     value: unknown,
     updatedAt: number,
@@ -52,7 +52,7 @@ export interface QueryStore {
    * Marks a query as accessed, updating the LRU queue.
    * Handles eviction internally when the cache is full.
    */
-  activateQuery(queryDef: QueryDefinition<any, any>, queryKey: number): void;
+  activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void;
 }
 
 export type MaybePromise<T> = T | Promise<T>;
@@ -157,7 +157,11 @@ export class SyncQueryStore implements QueryStore {
 
   constructor(private readonly kv: SyncPersistentStore) {}
 
-  loadQuery(queryDef: QueryDefinition<any, any>, queryKey: number, entityMap: EntityStore): CachedQuery | undefined {
+  loadQuery(
+    queryDef: QueryDefinition<any, any, any>,
+    queryKey: number,
+    entityMap: EntityStore,
+  ): CachedQuery | undefined {
     const updatedAt = this.kv.getNumber(updatedAtKeyFor(queryKey));
 
     if (updatedAt === undefined || updatedAt < Date.now() - (queryDef.cache?.gcTime ?? DEFAULT_GC_TIME)) {
@@ -207,7 +211,7 @@ export class SyncQueryStore implements QueryStore {
   }
 
   saveQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     value: unknown,
     updatedAt: number,
@@ -222,7 +226,7 @@ export class SyncQueryStore implements QueryStore {
     this.setValue(entityKey, value, refIds);
   }
 
-  activateQuery(queryDef: QueryDefinition<any, any>, queryKey: number): void {
+  activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void {
     if (!this.kv.has(valueKeyFor(queryKey))) {
       // Query not in store, nothing to do. This can happen if the query has
       // been evicted from the cache, but is still active in memory.
@@ -451,7 +455,7 @@ export class AsyncQueryStore implements QueryStore {
   }
 
   async loadQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     entityMap: EntityStore,
   ): Promise<CachedQuery | undefined> {
@@ -512,7 +516,7 @@ export class AsyncQueryStore implements QueryStore {
   }
 
   saveQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     value: unknown,
     updatedAt: number,
@@ -549,7 +553,7 @@ export class AsyncQueryStore implements QueryStore {
     }
   }
 
-  activateQuery(queryDef: QueryDefinition<any, any>, queryKey: number): void {
+  activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void {
     const message: StoreMessage = {
       type: 'activateQuery',
       queryDefId: queryDef.id,

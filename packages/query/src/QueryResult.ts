@@ -1,4 +1,16 @@
-import { relay, type RelayState, context, DiscriminatedReactivePromise, type Context, Signal, signal } from 'signalium';
+import {
+  relay,
+  type RelayState,
+  context,
+  DiscriminatedReactivePromise,
+  type Context,
+  Signal,
+  signal,
+  ReadonlySignal,
+  reactiveSignal,
+  Notifier,
+  notifier,
+} from 'signalium';
 import { hashValue, setReactivePromise } from 'signalium/utils';
 import {
   QueryResult,
@@ -10,14 +22,15 @@ import {
   NetworkMode,
   RetryConfig,
 } from './types.js';
-import { parseValue } from './proxy.js';
-import { parseEntities } from './parseEntities.js';
+import { getProxyId, parseValue } from './proxy.js';
+import { parseEntities, parseObjectEntities } from './parseEntities.js';
 import { ValidatorDef } from './typeDefs.js';
 import {
   InfiniteQueryDefinition,
   QueryDefinition,
   QueryType,
   StreamQueryDefinition,
+  StreamSubscribeFn,
   type AnyQueryDefinition,
   type QueryClient,
   type QueryParams,
@@ -29,7 +42,7 @@ import {
  * This class combines the old QueryInstance and QueryResultImpl into a single entity.
  */
 export class QueryResultImpl<T> implements BaseQueryResult<T> {
-  def: AnyQueryDefinition<any, any>;
+  def: AnyQueryDefinition<any, any, any>;
   queryKey: number;
 
   private queryClient: QueryClient;
@@ -40,10 +53,13 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   private params: QueryParams | undefined = undefined;
   private refIds: Set<number> | undefined = undefined;
 
+  private allNestedRefIdsSignal: ReadonlySignal<Set<number>> | undefined = undefined;
+
   private refetchPromise: Promise<T> | undefined = undefined;
   private fetchMorePromise: Promise<T> | undefined = undefined;
   private attemptCount: number = 0;
   private unsubscribe?: () => void = undefined;
+  private streamUnsubscribe?: () => void = undefined;
 
   private relay: DiscriminatedReactivePromise<T>;
   private _relayState: RelayState<any> | undefined = undefined;
@@ -57,6 +73,17 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
     }
 
     return relayState;
+  }
+
+  private _orphansNotifier: Notifier | undefined = undefined;
+  private _orphans: Record<string, unknown>[] | undefined = undefined;
+
+  private get orphansNotifier(): Notifier {
+    return this._orphansNotifier ?? (this._orphansNotifier = notifier());
+  }
+
+  private get orphansValue(): Record<string, unknown>[] {
+    return this._orphans ?? (this._orphans = []);
   }
 
   private _nextPageParams: QueryParams | undefined | null = undefined;
@@ -76,7 +103,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         throw new Error('Query result is not an array, this is a bug');
       }
 
-      const infiniteDef = this.def as InfiniteQueryDefinition<any, any>;
+      const infiniteDef = this.def as InfiniteQueryDefinition<any, any, any>;
       const nextParams = infiniteDef.pagination?.getNextPageParams?.(value[value.length - 1]);
 
       if (nextParams === undefined) {
@@ -103,7 +130,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   }
 
   constructor(
-    def: AnyQueryDefinition<any, any>,
+    def: AnyQueryDefinition<any, any, any>,
     queryClient: QueryClient,
     queryKey: number,
     params: QueryParams | undefined,
@@ -153,9 +180,16 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
       // Return deactivation callback
       return {
         update: () => {
-          // For streams, unsubscribe and resubscribe to re-establish connection
-          if (this.def.type === QueryType.Stream) {
+          // For any query with streams, unsubscribe and resubscribe to re-establish connection
+          if (
+            this.def.type === QueryType.Stream ||
+            (this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>).stream
+          ) {
             this.setupSubscription();
+          }
+
+          // For StreamQuery, we're done - it doesn't react to network status
+          if (this.def.type === QueryType.Stream) {
             return;
           }
 
@@ -177,13 +211,18 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         },
         deactivate: () => {
           // Last subscriber left, deactivate refetch and schedule memory eviction
-          if (this.def.type === QueryType.Stream) {
-            // Unsubscribe from stream
-            if (this.unsubscribe) {
-              this.unsubscribe();
-              this.unsubscribe = undefined;
-            }
-          } else if (this.def.cache?.refetchInterval) {
+          // Unsubscribe from any active streams
+          if (this.unsubscribe) {
+            this.unsubscribe();
+            this.unsubscribe = undefined;
+          }
+          if (this.streamUnsubscribe) {
+            this.streamUnsubscribe();
+            this.streamUnsubscribe = undefined;
+          }
+
+          // Remove from refetch manager if configured
+          if (this.def.type !== QueryType.Stream && this.def.cache?.refetchInterval) {
             this.queryClient.refetchManager.removeQuery(this);
           }
 
@@ -268,6 +307,53 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   // Internal fetch methods
   // ======================================================
 
+  private getAllEntityRefs(): Set<number> {
+    let allNestedRefIdsSignal = this.allNestedRefIdsSignal;
+
+    if (!allNestedRefIdsSignal) {
+      const queryClient = this.queryClient;
+
+      this.allNestedRefIdsSignal = allNestedRefIdsSignal = reactiveSignal(() => {
+        // Entangle the relay value. Whenever the relay value is updated, the
+        // allNestedRefIdsSignal will be updated, so no need for a second signal.
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+        this.relay.value;
+
+        const allRefIds = new Set<number>();
+
+        if (this.refIds !== undefined) {
+          for (const refId of this.refIds) {
+            queryClient.getNestedEntityRefIds(refId, allRefIds);
+          }
+        }
+
+        const orphans = this.orphansValue;
+        let newOrphans: Set<Record<string, unknown>> | undefined = undefined;
+
+        for (const orphan of orphans) {
+          const entityRefId = getProxyId(orphan);
+
+          if (entityRefId !== undefined && allRefIds.has(entityRefId)) {
+            if (newOrphans === undefined) {
+              newOrphans = new Set(orphans);
+            }
+
+            newOrphans.delete(orphan);
+          }
+        }
+
+        if (newOrphans !== undefined) {
+          this._orphans = Array.from(newOrphans);
+          this.orphansNotifier.notify();
+        }
+
+        return allRefIds;
+      });
+    }
+
+    return allNestedRefIdsSignal.value;
+  }
+
   /**
    * Initialize the query by loading from cache and fetching if stale
    */
@@ -294,9 +380,16 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         this.refIds = cached.refIds;
       }
 
-      if (this.def.type === QueryType.Stream) {
+      // Setup subscriptions (handles both StreamQuery and Query/InfiniteQuery with stream)
+      if (
+        this.def.type === QueryType.Stream ||
+        (this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>).stream
+      ) {
         this.setupSubscription();
-      } else {
+      }
+
+      // For non-stream queries, fetch if stale or no cache
+      if (this.def.type !== QueryType.Stream) {
         if (cached !== undefined) {
           // Check if data is stale
           if (this.isStale) {
@@ -315,26 +408,49 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
   }
 
   /**
-   * Handle stream updates by merging with existing entity.
-   * Deep merging is handled automatically by parseEntities/setEntity.
+   * Handle stream updates. This method handles both StreamQuery and Query/InfiniteQuery with stream options.
+   * - For StreamQuery: directly updates the relay state with the entity
+   * - For Query/InfiniteQuery with stream: updates entities in response or adds to orphans
    */
   private setupSubscription(): void {
     this.unsubscribe?.();
 
-    const streamDef = this.def as StreamQueryDefinition<any, any>;
-    this.unsubscribe = streamDef.subscribeFn(this.queryClient.getContext(), this.params, update => {
-      const shapeDef = this.def.shape as EntityDef;
-      const entityRefs = this.refIds ?? new Set<number>();
+    let subscribeFn: StreamSubscribeFn<any, any>;
+    let shapeDef: EntityDef;
 
-      const parsedData = parseEntities(update, shapeDef as ComplexTypeDef, this.queryClient, entityRefs);
+    if (this.def.type === QueryType.Stream) {
+      shapeDef = this.def.shape as EntityDef;
+      subscribeFn = this.def.subscribeFn;
+    } else {
+      const stream = (this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>).stream;
+
+      if (!stream) {
+        return;
+      }
+
+      shapeDef = stream.shape as EntityDef;
+      subscribeFn = stream.subscribeFn;
+    }
+
+    this.unsubscribe = subscribeFn(this.queryClient.getContext(), this.params, update => {
+      const parsedData = parseObjectEntities(update, shapeDef, this.queryClient);
 
       // Update the relay state
-      this.relayState.value = parsedData;
-      this.updatedAt = Date.now();
-      this.refIds = entityRefs;
+      if (this.def.type === QueryType.Stream) {
+        this.relayState.value = parsedData;
+        this.updatedAt = Date.now();
 
-      // Cache the data
-      this.queryClient.saveQueryData(this.def, this.queryKey, parsedData, this.updatedAt, entityRefs);
+        // Cache the data
+        this.queryClient.saveQueryData(this.def, this.queryKey, parsedData, this.updatedAt);
+      } else {
+        const allRefIds = this.getAllEntityRefs();
+        const proxyId = getProxyId(parsedData);
+
+        if (proxyId !== undefined && !allRefIds.has(proxyId)) {
+          this.orphansValue.push(parsedData);
+          this.orphansNotifier.notify();
+        }
+      }
     });
   }
 
@@ -353,7 +469,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
     // Attempt fetch with retries
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const queryDef = this.def as QueryDefinition<any, any> | InfiniteQueryDefinition<any, any>;
+        const queryDef = this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>;
         const freshData = await queryDef.fetchFn(this.queryClient.getContext(), params);
 
         // Success! Reset attempt count
@@ -367,7 +483,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         if (isInfinite && !reset && this.refIds !== undefined) {
           entityRefs = this.refIds;
         } else {
-          entityRefs = new Set<number>();
+          entityRefs = this.refIds = new Set<number>();
         }
 
         const shape = this.def.shape;
@@ -455,6 +571,14 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
     const promise = this.runQuery(this.params, true)
       .then(result => {
         this.relayState.value = result;
+
+        const orphans = this._orphans;
+
+        if (orphans !== undefined && orphans.length > 0) {
+          this._orphans = undefined;
+          this.orphansNotifier.notify();
+        }
+
         return result;
       })
       .catch((error: unknown) => {
@@ -533,6 +657,12 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
 
   get hasNextPage(): boolean {
     return this.nextPageParams !== null;
+  }
+
+  get orphans(): readonly unknown[] {
+    this.getAllEntityRefs();
+    this.orphansNotifier.consume();
+    return this.orphansValue;
   }
 
   get isStale(): boolean {

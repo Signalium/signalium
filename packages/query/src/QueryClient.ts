@@ -13,7 +13,7 @@
 
 import { context, type Context } from 'signalium';
 import { hashValue } from 'signalium/utils';
-import { QueryResult, EntityDef, RefetchInterval, NetworkMode, RetryConfig, TypeDef } from './types.js';
+import { QueryResult, EntityDef, RefetchInterval, NetworkMode, RetryConfig, TypeDef, UnionDef } from './types.js';
 import { EntityRecord, EntityStore } from './EntityMap.js';
 import { NetworkManager } from './NetworkManager.js';
 import { QueryResultImpl } from './QueryResult.js';
@@ -57,16 +57,27 @@ export const enum QueryType {
   Stream = 'stream',
 }
 
-export interface QueryDefinition<Params extends QueryParams | undefined, Result> {
+export type StreamSubscribeFn<Params extends QueryParams | undefined, StreamType> = (
+  context: QueryContext,
+  params: Params,
+  onUpdate: (update: StreamType) => void,
+) => () => void;
+
+export interface QueryDefinition<Params extends QueryParams | undefined, Result, StreamType> {
   type: QueryType.Query;
   id: string;
   shape: TypeDef;
   shapeKey: number;
   fetchFn: (context: QueryContext, params: Params, prevResult?: Result) => Promise<Result>;
   cache?: QueryCacheOptions;
+  stream?: {
+    shape: TypeDef;
+    shapeKey: number;
+    subscribeFn: StreamSubscribeFn<Params, StreamType>;
+  };
 }
 
-export interface InfiniteQueryDefinition<Params extends QueryParams | undefined, Result> {
+export interface InfiniteQueryDefinition<Params extends QueryParams | undefined, Result, StreamType> {
   type: QueryType.InfiniteQuery;
   id: string;
   shape: TypeDef;
@@ -74,21 +85,26 @@ export interface InfiniteQueryDefinition<Params extends QueryParams | undefined,
   fetchFn: (context: QueryContext, params: Params, prevResult?: Result) => Promise<Result>;
   pagination: QueryPaginationOptions<Result>;
   cache?: QueryCacheOptions;
+  stream?: {
+    shape: TypeDef;
+    shapeKey: number;
+    subscribeFn: StreamSubscribeFn<Params, StreamType>;
+  };
 }
 
-export interface StreamQueryDefinition<Params extends QueryParams | undefined, Result> {
+export interface StreamQueryDefinition<Params extends QueryParams | undefined, StreamType> {
   type: QueryType.Stream;
   id: string;
   shape: EntityDef; // Must be entity
   shapeKey: number;
-  subscribeFn: (context: QueryContext, params: Params, onUpdate: (update: Partial<Result>) => void) => () => void; // Returns unsubscribe function
+  subscribeFn: StreamSubscribeFn<Params, StreamType>;
   cache?: StreamCacheOptions;
 }
 
-export type AnyQueryDefinition<Params extends QueryParams | undefined, Result> =
-  | QueryDefinition<Params, Result>
-  | InfiniteQueryDefinition<Params, Result>
-  | StreamQueryDefinition<Params, Result>;
+export type AnyQueryDefinition<Params extends QueryParams | undefined, Result, Event> =
+  | QueryDefinition<Params, Result, Event>
+  | InfiniteQueryDefinition<Params, Result, Event>
+  | StreamQueryDefinition<Params, Event>;
 
 // -----------------------------------------------------------------------------
 // QueryStore Interface
@@ -106,7 +122,7 @@ export interface QueryStore {
    * May return undefined if the document is not in the store.
    */
   loadQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     entityMap: EntityStore,
   ): MaybePromise<CachedQuery | undefined>;
@@ -116,7 +132,7 @@ export interface QueryStore {
    * This is fire-and-forget for async implementations.
    */
   saveQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     value: unknown,
     updatedAt: number,
@@ -133,12 +149,12 @@ export interface QueryStore {
    * Marks a query as accessed, updating the LRU queue.
    * Handles eviction internally when the cache is full.
    */
-  activateQuery(queryDef: QueryDefinition<any, any>, queryKey: number): void;
+  activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void;
 }
 
 export type MaybePromise<T> = T | Promise<T>;
 
-export const queryKeyFor = (queryDef: AnyQueryDefinition<any, any>, params: unknown): number => {
+export const queryKeyFor = (queryDef: AnyQueryDefinition<any, any, any>, params: unknown): number => {
   return hashValue([queryDef.id, queryDef.shapeKey, params]);
 };
 
@@ -169,11 +185,11 @@ export class QueryClient {
   }
 
   saveQueryData(
-    queryDef: AnyQueryDefinition<QueryParams | undefined, unknown>,
+    queryDef: AnyQueryDefinition<QueryParams | undefined, unknown, unknown>,
     queryKey: number,
     data: unknown,
     updatedAt: number,
-    entityRefs: Set<number>,
+    entityRefs?: Set<number>,
   ): void {
     // QueryStore expects the base definition structure
     this.store.saveQuery(queryDef as any, queryKey, data, updatedAt, entityRefs);
@@ -190,7 +206,7 @@ export class QueryClient {
     this.memoryEvictionManager.cancelEviction(queryKey);
   }
 
-  loadCachedQuery(queryDef: AnyQueryDefinition<QueryParams | undefined, unknown>, queryKey: number) {
+  loadCachedQuery(queryDef: AnyQueryDefinition<QueryParams | undefined, unknown, unknown>, queryKey: number) {
     return this.store.loadQuery(queryDef as any, queryKey, this.entityMap);
   }
 
@@ -198,7 +214,7 @@ export class QueryClient {
    * Loads a query from the document store and returns a QueryResult
    * that triggers fetches and prepopulates with cached data
    */
-  getQuery<T>(queryDef: AnyQueryDefinition<any, any>, params: QueryParams | undefined): QueryResult<T> {
+  getQuery<T>(queryDef: AnyQueryDefinition<any, any, any>, params: QueryParams | undefined): QueryResult<T> {
     const queryKey = queryKeyFor(queryDef, params);
 
     let queryInstance = this.queryInstances.get(queryKey) as QueryResultImpl<T> | undefined;
@@ -211,7 +227,7 @@ export class QueryClient {
       this.queryInstances.set(queryKey, queryInstance as QueryResultImpl<unknown>);
     }
 
-    return queryInstance as QueryResult<T>;
+    return queryInstance as unknown as QueryResult<T>;
   }
 
   hydrateEntity(key: number, shape: EntityDef): EntityRecord {
@@ -219,11 +235,15 @@ export class QueryClient {
   }
 
   saveEntity(key: number, obj: Record<string, unknown>, shape: EntityDef, entityRefs?: Set<number>): EntityRecord {
-    const record = this.entityMap.setEntity(key, obj, shape);
+    const record = this.entityMap.setEntity(key, obj, shape, entityRefs);
 
     this.store.saveEntity(key, obj, entityRefs);
 
     return record;
+  }
+
+  getNestedEntityRefIds(key: number, refIds: Set<number>): Set<number> {
+    return this.entityMap.getNestedEntityRefIds(key, refIds);
   }
 
   destroy(): void {

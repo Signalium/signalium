@@ -18,7 +18,7 @@ import { PreloadedEntityRecord } from './EntityMap.js';
 const entries = Object.entries;
 const isArray = Array.isArray;
 
-const PROXY_BRAND = new WeakSet();
+const PROXY_ID = new WeakMap();
 
 function parseUnionValue(
   valueType: number,
@@ -76,7 +76,7 @@ export function parseRecordValue(record: Record<string, unknown>, recordShape: C
 }
 
 export function parseObjectValue(object: Record<string, unknown>, objectShape: ObjectDef | EntityDef, path: string) {
-  if (PROXY_BRAND.has(object)) {
+  if (PROXY_ID.has(object)) {
     // Is an entity proxy, so return it directly
     return object;
   }
@@ -177,7 +177,7 @@ export function mergeValues<T extends Record<string, unknown>>(
 ): T {
   // Iterate over update properties
   for (const [key, value] of entries(update)) {
-    if (typeof value === 'object' && value !== null && !isArray(value) && !PROXY_BRAND.has(value)) {
+    if (typeof value === 'object' && value !== null && !isArray(value) && !PROXY_ID.has(value)) {
       mergeValues(target[key] as Record<string, unknown>, value as Record<string, unknown>);
     } else {
       target[key] = value;
@@ -273,7 +273,11 @@ export function createEntityProxy(
   );
 
   // Add the proxy to the proxy brand set so we can easily identify it later
-  PROXY_BRAND.add(proxy);
+  PROXY_ID.set(proxy, id);
 
   return proxy;
+}
+
+export function getProxyId(object: Record<string, unknown>): number | undefined {
+  return PROXY_ID.get(object);
 }
