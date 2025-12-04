@@ -330,9 +330,9 @@ export type PendingInfiniteQueryWithStreamResult<T, StreamEvent> = PendingReacti
 export type ReadyInfiniteQueryWithStreamResult<T, StreamEvent> = ReadyReactivePromise<T> &
   InfiniteQueryWithStreamResultExtensions<T, StreamEvent>;
 
-export type InfiniteQueryWithStreamResult<T, StreamEvent> = PendingInfiniteQueryWithStreamResult<T, StreamEvent> & {
-  stream: StreamQueryResult<StreamEvent>;
-};
+export type InfiniteQueryWithStreamResult<T, StreamEvent> =
+  | PendingInfiniteQueryWithStreamResult<T, StreamEvent>
+  | ReadyInfiniteQueryWithStreamResult<T, StreamEvent>;
 
 export type InfiniteQueryWithStreamFn<
   Params extends Record<string, unknown>,

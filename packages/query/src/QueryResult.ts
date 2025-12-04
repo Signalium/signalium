@@ -155,9 +155,15 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
       this.wasOffline = !isOnline;
 
       if (this.initialized) {
-        if (this.def.type === QueryType.Stream) {
+        // For any query with streams, resubscribe on reactivation
+        if (
+          this.def.type === QueryType.Stream ||
+          (this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>).stream
+        ) {
           this.setupSubscription();
-        } else {
+        }
+
+        if (this.def.type !== QueryType.Stream) {
           // Check if we just came back online
           if (!this.wasOffline && isOnline) {
             // We're back online - check if we should refresh
@@ -447,8 +453,14 @@ export class QueryResultImpl<T> implements BaseQueryResult<T> {
         const proxyId = getProxyId(parsedData);
 
         if (proxyId !== undefined && !allRefIds.has(proxyId)) {
-          this.orphansValue.push(parsedData);
-          this.orphansNotifier.notify();
+          // Check if this entity is already in orphans to prevent duplicates
+          const orphans = this.orphansValue;
+          const isAlreadyOrphan = orphans.some(o => getProxyId(o) === proxyId);
+
+          if (!isAlreadyOrphan) {
+            orphans.push(parsedData);
+            this.orphansNotifier.notify();
+          }
         }
       }
     });

@@ -6,6 +6,21 @@ import { query, infiniteQuery } from '../query.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 
 /**
+ * Helper to send a stream update outside the reactive context.
+ * This avoids "signal dirtied after consumed" errors.
+ */
+async function sendStreamUpdate(callback: (update: any) => void, update: any): Promise<void> {
+  await new Promise<void>(resolve => {
+    setTimeout(() => {
+      callback(update);
+      resolve();
+    }, 0);
+  });
+  // Give time for update to propagate
+  await sleep(10);
+}
+
+/**
  * Query Stream Tests
  *
  * Tests the stream option on regular query() and infiniteQuery() functions.
@@ -41,7 +56,6 @@ describe('Query Stream Option', () => {
 
       let subscribeCallCount = 0;
       let unsubscribeCallCount = 0;
-      let streamCallback: ((update: any) => void) | undefined;
 
       mockFetch.get('/posts', {
         posts: [
@@ -57,9 +71,8 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             subscribeCallCount++;
-            streamCallback = onUpdate;
             return () => {
               unsubscribeCallCount++;
             };
@@ -109,7 +122,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Message,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             receivedParams = params;
             return () => {};
           },
@@ -150,7 +163,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -164,14 +177,12 @@ describe('Query Stream Option', () => {
         const initialPosts = relay.value!.posts;
         expect(initialPosts[0].title).toBe('Post 1');
 
-        // Send stream update for Post 1
-        streamCallback!({
+        // Send stream update for Post 1 (using helper to avoid reactive context issues)
+        await sendStreamUpdate(streamCallback!, {
           __typename: 'Post',
           id: '1',
           title: 'Updated Post 1',
         });
-
-        await sleep(10);
 
         // Post should be updated in the array
         expect(relay.value!.posts[0].title).toBe('Updated Post 1');
@@ -213,7 +224,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: User,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -226,14 +237,12 @@ describe('Query Stream Option', () => {
 
         expect(relay.value!.posts[0].author.name).toBe('Alice');
 
-        // Send stream update for User
-        streamCallback!({
+        // Send stream update for User (using helper to avoid reactive context issues)
+        await sendStreamUpdate(streamCallback!, {
           __typename: 'User',
           id: 'u1',
           name: 'Alice Smith',
         });
-
-        await sleep(10);
 
         // Nested user should be updated
         expect(relay.value!.posts[0].author.name).toBe('Alice Smith');
@@ -253,9 +262,7 @@ describe('Query Stream Option', () => {
       let streamCallback: ((update: any) => void) | undefined;
 
       mockFetch.get('/posts', {
-        posts: [
-          { __typename: 'Post', id: '1', title: 'Post 1', content: 'Content 1' },
-        ],
+        posts: [{ __typename: 'Post', id: '1', title: 'Post 1', content: 'Content 1' }],
       });
 
       const getPosts = query(() => ({
@@ -265,7 +272,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -279,15 +286,13 @@ describe('Query Stream Option', () => {
         expect(relay.value!.posts.length).toBe(1);
         expect(relay.orphans.length).toBe(0);
 
-        // Send stream event for a post not in the response
-        streamCallback!({
+        // Send stream event for a post not in the response (using helper)
+        await sendStreamUpdate(streamCallback!, {
           __typename: 'Post',
           id: '99',
           title: 'Orphaned Post',
           content: 'Not in response',
         });
-
-        await sleep(10);
 
         // Should be added to orphans
         expect(relay.orphans.length).toBe(1);
@@ -321,7 +326,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -379,7 +384,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -432,7 +437,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -489,7 +494,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -542,7 +547,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -607,7 +612,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -622,28 +627,24 @@ describe('Query Stream Option', () => {
         expect(relay.value![0].posts.length).toBe(2);
         expect(relay.orphans.length).toBe(0);
 
-        // Send stream update for post in first page
-        streamCallback!({
+        // Send stream update for post in first page (using helper)
+        await sendStreamUpdate(streamCallback!, {
           __typename: 'Post',
           id: '1',
           title: 'Updated Post 1',
         });
 
-        await sleep(10);
-
         // Should update the entity
         expect(relay.value![0].posts[0].title).toBe('Updated Post 1');
         expect(relay.orphans.length).toBe(0);
 
-        // Send stream update for orphaned post
-        streamCallback!({
+        // Send stream update for orphaned post (using helper)
+        await sendStreamUpdate(streamCallback!, {
           __typename: 'Post',
           id: '99',
           title: 'Orphaned Post',
           page: 1,
         });
-
-        await sleep(10);
 
         // Should be added to orphans
         expect(relay.orphans.length).toBe(1);
@@ -684,7 +685,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -763,7 +764,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: User,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -774,27 +775,23 @@ describe('Query Stream Option', () => {
         const relay = getPosts({ page: 1 });
         await relay;
 
-        // Update user that's in the response (nested)
-        streamCallback!({
+        // Update user that's in the response (nested) - using helper
+        await sendStreamUpdate(streamCallback!, {
           __typename: 'User',
           id: 'u1',
           name: 'Alice Smith',
         });
 
-        await sleep(10);
-
         // Should update nested entity
         expect(relay.value![0].posts[0].author.name).toBe('Alice Smith');
         expect(relay.orphans.length).toBe(0);
 
-        // Send stream for user not in response
-        streamCallback!({
+        // Send stream for user not in response - using helper
+        await sendStreamUpdate(streamCallback!, {
           __typename: 'User',
           id: 'u99',
           name: 'Bob',
         });
-
-        await sleep(10);
 
         // Should be orphaned
         expect(relay.orphans.length).toBe(1);
@@ -843,7 +840,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             subscribeCount++;
             return () => {
               unsubscribeCount++;
@@ -885,7 +882,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             subscribeCount++;
             return () => {
               unsubscribeCount++;
@@ -945,7 +942,7 @@ describe('Query Stream Option', () => {
   });
 
   describe('Complex Scenarios', () => {
-    it('should handle multiple entities in single stream event', async () => {
+    it('should handle rapid successive stream events', async () => {
       const Post = entity(() => ({
         __typename: t.typename('Post'),
         id: t.id,
@@ -967,10 +964,8 @@ describe('Query Stream Option', () => {
           posts: t.array(Post),
         },
         stream: {
-          event: {
-            posts: t.array(Post),
-          },
-          subscribe: (params, onUpdate) => {
+          event: Post,
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -981,15 +976,11 @@ describe('Query Stream Option', () => {
         const relay = getPosts();
         await relay;
 
-        // Send stream event with multiple posts (some in response, some not)
-        streamCallback!({
-          posts: [
-            { __typename: 'Post', id: '1', title: 'Updated Post 1' }, // In response
-            { __typename: 'Post', id: '99', title: 'Orphan 99' }, // Orphan
-            { __typename: 'Post', id: '2', title: 'Updated Post 2' }, // In response
-            { __typename: 'Post', id: '100', title: 'Orphan 100' }, // Orphan
-          ],
-        });
+        // Send rapid successive stream events (some updating entities in response, some orphans)
+        await sendStreamUpdate(streamCallback!, { __typename: 'Post', id: '1', title: 'Updated Post 1' }); // In response
+        await sendStreamUpdate(streamCallback!, { __typename: 'Post', id: '99', title: 'Orphan 99' }); // Orphan
+        await sendStreamUpdate(streamCallback!, { __typename: 'Post', id: '2', title: 'Updated Post 2' }); // In response
+        await sendStreamUpdate(streamCallback!, { __typename: 'Post', id: '100', title: 'Orphan 100' }); // Orphan
 
         await sleep(10);
 
@@ -1034,7 +1025,7 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
+          subscribe: (context, params, onUpdate) => {
             streamCallback = onUpdate;
             return () => {};
           },
@@ -1045,18 +1036,16 @@ describe('Query Stream Option', () => {
         const relay = getPosts();
         await relay;
 
-        // Add an orphan
-        streamCallback!({ __typename: 'Post', id: '99', title: 'Orphan 99' });
-        await sleep(10);
+        // Add an orphan - using helper
+        await sendStreamUpdate(streamCallback!, { __typename: 'Post', id: '99', title: 'Orphan 99' });
         expect(relay.orphans.length).toBe(1);
 
         // Start a slow refetch
         fetchDelay = 100;
         const refetchPromise = relay.refetch();
 
-        // Send more stream updates while refetch is in progress
-        streamCallback!({ __typename: 'Post', id: '100', title: 'Orphan 100' });
-        await sleep(10);
+        // Send more stream updates while refetch is in progress - using helper
+        await sendStreamUpdate(streamCallback!, { __typename: 'Post', id: '100', title: 'Orphan 100' });
 
         // Should have both orphans
         expect(relay.orphans.length).toBe(2);
@@ -1077,20 +1066,31 @@ describe('Query Stream Option', () => {
         category: t.string,
       }));
 
-      let streamCallback: ((update: any) => void) | undefined;
+      let streamCallback1: ((update: any) => void) | undefined;
+      let streamCallback2: ((update: any) => void) | undefined;
 
-      mockFetch.get('/posts', (url: string) => {
-        const category = url.includes('tech') ? 'tech' : 'news';
-        return {
-          posts: [
-            {
-              __typename: 'Post',
-              id: category === 'tech' ? '1' : '2',
-              title: `${category} Post`,
-              category,
-            },
-          ],
-        };
+      // First query response (tech category)
+      mockFetch.get('/posts', {
+        posts: [
+          {
+            __typename: 'Post',
+            id: '1',
+            title: 'tech Post',
+            category: 'tech',
+          },
+        ],
+      });
+
+      // Second query response (news category)
+      mockFetch.get('/posts', {
+        posts: [
+          {
+            __typename: 'Post',
+            id: '2',
+            title: 'news Post',
+            category: 'news',
+          },
+        ],
       });
 
       const getPosts = query(() => ({
@@ -1103,8 +1103,13 @@ describe('Query Stream Option', () => {
         },
         stream: {
           event: Post,
-          subscribe: (params, onUpdate) => {
-            streamCallback = onUpdate;
+          subscribe: (context, params, onUpdate) => {
+            // Store callback for each query based on category param
+            if (params?.category === 'tech') {
+              streamCallback1 = onUpdate;
+            } else {
+              streamCallback2 = onUpdate;
+            }
             return () => {};
           },
         },
@@ -1116,8 +1121,8 @@ describe('Query Stream Option', () => {
         await relay1;
         expect(relay1.value!.posts[0].category).toBe('tech');
 
-        // Add orphan
-        streamCallback!({
+        // Add orphan to first query
+        streamCallback1!({
           __typename: 'Post',
           id: '99',
           title: 'Orphan 99',
@@ -1140,4 +1145,3 @@ describe('Query Stream Option', () => {
     });
   });
 });
-

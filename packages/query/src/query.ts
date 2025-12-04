@@ -12,6 +12,7 @@ import {
   TypeDef,
   QueryWithStreamFn,
   ComplexTypeDef,
+  InfiniteQueryWithStreamFn,
 } from './types.js';
 import {
   QueryCacheOptions,
@@ -78,28 +79,28 @@ interface RESTQueryDefinition<
   Path extends string,
   SearchParams extends SearchParamsDefinition,
   ResponseDef extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
-  EventDef extends EntityDef | UnionDef<EntityDef[]> = never,
+  EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 > {
   path: Path;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   searchParams?: SearchParams;
   response: ResponseDef;
   cache?: QueryCacheOptions;
-  stream?: StreamOptions<SearchParams, EventDef>;
+  stream?: EventDef extends EntityDef | UnionDef<EntityDef[]> ? StreamOptions<SearchParams, EventDef> : undefined;
 }
 
 interface InfiniteRESTQueryDefinition<
   Path extends string,
   SearchParams extends SearchParamsDefinition,
   ResponseDef extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
-  EventDef extends EntityDef | UnionDef<EntityDef[]> = never,
+  EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 > {
   path: Path;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   searchParams?: SearchParams;
   response: ResponseDef;
   cache?: QueryCacheOptions;
-  stream?: StreamOptions<SearchParams, EventDef>;
+  stream?: EventDef extends EntityDef | UnionDef<EntityDef[]> ? StreamOptions<SearchParams, EventDef> : undefined;
   pagination: {
     getNextPageParams?(
       lastPage: ExtractTypesFromObjectOrUndefined<ResponseDef>,
@@ -216,7 +217,7 @@ function buildQueryFn(
           shape: streamShape,
           shapeKey: streamShapeKey,
           subscribeFn: (context: QueryContext, params: QueryParams | undefined, onUpdate: any) => {
-            return (stream.subscribe as any)(params as any, onUpdate);
+            return (stream.subscribe as any)(context, params as any, onUpdate);
           },
         };
       }
@@ -260,12 +261,12 @@ export function query<
   Path extends string,
   SearchParams extends SearchParamsDefinition,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
-  EventDef extends EntityDef | UnionDef<EntityDef[]> = never,
+  EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 >(
   queryDefinitionBuilder: () => RESTQueryDefinition<Path, SearchParams, Response, EventDef>,
-): EventDef extends never
-  ? QueryFn<ExtractQueryParams<Path, SearchParams>, ComplexTypeDef>
-  : QueryWithStreamFn<ExtractQueryParams<Path, SearchParams>, Response, EventDef> {
+): EventDef extends EntityDef | UnionDef<EntityDef[]>
+  ? QueryWithStreamFn<ExtractQueryParams<Path, SearchParams>, Response, EventDef>
+  : QueryFn<ExtractQueryParams<Path, SearchParams>, Response> {
   return buildQueryFn(queryDefinitionBuilder as any) as any;
 }
 
@@ -273,10 +274,12 @@ export function infiniteQuery<
   Path extends string,
   SearchParams extends SearchParamsDefinition,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
-  EventDef extends EntityDef | UnionDef<EntityDef[]> = never,
+  EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 >(
   queryDefinitionBuilder: () => InfiniteRESTQueryDefinition<Path, SearchParams, Response, EventDef>,
-): InfiniteQueryFn<ExtractQueryParams<Path, SearchParams>, Response> {
+): EventDef extends EntityDef | UnionDef<EntityDef[]>
+  ? InfiniteQueryWithStreamFn<ExtractQueryParams<Path, SearchParams>, Response, EventDef>
+  : InfiniteQueryFn<ExtractQueryParams<Path, SearchParams>, Response> {
   return buildQueryFn(queryDefinitionBuilder as any) as any;
 }
 
