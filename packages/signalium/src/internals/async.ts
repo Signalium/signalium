@@ -8,7 +8,7 @@ import {
   RelayState,
 } from '../types.js';
 import { createReactiveFnSignal, ReactiveFnSignal, ReactiveFnDefinition, ReactiveFnState } from './reactive.js';
-import { getSignal } from './get.js';
+import { disconnectSignal, getSignal } from './get.js';
 import { dirtySignal, dirtySignalConsumers } from './dirty.js';
 import { scheduleAsyncPull } from './scheduling.js';
 import { createEdge, EdgeType, findAndRemoveDirty, PromiseEdge } from './edge.js';
@@ -435,6 +435,12 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
         awaitSubs.set(ref, edge!);
       }
     }
+
+    const signal = this._signal;
+
+    if (signal !== undefined) {
+      disconnectSignal(signal);
+    }
   }
 
   private _setError(nextError: unknown, awaitSubs = this._awaitSubs) {
@@ -469,6 +475,12 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
         edge!.updatedAt = updatedAt;
         awaitSubs.set(ref, edge!);
       }
+    }
+
+    const signal = this._signal;
+
+    if (signal !== undefined) {
+      disconnectSignal(signal);
     }
   }
 
@@ -556,7 +568,7 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
     onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
-    const flags = this._flags;
+    let flags = this._flags;
 
     // Create a new Promise that will be returned
     return new Promise<TResult1 | TResult2>((resolve, reject) => {
@@ -566,6 +578,7 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
       if (currentConsumer !== undefined) {
         if ((flags & AsyncFlags.isRelay) !== 0) {
           this._connect();
+          flags = this._flags;
         }
 
         ref = currentConsumer.ref;

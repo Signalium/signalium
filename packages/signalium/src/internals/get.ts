@@ -173,11 +173,16 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
         signal._value = createPromise(nextValue, signal);
         signal.updatedCount = updatedCount + 1;
       }
-    } else if (!initialized || !signal.def.equals(prevValue!, nextValue)) {
-      signal._value = nextValue;
-      // If the signal is lazy, we don't want to increment the updatedCount, it
-      // has already been updated
-      signal.updatedCount = signal._isLazy ? updatedCount : updatedCount + 1;
+    } else {
+      if (!initialized || !signal.def.equals(prevValue!, nextValue)) {
+        signal._value = nextValue;
+        // If the signal is lazy, we don't want to increment the updatedCount, it
+        // has already been updated
+        signal.updatedCount = signal._isLazy ? updatedCount : updatedCount + 1;
+      }
+
+      // Disconnect the signal from all its previous dependencies synchronously
+      disconnectSignal(signal);
     }
   } finally {
     setCurrentConsumer(prevConsumer);
@@ -187,21 +192,17 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
       id: signal.tracerMeta!.id,
       value: isRelay(signal) ? '...' : signal._value,
     });
+  }
+}
 
-    const { ref, deps } = signal;
+export function disconnectSignal(signal: ReactiveFnSignal<any, any>) {
+  const { ref, computedCount, deps } = signal;
 
-    for (const [dep, edge] of deps) {
-      if (edge.consumedAt !== computedCount) {
-        scheduleUnwatch(dep);
-        dep.subs.delete(ref);
-        deps.delete(dep);
-
-        tracer?.emit({
-          type: TracerEventType.Disconnected,
-          id: signal.tracerMeta!.id,
-          childId: dep.tracerMeta!.id,
-        });
-      }
+  for (const [dep, edge] of deps) {
+    if (edge.consumedAt !== computedCount) {
+      scheduleUnwatch(dep);
+      dep.subs.delete(ref);
+      deps.delete(dep);
     }
   }
 }
