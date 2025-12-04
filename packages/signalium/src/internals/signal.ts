@@ -1,6 +1,6 @@
 import { getTracerProxy, TracerEventType } from './trace.js';
 import { Signal, Equals, SignalOptions, Notifier } from '../types.js';
-import { ReactiveFnSignal } from './reactive.js';
+import { ReactiveSignal } from './reactive.js';
 import { dirtySignal } from './dirty.js';
 import { getCurrentConsumer } from './consumer.js';
 import { scheduleListeners } from './scheduling.js';
@@ -10,7 +10,7 @@ let STATE_ID = 0;
 export class StateSignal<T> implements Signal<T> {
   private _value: T;
   private _equals: Equals<T>;
-  private _subs = new Map<WeakRef<ReactiveFnSignal<unknown, unknown[]>>, number>();
+  private _subs = new Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, number>();
   _desc: string;
   _id: number;
 

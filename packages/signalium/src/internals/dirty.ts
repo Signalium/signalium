@@ -1,9 +1,9 @@
 import { scheduleAsyncPull, schedulePull } from './scheduling.js';
-import { ReactiveFnSignal, isRelay, ReactiveFnState } from './reactive.js';
+import { ReactiveSignal, isRelay, ReactiveFnState } from './reactive.js';
 import { getCurrentConsumer } from './consumer.js';
 import { Edge } from './edge.js';
 
-export function dirtySignal(signal: ReactiveFnSignal<any, any>) {
+export function dirtySignal(signal: ReactiveSignal<any, any>) {
   const prevState = signal._state;
 
   if (prevState === ReactiveFnState.Dirty) {
@@ -17,7 +17,7 @@ export function dirtySignal(signal: ReactiveFnSignal<any, any>) {
   }
 }
 
-function propagateDirty(signal: ReactiveFnSignal<any, any>) {
+function propagateDirty(signal: ReactiveSignal<any, any>) {
   if (getCurrentConsumer() === signal) {
     throw new Error(
       'A signal was dirtied after it was consumed by the current function. This can cause race conditions and infinite rerenders and is not allowed.',
@@ -40,7 +40,7 @@ function propagateDirty(signal: ReactiveFnSignal<any, any>) {
   }
 }
 
-export function dirtySignalConsumers(map: Map<WeakRef<ReactiveFnSignal<any, any>>, Edge>) {
+export function dirtySignalConsumers(map: Map<WeakRef<ReactiveSignal<any, any>>, Edge>) {
   for (const [subRef, edge] of map) {
     const sub = subRef.deref();
 

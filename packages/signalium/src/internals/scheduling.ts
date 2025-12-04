@@ -1,5 +1,5 @@
 import { scheduleFlush as _scheduleFlush, runBatch } from './config.js';
-import { ReactiveFnSignal } from './reactive.js';
+import { ReactiveSignal } from './reactive.js';
 import { checkAndRunListeners, checkSignal } from './get.js';
 import { runListeners as runDerivedListeners } from './reactive.js';
 import { runListeners as runStateListeners } from './signal.js';
@@ -14,10 +14,10 @@ const scheduleIdleCallback =
 
 let PROMISE_WAS_RESOLVED = false;
 
-let PENDING_PULLS: Set<ReactiveFnSignal<any, any>> = new Set();
-let PENDING_ASYNC_PULLS: ReactiveFnSignal<any, any>[] = [];
-let PENDING_UNWATCH = new Map<ReactiveFnSignal<any, any>, number>();
-let PENDING_LISTENERS: (ReactiveFnSignal<any, any> | StateSignal<any>)[] = [];
+let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
+let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
+let PENDING_UNWATCH = new Map<ReactiveSignal<any, any>, number>();
+let PENDING_LISTENERS: (ReactiveSignal<any, any> | StateSignal<any>)[] = [];
 let PENDING_TRACERS: Tracer[] = [];
 let PENDING_GC = new Set<SignalScope>();
 
@@ -40,21 +40,21 @@ export const setResolved = () => {
   PROMISE_WAS_RESOLVED = true;
 };
 
-export const schedulePull = (signal: ReactiveFnSignal<any, any>) => {
+export const schedulePull = (signal: ReactiveSignal<any, any>) => {
   PENDING_PULLS.add(signal);
   scheduleFlush(flushWatchers);
 };
 
-export const cancelPull = (signal: ReactiveFnSignal<any, any>) => {
+export const cancelPull = (signal: ReactiveSignal<any, any>) => {
   PENDING_PULLS.delete(signal);
 };
 
-export const scheduleAsyncPull = (signal: ReactiveFnSignal<any, any>) => {
+export const scheduleAsyncPull = (signal: ReactiveSignal<any, any>) => {
   PENDING_ASYNC_PULLS.push(signal);
   scheduleFlush(flushWatchers);
 };
 
-export const scheduleUnwatch = (unwatch: ReactiveFnSignal<any, any>) => {
+export const scheduleUnwatch = (unwatch: ReactiveSignal<any, any>) => {
   const current = PENDING_UNWATCH.get(unwatch) ?? 0;
 
   PENDING_UNWATCH.set(unwatch, current + 1);
@@ -62,7 +62,7 @@ export const scheduleUnwatch = (unwatch: ReactiveFnSignal<any, any>) => {
   scheduleFlush(flushWatchers);
 };
 
-export const scheduleListeners = (signal: ReactiveFnSignal<any, any> | StateSignal<any>) => {
+export const scheduleListeners = (signal: ReactiveSignal<any, any> | StateSignal<any>) => {
   PENDING_LISTENERS.push(signal);
   scheduleFlush(flushWatchers);
 };
@@ -126,7 +126,7 @@ const flushWatchers = async () => {
     }
 
     for (const signal of PENDING_LISTENERS) {
-      if (signal instanceof ReactiveFnSignal) {
+      if (signal instanceof ReactiveSignal) {
         runDerivedListeners(signal as any);
       } else {
         runStateListeners(signal as any);

@@ -3,7 +3,7 @@ import { useCallback, useSyncExternalStore } from 'react';
 import { ReactiveValue, Signal, ReactivePromise } from '../types.js';
 import { getReactiveFnAndDefinition } from '../internals/core-api.js';
 import { getCurrentConsumer } from '../internals/consumer.js';
-import { ReactiveFnSignal } from '../internals/reactive.js';
+import { ReactiveSignal } from '../internals/reactive.js';
 import { isReactivePromise, isRelay, ReactivePromiseImpl } from '../internals/async.js';
 import { StateSignal } from '../internals/signal.js';
 import { useScope } from './context.js';
@@ -23,7 +23,7 @@ const useStateSignal = <T>(signal: Signal<T>): T => {
   );
 };
 
-const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveFnSignal<R, Args>): ReactiveValue<R> => {
+const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveSignal<R, Args>): ReactiveValue<R> => {
   const suspended = useSignalsSuspended();
   return useSyncExternalStore(
     suspended ? () => () => {} : signal.addListenerLazy(),
@@ -34,7 +34,7 @@ const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveFnSignal
 
 const useReactivePromise = <R>(promise: ReactivePromiseImpl<R>): ReactivePromise<R> => {
   if (isRelay(promise)) {
-    useReactiveFnSignal(promise['_signal'] as ReactiveFnSignal<any, unknown[]>);
+    useReactiveFnSignal(promise['_signal'] as ReactiveSignal<any, unknown[]>);
   }
 
   useStateSignal(promise['_version']);

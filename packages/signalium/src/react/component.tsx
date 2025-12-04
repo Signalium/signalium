@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useScope } from './context.js';
 import { useSignalsSuspended } from './suspend-signals-context.js';
-import { createReactiveFnSignal, ReactiveFnSignal } from '../internals/reactive.js';
+import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { runSignal } from '../internals/get.js';
 import { hashValue } from '../internals/utils/hash.js';
 
@@ -14,7 +14,7 @@ export default function component<Props extends object>(
     const scope = useScope();
     const suspended = useSignalsSuspended();
 
-    const fnSignalRef = useRef<ReactiveFnSignal<React.ReactNode | React.ReactNode[] | null, []> | undefined>(undefined);
+    const fnSignalRef = useRef<ReactiveSignal<React.ReactNode | React.ReactNode[] | null, []> | undefined>(undefined);
     const propsRef = useRef<Props>(props);
 
     propsRef.current = props;
@@ -22,7 +22,7 @@ export default function component<Props extends object>(
     let signal = fnSignalRef.current;
 
     if (!signal) {
-      fnSignalRef.current = signal = createReactiveFnSignal(
+      fnSignalRef.current = signal = createReactiveSignal(
         {
           compute: () => fn(propsRef.current),
           equals: () => false,
@@ -46,7 +46,7 @@ export default function component<Props extends object>(
       () => signal.updatedCount,
     );
 
-    runSignal(signal as ReactiveFnSignal<any, any[]>);
+    runSignal(signal as ReactiveSignal<any, any[]>);
 
     return signal.value;
   };

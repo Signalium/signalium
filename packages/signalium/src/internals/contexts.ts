@@ -1,4 +1,4 @@
-import { ReactiveFnSignal, ReactiveFnDefinition, createReactiveFnSignal } from './reactive.js';
+import { ReactiveSignal, ReactiveDefinition, createReactiveSignal } from './reactive.js';
 import { hashReactiveFn, hashValue } from './utils/hash.js';
 import { scheduleGcSweep } from './scheduling.js';
 import { getCurrentConsumer } from './consumer.js';
@@ -67,8 +67,8 @@ export class SignalScope {
 
   private contexts: Record<symbol, unknown>;
   private children = new Map<number, SignalScope>();
-  private signals = new Map<number, ReactiveFnSignal<any, any>>();
-  private gcCandidates = new Set<ReactiveFnSignal<any, any>>();
+  private signals = new Map<number, ReactiveSignal<any, any>>();
+  private gcCandidates = new Set<ReactiveSignal<any, any>>();
 
   setContexts(contexts: [ContextImpl<unknown>, unknown][]) {
     for (const [context, value] of contexts) {
@@ -101,27 +101,27 @@ export class SignalScope {
     return this.contexts[context._key] as T | undefined;
   }
 
-  get<T, Args extends unknown[]>(def: ReactiveFnDefinition<T, Args>, args: Args): ReactiveFnSignal<T, Args> {
+  get<T, Args extends unknown[]>(def: ReactiveDefinition<T, Args>, args: Args): ReactiveSignal<T, Args> {
     const paramKey = def.paramKey?.(...args);
     const key = hashReactiveFn(def.compute, paramKey ? [paramKey] : args);
-    let signal = this.signals.get(key) as ReactiveFnSignal<T, Args> | undefined;
+    let signal = this.signals.get(key) as ReactiveSignal<T, Args> | undefined;
 
     if (signal === undefined) {
-      signal = createReactiveFnSignal(def, args, key, this);
+      signal = createReactiveSignal(def, args, key, this);
       this.signals.set(key, signal);
     }
 
     return signal;
   }
 
-  markForGc(signal: ReactiveFnSignal<any, any>) {
+  markForGc(signal: ReactiveSignal<any, any>) {
     if (!this.gcCandidates.has(signal)) {
       this.gcCandidates.add(signal);
       scheduleGcSweep(this);
     }
   }
 
-  removeFromGc(signal: ReactiveFnSignal<any, any>) {
+  removeFromGc(signal: ReactiveSignal<any, any>) {
     this.gcCandidates.delete(signal);
 
     const { key } = signal;
@@ -132,7 +132,7 @@ export class SignalScope {
     }
   }
 
-  forceGc(signal: ReactiveFnSignal<any, any>) {
+  forceGc(signal: ReactiveSignal<any, any>) {
     this.signals.delete(signal.key!);
   }
 
@@ -217,6 +217,6 @@ export const getScopeOwner = (obj: object): SignalScope => {
 // ======= Test Helper =======
 
 export function forceGc(_signal: object) {
-  const signal = _signal as ReactiveFnSignal<any, any>;
+  const signal = _signal as ReactiveSignal<any, any>;
   signal.scope?.forceGc(signal);
 }

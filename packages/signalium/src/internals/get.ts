@@ -1,6 +1,6 @@
 import { scheduleListeners, scheduleTracer, scheduleUnwatch } from './scheduling.js';
 import { SignalType, getTracerProxy, TracerEventType } from './trace.js';
-import { ReactiveFnSignal, ReactiveFnState, isRelay } from './reactive.js';
+import { ReactiveSignal, ReactiveFnState, isRelay } from './reactive.js';
 import { createEdge, Edge, EdgeType } from './edge.js';
 import { watchSignal } from './watch.js';
 import { createPromise, isReactivePromise, ReactivePromiseImpl } from './async.js';
@@ -9,7 +9,7 @@ import { isGeneratorResult, isPromise } from './utils/type-utils.js';
 import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
 
-export function getSignal<T, Args extends unknown[]>(signal: ReactiveFnSignal<T, Args>): ReactiveValue<T> {
+export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, Args>): ReactiveValue<T> {
   const currentConsumer = getCurrentConsumer();
   if (currentConsumer !== undefined) {
     const { ref, computedCount, deps } = currentConsumer;
@@ -52,7 +52,7 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveFnSignal<T,
   return signal._value as ReactiveValue<T>;
 }
 
-export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
+export function checkSignal(signal: ReactiveSignal<any, any>): number {
   const { ref, _state: state } = signal;
 
   if (state < ReactiveFnState.Dirty) {
@@ -131,7 +131,7 @@ export function checkSignal(signal: ReactiveFnSignal<any, any>): number {
   return signal.updatedCount;
 }
 
-export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
+export function runSignal(signal: ReactiveSignal<any, any[]>) {
   let tracer = getTracerProxy();
   tracer?.emit({
     type: TracerEventType.StartUpdate,
@@ -195,7 +195,7 @@ export function runSignal(signal: ReactiveFnSignal<any, any[]>) {
   }
 }
 
-export function disconnectSignal(signal: ReactiveFnSignal<any, any>) {
+export function disconnectSignal(signal: ReactiveSignal<any, any>) {
   const { ref, computedCount, deps } = signal;
 
   for (const [dep, edge] of deps) {
@@ -207,7 +207,7 @@ export function disconnectSignal(signal: ReactiveFnSignal<any, any>) {
   }
 }
 
-export function checkAndRunListeners(signal: ReactiveFnSignal<any, any>) {
+export function checkAndRunListeners(signal: ReactiveSignal<any, any>) {
   const listeners = signal.listeners;
 
   let updatedCount = checkSignal(signal);

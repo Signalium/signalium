@@ -3,6 +3,10 @@ export interface Signal<T> {
   update(updater: (value: T) => T): void;
 }
 
+export interface ReadonlySignal<T> {
+  readonly value: ReactiveValue<T>;
+}
+
 export type ReactiveFn<T, Args extends unknown[]> = (...args: Args) => ReactiveValue<T>;
 
 export interface Watcher<T> {
