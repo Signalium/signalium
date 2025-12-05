@@ -1,5 +1,12 @@
 # signalium
 
+## 2.1.2
+
+### Patch Changes
+
+- 7350348: Ensure async reactive cleanup happens after promises settle
+- c78b461: Adds reactiveSignal for directly creating individual reactive signals
+
 ## 2.1.1
 
 ### Patch Changes
