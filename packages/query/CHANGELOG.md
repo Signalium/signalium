@@ -1,5 +1,14 @@
 # @signalium/query
 
+## 1.0.9
+
+### Patch Changes
+
+- 9257412: Add t.optional/t.nullable/t.nullish
+- Updated dependencies [7350348]
+- Updated dependencies [c78b461]
+  - signalium@2.1.2
+
 ## 1.0.8
 
 ### Patch Changes
