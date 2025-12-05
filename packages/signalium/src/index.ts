@@ -12,12 +12,13 @@ export {
   type RelayActivate,
   type RelayHooks,
   type RelayState,
+  type ReadonlySignal,
   type Signal,
   type SignalOptions,
   type Watcher,
 } from './types.js';
 
-export { reactive, reactiveMethod, task, relay, watcher } from './internals/core-api.js';
+export { reactive, reactiveMethod, reactiveSignal, task, relay, watcher } from './internals/core-api.js';
 
 export { signal, notifier } from './internals/signal.js';
 

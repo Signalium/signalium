@@ -10,6 +10,7 @@ import { hashValue } from './utils/hash.js';
 import { stringifyValue } from './utils/stringify.js';
 import { Callback } from './callback.js';
 import { watchSignal } from './watch.js';
+import { equalsFrom } from './utils/equals.js';
 
 /**
  * This file contains computed signal base types and struct definitions.
@@ -59,24 +60,47 @@ interface ListenerMeta {
  * Shared definition for derived signals to reduce memory usage.
  * Contains configuration that's common across all instances of a reactive function.
  */
-export interface ReactiveFnDefinition<T, Args extends unknown[]> extends ReactiveOptions<T, Args> {
+export interface ReactiveDefinition<T, Args extends unknown[]> extends ReactiveOptions<T, Args> {
   compute: (...args: Args) => T;
   equals: Equals<T>;
   isRelay: boolean;
   tracer: Tracer | undefined;
 }
 
-export class ReactiveFnSignal<T, Args extends unknown[]> {
+/**
+ * Unified way to create a reactive definition (protects shaping)
+ */
+export function createReactiveDefinition<T, Args extends unknown[]>(
+  id: string | undefined,
+  desc: string | undefined,
+  compute: (...args: Args) => T,
+  equals: Equals<T> | false | undefined,
+  isRelay: boolean,
+  paramKey: ((...args: Args) => string | number) | undefined,
+  tracer: Tracer | undefined,
+): ReactiveDefinition<T, Args> {
+  return {
+    id,
+    desc,
+    compute,
+    equals: equalsFrom(equals),
+    isRelay,
+    paramKey,
+    tracer,
+  };
+}
+
+export class ReactiveSignal<T, Args extends unknown[]> {
   // Bitmask containing state in the first 2 bits and boolean properties in the remaining bits
   private flags: number;
   scope: SignalScope | undefined = undefined;
 
   id = ++ID;
 
-  subs = new Map<WeakRef<ReactiveFnSignal<any, any>>, Edge>();
-  deps = new Map<ReactiveFnSignal<any, any>, Edge>();
+  subs = new Map<WeakRef<ReactiveSignal<any, any>>, Edge>();
+  deps = new Map<ReactiveSignal<any, any>, Edge>();
 
-  ref: WeakRef<ReactiveFnSignal<T, Args>> = new WeakRef(this);
+  ref: WeakRef<ReactiveSignal<T, Args>> = new WeakRef(this);
 
   dirtyHead: Edge | undefined = undefined;
 
@@ -95,9 +119,9 @@ export class ReactiveFnSignal<T, Args extends unknown[]> {
   tracerMeta?: TracerMeta;
 
   // Reference to the shared definition
-  def: ReactiveFnDefinition<T, Args>;
+  def: ReactiveDefinition<T, Args>;
 
-  constructor(def: ReactiveFnDefinition<T, Args>, args: Args, key?: SignalId, scope?: SignalScope) {
+  constructor(def: ReactiveDefinition<T, Args>, args: Args, key?: SignalId, scope?: SignalScope) {
     this.flags = (def.isRelay ? ReactiveFnFlags.isRelay : 0) | ReactiveFnState.Dirty;
     this.scope = scope;
     this.key = key;
@@ -201,7 +225,7 @@ export class ReactiveFnSignal<T, Args extends unknown[]> {
   }
 }
 
-export const runListeners = (signal: ReactiveFnSignal<any, any>) => {
+export const runListeners = (signal: ReactiveSignal<any, any>) => {
   const { listeners } = signal;
 
   if (listeners === null) {
@@ -215,15 +239,15 @@ export const runListeners = (signal: ReactiveFnSignal<any, any>) => {
   }
 };
 
-export const isRelay = (signal: ReactiveFnSignal<any, any>): boolean => {
+export const isRelay = (signal: ReactiveSignal<any, any>): boolean => {
   return (signal['flags'] & ReactiveFnFlags.isRelay) !== 0;
 };
 
-export function createReactiveFnSignal<T, Args extends unknown[]>(
-  def: ReactiveFnDefinition<T, Args>,
+export function createReactiveSignal<T, Args extends unknown[]>(
+  def: ReactiveDefinition<T, Args>,
   args: Args = [] as any,
   key?: SignalId,
   scope?: SignalScope,
-): ReactiveFnSignal<T, Args> {
-  return new ReactiveFnSignal(def, args, key, scope);
+): ReactiveSignal<T, Args> {
+  return new ReactiveSignal(def, args, key, scope);
 }

@@ -1,7 +1,7 @@
-import { ReactiveFnSignal, isRelay } from './reactive.js';
+import { ReactiveSignal, isRelay } from './reactive.js';
 import { checkSignal } from './get.js';
 
-export function watchSignal(signal: ReactiveFnSignal<any, any>): void {
+export function watchSignal(signal: ReactiveSignal<any, any>): void {
   const { watchCount } = signal;
   const newWatchCount = watchCount + 1;
 
@@ -23,7 +23,7 @@ export function watchSignal(signal: ReactiveFnSignal<any, any>): void {
   }
 }
 
-export function unwatchSignal(signal: ReactiveFnSignal<any, any>, count = 1) {
+export function unwatchSignal(signal: ReactiveSignal<any, any>, count = 1) {
   const { watchCount } = signal;
   const newWatchCount = Math.max(watchCount - count, 0);
 

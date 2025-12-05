@@ -7,32 +7,28 @@ import {
   type DiscriminatedReactivePromise,
   SignalOptions,
   ReactiveFn,
+  ReadonlySignal,
 } from '../types.js';
 import { getCurrentScope, getScopeOwner, SignalScope } from './contexts.js';
-import { createReactiveFnSignal, ReactiveFnDefinition } from './reactive.js';
+import {
+  createReactiveDefinition,
+  createReactiveSignal,
+  ReactiveDefinition as ReactiveDefinition,
+} from './reactive.js';
 import { createRelay, createTask, ReactivePromise as ReactivePromiseClass } from './async.js';
 import { Tracer } from './trace.js';
-import { equalsFrom } from './utils/equals.js';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-export const DERIVED_DEFINITION_MAP = new Map<Function, [(...args: any) => any, ReactiveFnDefinition<any, any>]>();
+export const DERIVED_DEFINITION_MAP = new Map<Function, [(...args: any) => any, ReactiveDefinition<any, any>]>();
 
 export function getReactiveFnAndDefinition<T, Args extends unknown[]>(
   fn: (...args: Args) => T,
   opts?: ReactiveOptions<T, Args>,
-): [(...args: Args) => ReactiveValue<T>, ReactiveFnDefinition<T, Args>] {
+): [(...args: Args) => ReactiveValue<T>, ReactiveDefinition<T, Args>] {
   let fnAndDef = DERIVED_DEFINITION_MAP.get(fn);
 
   if (!fnAndDef) {
-    const def: ReactiveFnDefinition<T, Args> = {
-      compute: fn,
-      equals: equalsFrom(opts?.equals),
-      isRelay: false,
-      id: opts?.id,
-      desc: opts?.desc,
-      paramKey: opts?.paramKey,
-      tracer: undefined,
-    };
+    const def = createReactiveDefinition(opts?.id, opts?.desc, fn, opts?.equals, false, opts?.paramKey, undefined);
 
     const defScope = getCurrentScope();
 
@@ -63,15 +59,7 @@ export const reactiveMethod = <T, Args extends unknown[]>(
   fn: (...args: Args) => T,
   opts?: ReactiveOptions<T, Args>,
 ): ReactiveFn<T, Args> => {
-  const def: ReactiveFnDefinition<T, Args> = {
-    compute: fn,
-    equals: equalsFrom(opts?.equals),
-    isRelay: false,
-    id: opts?.id,
-    desc: opts?.desc,
-    paramKey: opts?.paramKey,
-    tracer: undefined,
-  };
+  const def = createReactiveDefinition(opts?.id, opts?.desc, fn, opts?.equals, false, opts?.paramKey, undefined);
 
   const reactiveFn: ReactiveFn<T, Args> = (...args) => {
     return getScopeOwner(owner).get(def, args as any).value;
@@ -98,17 +86,28 @@ export const task = <T, Args extends unknown[]>(
 };
 
 export function watcher<T>(fn: () => T, opts?: SignalOptions<T> & { isolate?: boolean; tracer?: Tracer }): Watcher<T> {
-  const def: ReactiveFnDefinition<T, unknown[]> = {
-    compute: fn,
-    equals: equalsFrom(opts?.equals),
-    isRelay: false,
-    id: opts?.id,
-    desc: opts?.desc,
-    paramKey: undefined,
-    tracer: opts?.tracer,
-  };
+  const def = createReactiveDefinition(opts?.id, opts?.desc, fn, opts?.equals, false, undefined, opts?.tracer);
 
   const scope = opts?.isolate ? new SignalScope([]) : getCurrentScope();
 
-  return createReactiveFnSignal(def, undefined, undefined, scope);
+  return createReactiveSignal(def, undefined, undefined, scope);
 }
+
+/**
+ * Creates a reactive signal from a compute function. This is useful for when you
+ * want to create a signal that does not receive parameters, but is still reactive.
+ *
+ * @param compute
+ * @param opts
+ * @returns
+ */
+export const reactiveSignal = <T>(
+  compute: () => T,
+  opts?: SignalOptions<T> & { isolate?: boolean },
+): ReadonlySignal<T> => {
+  const def = createReactiveDefinition(opts?.id, opts?.desc, compute, opts?.equals, false, undefined, undefined);
+
+  const scope = opts?.isolate ? new SignalScope([]) : getCurrentScope();
+
+  return createReactiveSignal(def, undefined, undefined, scope);
+};

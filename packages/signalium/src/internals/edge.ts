@@ -1,5 +1,5 @@
 import { ReactivePromiseImpl } from './async.js';
-import type { ReactiveFnSignal } from './reactive.js';
+import type { ReactiveSignal } from './reactive.js';
 
 let CURRENT_ORD = 0;
 
@@ -9,7 +9,7 @@ export const enum EdgeType {
 }
 
 export interface EdgeTypeDep {
-  [EdgeType.Signal]: ReactiveFnSignal<any, any>;
+  [EdgeType.Signal]: ReactiveSignal<any, any>;
   [EdgeType.Promise]: ReactivePromiseImpl<any>;
 }
 
@@ -25,7 +25,7 @@ interface BaseEdge {
 
 export interface SignalEdge extends BaseEdge {
   type: EdgeType.Signal;
-  dep: ReactiveFnSignal<any, any>;
+  dep: ReactiveSignal<any, any>;
 }
 
 export interface PromiseEdge extends BaseEdge {
@@ -60,7 +60,7 @@ export function createEdge<T extends EdgeType, R extends T extends EdgeType.Sign
   return prevEdge as R;
 }
 
-export function insertDirty(node: ReactiveFnSignal<any, any>, edge: Edge) {
+export function insertDirty(node: ReactiveSignal<any, any>, edge: Edge) {
   const ord = edge.ord;
   let currentEdge = node.dirtyHead;
 
@@ -82,8 +82,8 @@ export function insertDirty(node: ReactiveFnSignal<any, any>, edge: Edge) {
 }
 
 export function findAndRemoveDirty(
-  sub: ReactiveFnSignal<any, any>,
-  dep: ReactiveFnSignal<any, any> | ReactivePromiseImpl<any>,
+  sub: ReactiveSignal<any, any>,
+  dep: ReactiveSignal<any, any> | ReactivePromiseImpl<any>,
 ): Edge | undefined {
   let edge = sub.dirtyHead;
 

@@ -7,7 +7,7 @@ import {
   RelayHooks,
   RelayState,
 } from '../types.js';
-import { createReactiveFnSignal, ReactiveFnSignal, ReactiveFnDefinition, ReactiveFnState } from './reactive.js';
+import { createReactiveSignal, ReactiveSignal, ReactiveDefinition, ReactiveFnState } from './reactive.js';
 import { disconnectSignal, getSignal } from './get.js';
 import { dirtySignal, dirtySignalConsumers } from './dirty.js';
 import { scheduleAsyncPull } from './scheduling.js';
@@ -41,7 +41,7 @@ const enum AsyncFlags {
 }
 
 interface PendingResolve<T> {
-  ref: WeakRef<ReactiveFnSignal<unknown, unknown[]>> | undefined;
+  ref: WeakRef<ReactiveSignal<unknown, unknown[]>> | undefined;
   edge: PromiseEdge | undefined;
   resolve: ((value: T) => void) | undefined | null;
   reject: ((error: unknown) => void) | undefined | null;
@@ -67,14 +67,14 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
   private _error: unknown | undefined = undefined;
   private _flags = AsyncFlags.Pending;
 
-  private _signal: ReactiveFnSignal<any, any> | undefined = undefined;
+  private _signal: ReactiveSignal<any, any> | undefined = undefined;
   private _equals: Equals<T> = DEFAULT_EQUALS as Equals<T>;
   private _promise: Promise<T> | undefined;
 
   private _pending: PendingResolve<T>[] = [];
 
-  private _stateSubs = new Map<WeakRef<ReactiveFnSignal<unknown, unknown[]>>, number>();
-  _awaitSubs = new Map<WeakRef<ReactiveFnSignal<unknown, unknown[]>>, PromiseEdge>();
+  private _stateSubs = new Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, number>();
+  _awaitSubs = new Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, PromiseEdge>();
 
   _updatedCount = 0;
 
@@ -287,7 +287,7 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
   }
 
   private _connect() {
-    const signal = this._signal as ReactiveFnSignal<any, any>;
+    const signal = this._signal as ReactiveSignal<any, any>;
 
     const currentConsumer = getCurrentConsumer();
     if (currentConsumer?.watchCount === 0) {
@@ -484,7 +484,7 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
     }
   }
 
-  private _scheduleSubs(awaitSubs: Map<WeakRef<ReactiveFnSignal<unknown, unknown[]>>, PromiseEdge>, dirty: boolean) {
+  private _scheduleSubs(awaitSubs: Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, PromiseEdge>, dirty: boolean) {
     /**
      * Await subscribers represent `await` statements, which is why they have a bit
      * of a different notification path in general. But this area in particular is
@@ -675,7 +675,7 @@ export function isRelay<T>(obj: object): obj is ReactivePromiseImpl<T> {
   return isReactivePromise(obj) && (obj['_flags'] & AsyncFlags.isRelay) !== 0;
 }
 
-export function createPromise<T>(promise: Promise<T>, signal: ReactiveFnSignal<T, unknown[]>) {
+export function createPromise<T>(promise: Promise<T>, signal: ReactiveSignal<T, unknown[]>) {
   const p = new ReactivePromiseImpl<T>();
 
   p['_signal'] = signal;
@@ -699,7 +699,7 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
       currentSub.deactivate?.();
     }
 
-    const signal = p['_signal'] as ReactiveFnSignal<any, any>;
+    const signal = p['_signal'] as ReactiveSignal<any, any>;
 
     // Reset the signal state, preparing it for next activation
     signal.subs = new Map();
@@ -727,7 +727,7 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
     },
   };
 
-  const def: ReactiveFnDefinition<() => void, unknown[]> = {
+  const def: ReactiveDefinition<() => void, unknown[]> = {
     compute: () => {
       if (active === false) {
         currentSub = activate(state);
@@ -749,7 +749,7 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
     tracer: undefined,
   };
 
-  p['_signal'] = createReactiveFnSignal<() => void, unknown[]>(def, [], undefined, scope);
+  p['_signal'] = createReactiveSignal<() => void, unknown[]>(def, [], undefined, scope);
 
   p['_equals'] = equalsFrom(opts?.equals);
   p['_initFlags'](AsyncFlags.isRelay | AsyncFlags.Pending);

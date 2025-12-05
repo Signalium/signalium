@@ -5,7 +5,7 @@ import { watchSignal, unwatchSignal } from './internals/watch.js';
 import { getSignal } from './internals/get.js';
 import { isReactivePromise, ReactivePromise } from './internals/async.js';
 import { settled } from './internals/scheduling.js';
-import type { ReactiveFnSignal } from './internals/reactive.js';
+import type { ReactiveSignal } from './internals/reactive.js';
 import { isPromise } from './internals/utils/type-utils.js';
 import { ReactiveValue } from './types.js';
 
@@ -33,7 +33,7 @@ import { ReactiveValue } from './types.js';
  */
 export function watchOnce<T>(fn: () => T): T {
   // Create a watcher signal
-  const signal = watcher(fn) as ReactiveFnSignal<T, unknown[]>;
+  const signal = watcher(fn) as ReactiveSignal<T, unknown[]>;
 
   try {
     // Watch the signal to activate any relays

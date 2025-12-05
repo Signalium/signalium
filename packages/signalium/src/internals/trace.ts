@@ -1,5 +1,5 @@
 import { scheduleTracer } from './scheduling.js';
-import { ReactiveFnSignal } from './reactive.js';
+import { ReactiveSignal } from './reactive.js';
 import { Signal } from '../types.js';
 
 let TRACER: TracerProxy | undefined;
@@ -442,7 +442,7 @@ export function setTracing(enabled: boolean) {
 }
 
 export function createTracer(_signal: Signal<unknown>, immediate = false) {
-  const signal = _signal as unknown as ReactiveFnSignal<unknown, unknown[]>;
+  const signal = _signal as unknown as ReactiveSignal<unknown, unknown[]>;
   return createTracerFromId(signal.tracerMeta!.id, immediate);
 }
 

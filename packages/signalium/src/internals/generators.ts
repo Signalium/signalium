@@ -1,12 +1,12 @@
 import { isReactivePromise } from './async.js';
 import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
 import { getInternalCurrentScope, setCurrentScope, SignalScope } from './contexts.js';
-import { ReactiveFnSignal } from './reactive.js';
+import { ReactiveSignal } from './reactive.js';
 import { isPromise } from './utils/type-utils.js';
 
 export function generatorResultToPromiseWithConsumer<T>(
   generator: Generator<any, T>,
-  savedConsumer: ReactiveFnSignal<any, any> | undefined,
+  savedConsumer: ReactiveSignal<any, any> | undefined,
 ): Promise<T> {
   function adopt(value: any) {
     return typeof value === 'object' && value !== null && (isPromise(value) || isReactivePromise(value))
