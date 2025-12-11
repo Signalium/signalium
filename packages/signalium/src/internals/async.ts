@@ -356,6 +356,12 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
 
   _setPending() {
     this._setFlags(AsyncFlags.Pending);
+
+    // We need to dirty the consumers of the promise so that we insert the promise edge
+    // into the dirty list of the consumers. This way, when the reactive function is
+    // called again, it will see the promise edge and halt computation. This way we
+    // ensure that we recompute the promises _in order_, without calling subsequent
+    // dirty promises until the previous promise is resolved.
     dirtySignalConsumers(this._awaitSubs);
     return (this._awaitSubs = new Map());
   }

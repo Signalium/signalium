@@ -12,8 +12,6 @@ import { SignalScope } from './contexts.js';
 const scheduleIdleCallback =
   typeof requestIdleCallback === 'function' ? requestIdleCallback : (cb: () => void) => _scheduleFlush(cb);
 
-let PROMISE_WAS_RESOLVED = false;
-
 let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
 let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
 let PENDING_UNWATCH = new Map<ReactiveSignal<any, any>, number>();
@@ -34,10 +32,6 @@ const scheduleFlush = (fn: () => void) => {
   currentFlush = { promise, resolve: resolve! };
 
   _scheduleFlush(flushWatchers);
-};
-
-export const setResolved = () => {
-  PROMISE_WAS_RESOLVED = true;
 };
 
 export const schedulePull = (signal: ReactiveSignal<any, any>) => {
@@ -91,8 +85,7 @@ const flushWatchers = async () => {
 
   // Flush all auto-pulled signals recursively, clearing
   // the microtask queue until they are all settled
-  while (PROMISE_WAS_RESOLVED || PENDING_ASYNC_PULLS.length > 0 || PENDING_PULLS.size > 0) {
-    PROMISE_WAS_RESOLVED = false;
+  while (PENDING_ASYNC_PULLS.length > 0 || PENDING_PULLS.size > 0) {
     const asyncPulls = PENDING_ASYNC_PULLS;
 
     PENDING_ASYNC_PULLS = [];
