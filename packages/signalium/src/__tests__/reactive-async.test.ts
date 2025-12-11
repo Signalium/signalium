@@ -514,6 +514,90 @@ describe('async computeds', () => {
     expect(outerCount).toBe(2);
   });
 
+  test('Unchanged promise dependencies preserve their subscription edges in _awaitSubs', async () => {
+    // This test verifies that when a promise goes pending and then resolves to
+    // the SAME value, we still need to re-add the dependency edge back to _awaitSubs.
+    // Without this, the outer signal loses its subscription to that promise,
+    // causing it to not react when that promise later changes to a new value.
+    //
+    // The bug: In checkSignal(), when checking promise dependencies:
+    // - If a promise was pending, we'd add it to _awaitSubs and halt
+    // - If a promise had a new value (updatedAt !== _updatedCount), we'd mark dirty
+    // - If a promise resolved to the same value (updatedAt === _updatedCount), we
+    //   did nothing - missing the dep['_awaitSubs'].set(ref, edge) call
+    //
+    // This caused dangling references: after a promise resolved to the same value,
+    // the outer signal lost its subscription and wouldn't react to future changes.
+
+    let innerCount = 0;
+    let outerCount = 0;
+
+    const a = signal(1);
+    const b = signal(2);
+
+    // inner depends on a + b, returns the sum
+    const inner = reactive(
+      async () => {
+        innerCount++;
+        const sum = a.value + b.value;
+        await nextTick();
+        return sum;
+      },
+      { desc: 'inner' },
+    );
+
+    const outer = reactive(
+      async () => {
+        outerCount++;
+        const v = await inner();
+        return v * 10;
+      },
+      { desc: 'outer' },
+    );
+
+    // Initial run: a=1, b=2, sum=3
+    const r1 = outer();
+    expect(r1.isPending).toBe(true);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(r1.isResolved).toBe(true);
+    expect(r1.value).toBe(30); // 3 * 10
+    expect(innerCount).toBe(1);
+    expect(outerCount).toBe(1);
+
+    // Step 1: Change a and b such that inner goes pending but resolves to SAME value
+    // a=2, b=1 → sum is still 3
+    a.value = 2;
+    b.value = 1;
+
+    const r2 = outer();
+    expect(r2.isPending).toBe(true);
+    expect(innerCount).toBe(2); // inner recomputed
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(r2.isResolved).toBe(true);
+    expect(r2.value).toBe(30); // Still 3 * 10 = 30 (same value)
+    // outer should NOT have rerun because inner resolved to the same value
+    expect(outerCount).toBe(1);
+
+    // Step 2: CRITICAL - Now change values so inner resolves to a DIFFERENT value
+    // This is where the bug would manifest: if outer lost its subscription to
+    // inner's _awaitSubs, it won't be notified of this change.
+    // a=3, b=2 → sum is 5
+    a.value = 3;
+    b.value = 2;
+
+    const r3 = outer();
+    expect(r3.isPending).toBe(true);
+    expect(innerCount).toBe(3); // inner recomputed again
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(r3.isResolved).toBe(true);
+    // Without the fix: outer still shows 30 because it lost subscription
+    // With the fix: outer shows 50 (5 * 10)
+    expect(r3.value).toBe(50);
+    expect(outerCount).toBe(2); // outer SHOULD have rerun now
+  });
+
   test('Outer clears pending without rerun when inner resolves to same value', async () => {
     let innerCount = 0;
     let outerCount = 0;
