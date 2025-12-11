@@ -1,13 +1,13 @@
-import { scheduleListeners, scheduleTracer, scheduleUnwatch } from './scheduling.js';
-import { SignalType, getTracerProxy, TracerEventType } from './trace.js';
-import { ReactiveSignal, ReactiveFnState, isRelay } from './reactive.js';
-import { createEdge, Edge, EdgeType } from './edge.js';
-import { watchSignal } from './watch.js';
-import { createPromise, isReactivePromise, ReactivePromiseImpl } from './async.js';
 import { ReactiveValue } from '../types.js';
-import { isGeneratorResult, isPromise } from './utils/type-utils.js';
+import { createPromise, isReactivePromise, ReactivePromiseImpl } from './async.js';
 import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
+import { createEdge, Edge, EdgeType } from './edge.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
+import { isRelay, ReactiveFnState, ReactiveSignal } from './reactive.js';
+import { scheduleListeners, scheduleTracer, scheduleUnwatch } from './scheduling.js';
+import { getTracerProxy, SignalType, TracerEventType } from './trace.js';
+import { isGeneratorResult, isPromise } from './utils/type-utils.js';
+import { watchSignal } from './watch.js';
 
 export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, Args>): ReactiveValue<T> {
   const currentConsumer = getCurrentConsumer();
@@ -81,7 +81,10 @@ export function checkSignal(signal: ReactiveSignal<any, any>): number {
 
           // Early return to prevent the signal from being computed and to preserve the dirty state
           return signal.updatedCount;
-        } else if (edge.updatedAt !== edge.dep._updatedCount) {
+        } else if (edge.updatedAt === edge.dep._updatedCount) {
+          // Add the signal to the awaitSubs map as its still a dependency, just not dirty
+          dep['_awaitSubs'].set(ref, edge);
+        } else {
           signal.dirtyHead = edge.nextDirty;
           signal._state = ReactiveFnState.Dirty;
           break;
@@ -182,7 +185,7 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
       }
 
       // Disconnect the signal from all its previous dependencies synchronously
-      disconnectSignal(signal);
+      disconnectSignal(signal, computedCount);
     }
   } finally {
     setCurrentConsumer(prevConsumer);
@@ -195,8 +198,8 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
   }
 }
 
-export function disconnectSignal(signal: ReactiveSignal<any, any>) {
-  const { ref, computedCount, deps } = signal;
+export function disconnectSignal(signal: ReactiveSignal<any, any>, computedCount: number = signal.computedCount) {
+  const { ref, deps } = signal;
 
   for (const [dep, edge] of deps) {
     if (edge.consumedAt !== computedCount) {
