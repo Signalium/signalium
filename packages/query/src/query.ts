@@ -10,6 +10,9 @@ import {
   EntityDef,
   StreamQueryFn,
   TypeDef,
+  QueryWithStreamFn,
+  ComplexTypeDef,
+  InfiniteQueryWithStreamFn,
 } from './types.js';
 import {
   QueryCacheOptions,
@@ -38,9 +41,21 @@ type PathParams<Path> = {
 type SearchParamsType = Mask.NUMBER | Mask.STRING | Set<string | boolean | number>;
 type SearchParamsDefinition = Record<string, SearchParamsType | UnionDef<SearchParamsType[]>>;
 
+interface StreamOptions<
+  Params extends SearchParamsDefinition,
+  Event extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+> {
+  event: Event;
+  subscribe: (
+    context: QueryContext,
+    params: ExtractTypesFromObjectOrUndefined<Params>,
+    onUpdate: (update: Partial<ExtractTypesFromObjectOrUndefined<Event>>) => void,
+  ) => () => void;
+}
+
 // Map for getting query definitions by function reference, for testing
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-const QUERY_DEFINITION_MAP = new Map<Function, () => QueryDefinition<any, any>>();
+const QUERY_DEFINITION_MAP = new Map<Function, () => QueryDefinition<any, any, any>>();
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 export const queryKeyForFn = (fn: Function, params: unknown): number => {
@@ -60,25 +75,32 @@ export const queryKeyForFn = (fn: Function, params: unknown): number => {
  * out why we're getting so many infinite recursion errors with types first. When
  * we remove them, the types should work without the `any`s.
  */
-
 interface RESTQueryDefinition<
   Path extends string,
-  SearchParams extends Record<string, ObjectFieldTypeDef>,
+  SearchParams extends SearchParamsDefinition,
   ResponseDef extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+  EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 > {
   path: Path;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   searchParams?: SearchParams;
   response: ResponseDef;
-
   cache?: QueryCacheOptions;
+  stream?: EventDef extends EntityDef | UnionDef<EntityDef[]> ? StreamOptions<SearchParams, EventDef> : undefined;
 }
 
 interface InfiniteRESTQueryDefinition<
   Path extends string,
-  SearchParams extends Record<string, ObjectFieldTypeDef>,
+  SearchParams extends SearchParamsDefinition,
   ResponseDef extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
-> extends RESTQueryDefinition<Path, SearchParams, ResponseDef> {
+  EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
+> {
+  path: Path;
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  searchParams?: SearchParams;
+  response: ResponseDef;
+  cache?: QueryCacheOptions;
+  stream?: EventDef extends EntityDef | UnionDef<EntityDef[]> ? StreamOptions<SearchParams, EventDef> : undefined;
   pagination: {
     getNextPageParams?(
       lastPage: ExtractTypesFromObjectOrUndefined<ResponseDef>,
@@ -106,13 +128,19 @@ interface StreamQueryDefinitionBuilder<
 
 function buildQueryFn(
   queryDefinitionBuilder: () =>
-    | RESTQueryDefinition<string, SearchParamsDefinition, ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>>
+    | RESTQueryDefinition<
+        string,
+        SearchParamsDefinition,
+        ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>,
+        EntityDef | UnionDef<EntityDef[]>
+      >
     | InfiniteRESTQueryDefinition<
         string,
         SearchParamsDefinition,
-        ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>
+        ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>,
+        EntityDef | UnionDef<EntityDef[]>
       >,
-): QueryDefinition<QueryParams, unknown> {
+): QueryDefinition<QueryParams, unknown, unknown> {
   let queryDefinition: any | undefined;
 
   const getQueryDefinition = () => {
@@ -123,7 +151,8 @@ function buildQueryFn(
         response,
         cache,
         pagination,
-      } = queryDefinitionBuilder() as InfiniteRESTQueryDefinition<any, any, any>;
+        stream,
+      } = queryDefinitionBuilder() as InfiniteRESTQueryDefinition<any, any, any, any>;
 
       const id = `${method}:${path}`;
 
@@ -160,6 +189,39 @@ function buildQueryFn(
         return response.json();
       };
 
+      // Process stream configuration if provided
+      let streamConfig: any = undefined;
+      if (stream) {
+        let streamShape: TypeDef;
+        let streamShapeKey: number;
+
+        const eventDef = stream.event;
+
+        if (typeof eventDef === 'object') {
+          if (eventDef instanceof ValidatorDef) {
+            streamShape = eventDef as TypeDef;
+            streamShapeKey = eventDef.shapeKey;
+          } else if (eventDef instanceof Set) {
+            streamShape = eventDef;
+            streamShapeKey = hashValue(eventDef);
+          } else {
+            streamShape = t.object(eventDef as Record<string, ObjectFieldTypeDef>);
+            streamShapeKey = streamShape.shapeKey;
+          }
+        } else {
+          streamShape = eventDef as Mask;
+          streamShapeKey = hashValue(streamShape);
+        }
+
+        streamConfig = {
+          shape: streamShape,
+          shapeKey: streamShapeKey,
+          subscribeFn: (context: QueryContext, params: QueryParams | undefined, onUpdate: any) => {
+            return (stream.subscribe as any)(context, params as any, onUpdate);
+          },
+        };
+      }
+
       queryDefinition = {
         type: pagination ? QueryType.InfiniteQuery : QueryType.Query,
         id,
@@ -168,6 +230,7 @@ function buildQueryFn(
         fetchFn,
         pagination,
         cache,
+        stream: streamConfig,
       };
     }
 
@@ -198,27 +261,33 @@ export function query<
   Path extends string,
   SearchParams extends SearchParamsDefinition,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+  EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 >(
-  queryDefinitionBuilder: () => RESTQueryDefinition<Path, SearchParams, Response>,
-): QueryFn<ExtractQueryParams<Path, SearchParams>, Response> {
-  return buildQueryFn(queryDefinitionBuilder) as any;
+  queryDefinitionBuilder: () => RESTQueryDefinition<Path, SearchParams, Response, EventDef>,
+): EventDef extends EntityDef | UnionDef<EntityDef[]>
+  ? QueryWithStreamFn<ExtractQueryParams<Path, SearchParams>, Response, EventDef>
+  : QueryFn<ExtractQueryParams<Path, SearchParams>, Response> {
+  return buildQueryFn(queryDefinitionBuilder as any) as any;
 }
 
 export function infiniteQuery<
   Path extends string,
   SearchParams extends SearchParamsDefinition,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+  EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 >(
-  queryDefinitionBuilder: () => InfiniteRESTQueryDefinition<Path, SearchParams, Response>,
-): InfiniteQueryFn<ExtractQueryParams<Path, SearchParams>, Response> {
-  return buildQueryFn(queryDefinitionBuilder) as any;
+  queryDefinitionBuilder: () => InfiniteRESTQueryDefinition<Path, SearchParams, Response, EventDef>,
+): EventDef extends EntityDef | UnionDef<EntityDef[]>
+  ? InfiniteQueryWithStreamFn<ExtractQueryParams<Path, SearchParams>, Response, EventDef>
+  : InfiniteQueryFn<ExtractQueryParams<Path, SearchParams>, Response> {
+  return buildQueryFn(queryDefinitionBuilder as any) as any;
 }
 
 export function streamQuery<
   // TODO: This is a hack to get the type signature to work. We should find a better way to do this.
   Path extends '',
   Params extends SearchParamsDefinition,
-  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+  Response extends EntityDef | UnionDef<EntityDef[]>,
 >(
   queryDefinitionBuilder: () => StreamQueryDefinitionBuilder<Params, Response>,
 ): StreamQueryFn<ExtractQueryParams<Path, Params>, Response> {

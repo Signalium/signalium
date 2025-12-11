@@ -7,6 +7,7 @@ export interface PreloadedEntityRecord {
   signal: Signal<Record<string, unknown>>;
   cache: Map<PropertyKey, any>;
   proxy?: Record<string, unknown>;
+  entityRefs?: Set<number>;
 }
 
 export type EntityRecord = Required<PreloadedEntityRecord>;
@@ -20,6 +21,29 @@ export class EntityStore {
 
   getEntity(key: number): PreloadedEntityRecord | EntityRecord | undefined {
     return this.map.get(key);
+  }
+
+  getNestedEntityRefIds(key: number, refIds: Set<number>): Set<number> {
+    const record = this.getEntity(key);
+
+    if (record === undefined) {
+      throw new Error(`Entity ${key} not found when getting nested entity ref ids`);
+    }
+
+    refIds.add(key);
+
+    // Entangle the signal value. Whenever the signal value is updated, refIds
+    // will also be updated, so no need for a second signal.
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    record.signal.value;
+
+    if (record.entityRefs !== undefined) {
+      for (const ref of record.entityRefs) {
+        this.getNestedEntityRefIds(ref, refIds);
+      }
+    }
+
+    return refIds;
   }
 
   hydratePreloadedEntity(key: number, shape: EntityDef): EntityRecord {
@@ -39,6 +63,7 @@ export class EntityStore {
       signal: signal(obj, { equals: false }),
       cache: new Map(),
       proxy: undefined,
+      entityRefs: undefined,
     };
 
     this.map.set(key, record);
@@ -46,7 +71,7 @@ export class EntityStore {
     return record;
   }
 
-  setEntity(key: number, obj: Record<string, unknown>, shape: EntityDef): EntityRecord {
+  setEntity(key: number, obj: Record<string, unknown>, shape: EntityDef, entityRefs?: Set<number>): EntityRecord {
     let record = this.map.get(key);
 
     if (record === undefined) {
@@ -57,6 +82,8 @@ export class EntityStore {
       record.signal.update(value => mergeValues(value, obj));
       record.cache.clear();
     }
+
+    record.entityRefs = entityRefs;
 
     return record as EntityRecord;
   }
