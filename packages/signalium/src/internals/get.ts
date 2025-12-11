@@ -1,13 +1,13 @@
-import { scheduleListeners, scheduleTracer, scheduleUnwatch } from './scheduling.js';
-import { SignalType, getTracerProxy, TracerEventType } from './trace.js';
-import { ReactiveSignal, ReactiveFnState, isRelay } from './reactive.js';
-import { createEdge, Edge, EdgeType } from './edge.js';
-import { watchSignal } from './watch.js';
-import { createPromise, createResolvedPromise, isReactivePromise, ReactivePromiseImpl } from './async.js';
 import { ReactiveValue } from '../types.js';
-import { isGeneratorResult, isPromise } from './utils/type-utils.js';
+import { createPromise, isReactivePromise, ReactivePromiseImpl } from './async.js';
 import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
+import { createEdge, Edge, EdgeType } from './edge.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
+import { isRelay, ReactiveFnState, ReactiveSignal } from './reactive.js';
+import { scheduleListeners, scheduleTracer, scheduleUnwatch } from './scheduling.js';
+import { getTracerProxy, SignalType, TracerEventType } from './trace.js';
+import { isGeneratorResult, isPromise } from './utils/type-utils.js';
+import { watchSignal } from './watch.js';
 
 export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, Args>): ReactiveValue<T> {
   const currentConsumer = getCurrentConsumer();
