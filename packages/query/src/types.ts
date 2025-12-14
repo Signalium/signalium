@@ -81,6 +81,18 @@ export type ObjectFieldTypeDef = TypeDef | string;
 
 export type ObjectShape = Record<string, ObjectFieldTypeDef>;
 
+// ================================
+// Extend Type Utilities
+// ================================
+
+/**
+ * Utility type that prevents extending with keys that already exist in T.
+ * If U contains a key from T, that key's type becomes `never`, causing a type error.
+ */
+export type StrictExtend<T extends ObjectShape, U extends ObjectShape> = {
+  [K in keyof U]: K extends keyof T ? never : U[K];
+};
+
 export const ARRAY_KEY = Symbol('array');
 export const RECORD_KEY = Symbol('record');
 
@@ -107,11 +119,21 @@ export interface BaseTypeDef {
 export interface EntityDef<T extends ObjectShape = ObjectShape> extends BaseTypeDef {
   mask: Mask.ENTITY;
   shape: T;
+  /**
+   * Creates a new EntityDef that extends this one with additional fields.
+   * Prevents overriding of existing fields including id and typename.
+   */
+  extend<U extends ObjectShape>(newFields: StrictExtend<T, U> & U): EntityDef<T & U>;
 }
 
 export interface ObjectDef<T extends ObjectShape = ObjectShape> extends BaseTypeDef {
   mask: Mask.OBJECT;
   shape: T;
+  /**
+   * Creates a new ObjectDef that extends this one with additional fields.
+   * Prevents overriding of existing fields including id and typename.
+   */
+  extend<U extends ObjectShape>(newFields: StrictExtend<T, U> & U): ObjectDef<T & U>;
 }
 
 export interface ArrayDef<T extends TypeDef = TypeDef> extends BaseTypeDef {
