@@ -37,10 +37,10 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const ExtendedUser = BaseUser.extend({
+      const ExtendedUser = BaseUser.extend(() => ({
         email: t.string,
         age: t.number,
-      });
+      }));
 
       // Verify the extended entity has all fields
       expect(ExtendedUser.shape).toBeDefined();
@@ -58,9 +58,9 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const _ExtendedUser = BaseUser.extend({
+      const _ExtendedUser = BaseUser.extend(() => ({
         email: t.string,
-      });
+      }));
 
       // Original should not have email field
       expect(BaseUser.shape).toBeDefined();
@@ -75,10 +75,10 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const ExtendedUser = BaseUser.extend({
+      const ExtendedUser = BaseUser.extend(() => ({
         email: t.string,
         age: t.number,
-      });
+      }));
 
       mockFetch.get('/users/[id]', {
         user: {
@@ -115,9 +115,12 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const ExtendedUser = BaseUser.extend({
-        name: t.number, // Trying to override existing field
-      } as any);
+      const ExtendedUser = BaseUser.extend(
+        () =>
+          ({
+            name: t.number, // Trying to override existing field
+          }) as any,
+      );
 
       // Error is thrown lazily when shape is accessed (entities are lazy)
       expect(() => {
@@ -133,9 +136,12 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const ExtendedUser = BaseUser.extend({
-        id: t.string, // Trying to override id
-      } as any);
+      const ExtendedUser = BaseUser.extend(
+        () =>
+          ({
+            id: t.string, // Trying to override id
+          }) as any,
+      );
 
       // Error is thrown lazily when shape is accessed (entities are lazy)
       expect(() => {
@@ -150,9 +156,12 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const ExtendedUser = BaseUser.extend({
-        __typename: t.typename('Admin'), // Trying to override typename
-      } as any);
+      const ExtendedUser = BaseUser.extend(
+        () =>
+          ({
+            __typename: t.typename('Admin'), // Trying to override typename
+          }) as any,
+      );
 
       // Error is thrown lazily when shape is accessed (entities are lazy)
       expect(() => {
@@ -167,14 +176,14 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const UserWithEmail = BaseUser.extend({
+      const UserWithEmail = BaseUser.extend(() => ({
         email: t.string,
-      });
+      }));
 
-      const FullUser = UserWithEmail.extend({
+      const FullUser = UserWithEmail.extend(() => ({
         age: t.number,
         role: t.string,
-      });
+      }));
 
       // Verify all fields are present
       expect(FullUser.shape).toBeDefined();
@@ -200,9 +209,9 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const UserWithAddress = BaseUser.extend({
+      const UserWithAddress = BaseUser.extend(() => ({
         address: Address,
-      });
+      }));
 
       expect(UserWithAddress.shape).toBeDefined();
       expect(UserWithAddress.shape.address).toBe(Address);
@@ -215,10 +224,10 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const ExtendedUser = BaseUser.extend({
+      const ExtendedUser = BaseUser.extend(() => ({
         email: t.optional(t.string),
         age: t.nullable(t.number),
-      });
+      }));
 
       expect(ExtendedUser.shape).toBeDefined();
       expect(ExtendedUser.shape.email).toBeDefined();
@@ -238,9 +247,9 @@ describe('extend() method', () => {
         title: t.string,
       }));
 
-      const PostWithTags = BasePost.extend({
+      const PostWithTags = BasePost.extend(() => ({
         tags: t.array(Tag),
-      });
+      }));
 
       expect(PostWithTags.shape).toBeDefined();
       expect(PostWithTags.shape.tags).toBeDefined();
@@ -339,10 +348,10 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const ExtendedUser = BaseUser.extend({
+      const ExtendedUser = BaseUser.extend(() => ({
         email: t.string,
         age: t.number,
-      });
+      }));
 
       // Type inference test - this would fail at compile time if types are wrong
       type UserType = ExtractType<typeof ExtendedUser>;
@@ -387,7 +396,7 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const SameUser = BaseUser.extend({});
+      const SameUser = BaseUser.extend(() => ({}));
 
       expect(SameUser.shape).toBeDefined();
       expect(Object.keys(SameUser.shape)).toEqual(['__typename', 'id', 'name']);
@@ -400,9 +409,9 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const ExtendedUser = BaseUser.extend({
+      const ExtendedUser = BaseUser.extend(() => ({
         email: t.string,
-      });
+      }));
 
       // Force shape reification
       const _baseShape = BaseUser.shape;
@@ -419,14 +428,47 @@ describe('extend() method', () => {
         name: t.string,
       }));
 
-      const ExtendedUser = BaseUser.extend({
+      const ExtendedUser = BaseUser.extend(() => ({
         role: t.enum('admin', 'user', 'guest'),
         status: t.const('active'),
-      });
+      }));
 
       expect(ExtendedUser.shape).toBeDefined();
       expect(ExtendedUser.shape.role).toBeDefined();
       expect(ExtendedUser.shape.status).toBeDefined();
+    });
+
+    it('should lazily evaluate extension fields', () => {
+      // This test verifies that extension fields are evaluated lazily
+      let baseEvaluated = false;
+      let extensionEvaluated = false;
+
+      const BaseUser = entity(() => {
+        baseEvaluated = true;
+        return {
+          __typename: t.typename('User'),
+          id: t.id,
+          name: t.string,
+        };
+      });
+
+      const ExtendedUser = BaseUser.extend(() => {
+        extensionEvaluated = true;
+        return {
+          email: t.string,
+        };
+      });
+
+      // Neither should be evaluated yet - entity creation is lazy
+      expect(baseEvaluated).toBe(false);
+      expect(extensionEvaluated).toBe(false);
+
+      // Accessing shape triggers lazy evaluation of BOTH base and extension
+      const _shape = ExtendedUser.shape;
+
+      // Now both should be evaluated
+      expect(baseEvaluated).toBe(true);
+      expect(extensionEvaluated).toBe(true);
     });
   });
 });
