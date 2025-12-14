@@ -35,7 +35,13 @@ type PathParams<Path> = {
   [Key in FilteredParts<Path> as RemovePrefixDots<Key>]: ParamValue<Key>;
 };
 
-type SearchParamsType = Mask.NUMBER | Mask.STRING | Set<string | boolean | number>;
+type SearchParamsType =
+  | Mask.NUMBER
+  | Mask.STRING
+  | Mask.BOOLEAN
+  | Mask.UNDEFINED
+  | Mask.NULL
+  | Set<string | boolean | number>;
 type SearchParamsDefinition = Record<string, SearchParamsType | UnionDef<SearchParamsType[]>>;
 
 interface StreamOptions<
