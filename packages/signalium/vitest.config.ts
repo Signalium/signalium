@@ -42,6 +42,7 @@ export default defineConfig({
     noExternal: ['react', 'react-dom'],
   },
   test: {
+    pool: 'threads',
     projects: [
       {
         extends: true,

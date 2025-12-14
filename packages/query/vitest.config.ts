@@ -34,6 +34,7 @@ export default defineConfig({
   },
   plugins: [tsconfigPaths()],
   test: {
+    pool: 'threads',
     projects: [
       {
         extends: true,
