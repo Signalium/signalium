@@ -1,5 +1,15 @@
 # @signalium/query
 
+## 1.0.10
+
+### Patch Changes
+
+- 24495ac: Add t.enum.caseInsensitive()
+- 047d4dc: Allow all primitive types in search params
+- 9b2c2f3: Add extend to Entity and Object typedefs
+- c8fc4b8: Allow typenames to be optional on entities
+- 0245106: Add streamOrphans and optimisticInserts
+
 ## 1.0.9
 
 ### Patch Changes
