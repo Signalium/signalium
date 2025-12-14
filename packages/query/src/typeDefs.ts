@@ -130,6 +130,52 @@ export class ValidatorDef<T> {
     }
     return this._nullish;
   }
+
+  /**
+   * Creates a new ValidatorDef that extends this one with additional fields.
+   * Only valid for ENTITY and OBJECT types.
+   * Prevents overriding of existing fields including id and typename.
+   */
+  extend<U extends ObjectShape>(newFields: U): ValidatorDef<any> {
+    // Validate that this is an extendable type (ENTITY or OBJECT)
+    if (this.kind !== ComplexTypeDefKind.ENTITY && this.kind !== ComplexTypeDefKind.OBJECT) {
+      throw new Error('extend() can only be called on Entity or Object types');
+    }
+
+    if (this.kind === ComplexTypeDefKind.ENTITY) {
+      // For entities, keep the shape lazy - only reify on first usage
+      // This preserves the lazy evaluation pattern and supports circular references
+      // We bind getParentShape to access the parent's `.shape` getter which properly
+      // reifies and caches the shape, avoiding multiple reification calls
+
+      return new ValidatorDef(ComplexTypeDefKind.ENTITY, this.mask, () => {
+        const existingShape = this.shape as ObjectShape;
+
+        // Runtime validation: check for field conflicts
+        for (const key of Object.keys(newFields)) {
+          if (key in existingShape) {
+            throw new Error(`Cannot extend: field '${key}' already exists in type definition`);
+          }
+        }
+
+        return { ...existingShape, ...newFields };
+      });
+    } else {
+      // For objects, reify immediately since they're not lazy
+      this.reifyShape();
+
+      const existingShape = this._shape as ObjectShape;
+
+      // Runtime validation: check for field conflicts
+      for (const key of Object.keys(newFields)) {
+        if (key in existingShape) {
+          throw new Error(`Cannot extend: field '${key}' already exists in type definition`);
+        }
+      }
+
+      return new ValidatorDef(ComplexTypeDefKind.OBJECT, this.mask, { ...existingShape, ...newFields });
+    }
+  }
 }
 
 // -----------------------------------------------------------------------------
