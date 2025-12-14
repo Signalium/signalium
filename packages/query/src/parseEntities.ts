@@ -48,7 +48,10 @@ export function parseUnionEntities(
       const recordShape = unionDef.shape![RECORD_KEY];
 
       if (recordShape === undefined || typeof recordShape === 'number') {
-        return value;
+        // Union of objects/entities requires typename for discrimination
+        throw new Error(
+          `Typename field '${typenameField}' is required for union discrimination but was not found in the data`,
+        );
       }
 
       return parseRecordEntities(

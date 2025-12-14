@@ -897,4 +897,168 @@ describe('Entity System', () => {
       });
     });
   });
+
+  describe('Optional Typename in Data', () => {
+    it('should return typename from definition when data omits typename field', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+      }));
+
+      // Data without __typename field
+      mockFetch.get('/users/[id]', {
+        user: { id: 1, name: 'Alice' },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: User },
+        }));
+
+        const relay = getUser({ id: '1' });
+        const result = await relay;
+
+        // Typename should be returned from definition even though data omits it
+        expect(result.user.__typename).toBe('User');
+        expect(result.user.name).toBe('Alice');
+        expect(result.user.id).toBe(1);
+      });
+    });
+
+    it('should work with nested entities without typename in data', async () => {
+      const Address = entity(() => ({
+        __typename: t.typename('Address'),
+        id: t.id,
+        city: t.string,
+      }));
+
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+        address: Address,
+      }));
+
+      // Data without __typename fields
+      mockFetch.get('/users/[id]', {
+        user: {
+          id: 1,
+          name: 'Alice',
+          address: {
+            id: 1,
+            city: 'San Francisco',
+          },
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: User },
+        }));
+
+        const relay = getUser({ id: '1' });
+        const result = await relay;
+
+        expect(result.user.__typename).toBe('User');
+        expect(result.user.name).toBe('Alice');
+        expect(result.user.address.__typename).toBe('Address');
+        expect(result.user.address.city).toBe('San Francisco');
+      });
+    });
+
+    it('should still accept typename in data when it matches definition', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+      }));
+
+      // Data with matching __typename field
+      mockFetch.get('/users/[id]', {
+        user: { __typename: 'User', id: 1, name: 'Alice' },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: User },
+        }));
+
+        const relay = getUser({ id: '1' });
+        const result = await relay;
+
+        expect(result.user.__typename).toBe('User');
+        expect(result.user.name).toBe('Alice');
+      });
+    });
+
+    it('should throw error when union data omits typename', async () => {
+      const TextPost = entity(() => ({
+        __typename: t.typename('TextPost'),
+        id: t.id,
+        content: t.string,
+      }));
+
+      const ImagePost = entity(() => ({
+        __typename: t.typename('ImagePost'),
+        id: t.id,
+        url: t.string,
+      }));
+
+      const PostUnion = t.union(TextPost, ImagePost);
+
+      // Data without __typename - should fail for unions
+      mockFetch.get('/posts', {
+        posts: [{ id: '1', content: 'Hello' }],
+      });
+
+      await testWithClient(client, async () => {
+        const getPosts = query(() => ({
+          path: '/posts',
+          response: {
+            posts: t.array(PostUnion),
+          },
+        }));
+
+        const relay = getPosts();
+
+        await expect(relay).rejects.toThrow(/typename.*required.*union/i);
+      });
+    });
+
+    it('should work with arrays of entities without typename in data', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+      }));
+
+      // Array data without __typename fields
+      mockFetch.get('/users', {
+        users: [
+          { id: 1, name: 'Alice' },
+          { id: 2, name: 'Bob' },
+        ],
+      });
+
+      await testWithClient(client, async () => {
+        const getUsers = query(() => ({
+          path: '/users',
+          response: { users: t.array(User) },
+        }));
+
+        const relay = getUsers();
+        const result = await relay;
+
+        expect(result.users).toHaveLength(2);
+        expect(result.users[0].__typename).toBe('User');
+        expect(result.users[0].name).toBe('Alice');
+        expect(result.users[1].__typename).toBe('User');
+        expect(result.users[1].name).toBe('Bob');
+      });
+    });
+  });
 });
