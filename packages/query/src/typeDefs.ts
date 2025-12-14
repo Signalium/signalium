@@ -179,6 +179,66 @@ export class ValidatorDef<T> {
 }
 
 // -----------------------------------------------------------------------------
+// Case-Insensitive Enum Set
+// -----------------------------------------------------------------------------
+
+/**
+ * A Set-like class for enum values that matches string values case-insensitively.
+ * Non-string values (numbers, booleans) are matched exactly.
+ * Returns the canonical (originally defined) casing when a match is found.
+ */
+export class CaseInsensitiveSet<T extends string | boolean | number> extends Set<T> {
+  private readonly lowercaseMap: Map<string, T>; // lowercase -> canonical (strings only)
+
+  constructor(values: readonly T[]) {
+    super(values);
+
+    this.lowercaseMap = new Map<string, T>();
+
+    for (const value of values) {
+      if (typeof value === 'string') {
+        const lowercase = value.toLowerCase();
+        const existing = this.lowercaseMap.get(lowercase);
+
+        if (existing !== undefined) {
+          throw new Error(
+            `Case-insensitive enum cannot have multiple values with the same lowercase form: '${existing}' and '${value}' both become '${lowercase}'`,
+          );
+        }
+
+        this.lowercaseMap.set(lowercase, value);
+      }
+    }
+  }
+
+  /**
+   * Check if a value exists in the set (case-insensitively for strings).
+   * Used for backwards compatibility with Set-based checks.
+   */
+  has(value: unknown): boolean {
+    return this.get(value) !== undefined;
+  }
+
+  /**
+   * Get the canonical value for a given input.
+   * For strings, performs case-insensitive lookup and returns the canonical casing.
+   * For numbers/booleans, performs exact match.
+   * Returns undefined if no match is found.
+   */
+  get(value: unknown): T | undefined {
+    if (typeof value === 'string') {
+      return this.lowercaseMap.get(value.toLowerCase());
+    }
+
+    if (super.has(value as T)) {
+      return value as T;
+    }
+
+    return undefined;
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Complex Type Definitions
 // -----------------------------------------------------------------------------
 
@@ -338,6 +398,11 @@ export function reifyObjectShape(def: ValidatorDef<any>, shape: ObjectShape): Ob
         shapeKey += hashValue(key) ^ hashValue(value);
         break;
       case 'object':
+        if (value instanceof CaseInsensitiveSet) {
+          shapeKey ^= hashValue(key) ^ hashValue(Array.from(value));
+          break;
+        }
+
         if (value instanceof Set) {
           shapeKey ^= hashValue(key) ^ hashValue(value);
           break;
@@ -466,9 +531,15 @@ function defineConst<T extends string | boolean | number>(value: T): Set<T> {
   return new Set([value]);
 }
 
-function defineEnum<T extends readonly (string | boolean | number)[]>(...values: T): Set<T[number]> {
+const defineEnum = (<T extends readonly (string | boolean | number)[]>(...values: T): Set<T[number]> => {
   return new Set(values as unknown as T[number][]);
-}
+}) as unknown as APITypes['enum'];
+
+defineEnum.caseInsensitive = <T extends readonly (string | boolean | number)[]>(
+  ...values: T
+): CaseInsensitiveSet<T[number]> => {
+  return new CaseInsensitiveSet(values as unknown as T[number][]);
+};
 
 // -----------------------------------------------------------------------------
 // Formatted Values

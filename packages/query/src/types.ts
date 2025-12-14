@@ -64,9 +64,32 @@ export const enum Mask {
   HAS_STRING_FORMAT = 1 << 13,
 }
 
+/**
+ * Interface for case-insensitive enum sets.
+ * String values are matched case-insensitively during parsing,
+ * but always return the canonical (originally defined) casing.
+ */
+export interface CaseInsensitiveEnumSet<T extends string | boolean | number> extends Set<T> {
+  /**
+   * Check if a value exists in the set (case-insensitively for strings).
+   */
+  has(value: unknown): boolean;
+
+  /**
+   * Get the canonical value for a given input.
+   * For strings, performs case-insensitive lookup and returns the canonical casing.
+   * For numbers/booleans, performs exact match.
+   * Returns undefined if no match is found.
+   */
+  get(value: unknown): T | undefined;
+}
+
 export type SimpleTypeDef =
   // Sets are constant values
   | Set<string | boolean | number>
+
+  // Case-insensitive enum sets
+  | CaseInsensitiveEnumSet<string | boolean | number>
 
   // Numbers are primitive type masks (potentially multiple masks combined)
   | Mask;
@@ -155,7 +178,10 @@ export interface APITypes {
   format: (format: string) => number;
   typename: <T extends string>(value: T) => T;
   const: <T extends string | boolean | number>(value: T) => Set<T>;
-  enum: <T extends readonly (string | boolean | number)[]>(...values: T) => Set<T[number]>;
+  enum: {
+    <T extends readonly (string | boolean | number)[]>(...values: T): Set<T[number]>;
+    caseInsensitive<T extends readonly (string | boolean | number)[]>(...values: T): CaseInsensitiveEnumSet<T[number]>;
+  };
 
   id: Mask.ID;
   string: Mask.STRING;

@@ -9,8 +9,15 @@ import {
   ObjectFieldTypeDef,
   UnionDef,
 } from './types.js';
+import { CaseInsensitiveSet } from './typeDefs.js';
 
 export function typeToString(type: ObjectFieldTypeDef): string {
+  // Handle case-insensitive enum sets
+  if (type instanceof CaseInsensitiveSet) {
+    const values = Array.from(type).map(v => (typeof v === 'string' ? `"${v}"` : String(v)));
+    return values.join(' | ');
+  }
+
   // Handle Set-based constants/enums
   if (type instanceof Set) {
     const values = Array.from(type).map(v => (typeof v === 'string' ? `"${v}"` : String(v)));

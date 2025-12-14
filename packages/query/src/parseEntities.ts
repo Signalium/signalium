@@ -4,6 +4,7 @@
 
 import { hashValue } from 'signalium/utils';
 import { QueryClient } from './QueryClient.js';
+import { parseValue } from './proxy.js';
 import {
   ARRAY_KEY,
   ArrayDef,
@@ -11,6 +12,7 @@ import {
   EntityDef,
   Mask,
   ObjectDef,
+  ObjectFieldTypeDef,
   RECORD_KEY,
   RecordDef,
   UnionDef,
@@ -164,7 +166,18 @@ export function parseObjectEntities(
     return queryClient.saveEntity(key, obj, entityDef, childRefs).proxy;
   }
 
-  // Return the processed object (even if not an entity)
+  // For non-entity objects, parse all fields (including enums, formatted values, etc.)
+  // Entities handle this lazily via their proxy
+  for (const [key, propDef] of entries(shape)) {
+    // Skip fields that were already processed as sub-entity paths
+    if (subEntityPaths !== undefined) {
+      if (typeof subEntityPaths === 'string' ? key === subEntityPaths : subEntityPaths.includes(key)) {
+        continue;
+      }
+    }
+    obj[key] = parseValue(obj[key], propDef as ObjectFieldTypeDef, `${objectShape.typenameValue ?? 'object'}.${key}`);
+  }
+
   return obj;
 }
 
