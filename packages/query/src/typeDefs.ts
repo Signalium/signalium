@@ -135,8 +135,11 @@ export class ValidatorDef<T> {
    * Creates a new ValidatorDef that extends this one with additional fields.
    * Only valid for ENTITY and OBJECT types.
    * Prevents overriding of existing fields including id and typename.
+   *
+   * For entities, accepts a function that returns the new fields (lazy reification).
+   * For objects, accepts the new fields directly.
    */
-  extend<U extends ObjectShape>(newFields: U): ValidatorDef<any> {
+  extend<U extends ObjectShape>(newFieldsOrGetter: U | (() => U)): ValidatorDef<any> {
     // Validate that this is an extendable type (ENTITY or OBJECT)
     if (this.kind !== ComplexTypeDefKind.ENTITY && this.kind !== ComplexTypeDefKind.OBJECT) {
       throw new Error('extend() can only be called on Entity or Object types');
@@ -147,9 +150,11 @@ export class ValidatorDef<T> {
       // This preserves the lazy evaluation pattern and supports circular references
       // We bind getParentShape to access the parent's `.shape` getter which properly
       // reifies and caches the shape, avoiding multiple reification calls
+      const newFieldsGetter = newFieldsOrGetter as () => U;
 
       return new ValidatorDef(ComplexTypeDefKind.ENTITY, this.mask, () => {
         const existingShape = this.shape as ObjectShape;
+        const newFields = newFieldsGetter();
 
         // Runtime validation: check for field conflicts
         for (const key of Object.keys(newFields)) {
@@ -165,6 +170,7 @@ export class ValidatorDef<T> {
       this.reifyShape();
 
       const existingShape = this._shape as ObjectShape;
+      const newFields = newFieldsOrGetter as U;
 
       // Runtime validation: check for field conflicts
       for (const key of Object.keys(newFields)) {

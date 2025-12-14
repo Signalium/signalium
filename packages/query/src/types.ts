@@ -144,9 +144,10 @@ export interface EntityDef<T extends ObjectShape = ObjectShape> extends BaseType
   shape: T;
   /**
    * Creates a new EntityDef that extends this one with additional fields.
+   * The function is called lazily on first shape access to support circular references.
    * Prevents overriding of existing fields including id and typename.
    */
-  extend<U extends ObjectShape>(newFields: StrictExtend<T, U> & U): EntityDef<T & U>;
+  extend<U extends ObjectShape>(newFieldsGetter: () => StrictExtend<T, U> & U): EntityDef<T & U>;
 }
 
 export interface ObjectDef<T extends ObjectShape = ObjectShape> extends BaseTypeDef {
