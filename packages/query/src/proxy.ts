@@ -1,5 +1,5 @@
 import { typeError } from './errors.js';
-import { getFormat } from './typeDefs.js';
+import { CaseInsensitiveSet, getFormat } from './typeDefs.js';
 import {
   ARRAY_KEY,
   ArrayDef,
@@ -95,6 +95,15 @@ export function parseObjectValue(object: Record<string, unknown>, objectShape: O
 }
 
 export function parseValue(value: unknown, propDef: ObjectFieldTypeDef, path: string): unknown {
+  // Handle case-insensitive enums
+  if (propDef instanceof CaseInsensitiveSet) {
+    const canonical = propDef.get(value);
+    if (canonical === undefined) {
+      throw typeError(path, propDef as any, value);
+    }
+    return canonical; // Return the canonical casing
+  }
+
   // Handle Set-based constants/enums
   if (propDef instanceof Set) {
     if (!propDef.has(value as string | boolean | number)) {
