@@ -37,14 +37,21 @@ function cloneDeep<T>(value: T): T {
 }
 
 const clonedResult = reactive(
-  (result: QueryResult<unknown> | InfiniteQueryResult<unknown> | StreamQueryResult<unknown>) => cloneDeep(result.value),
+  (
+    result:
+      | QueryResult<unknown, unknown, unknown>
+      | InfiniteQueryResult<unknown, unknown, unknown>
+      | StreamQueryResult<unknown>,
+  ) => cloneDeep(result.value),
 );
 
 const riefiedQuery = reactive(
   <R, Args extends readonly Narrowable[]>(
-    fn: (...args: Args) => QueryResult<R> | InfiniteQueryResult<R> | StreamQueryResult<R>,
+    fn: (
+      ...args: Args
+    ) => QueryResult<R, unknown, unknown> | InfiniteQueryResult<R, unknown, unknown> | StreamQueryResult<R>,
     ...args: Args
-  ): QueryResult<R> | InfiniteQueryResult<R> | StreamQueryResult<R> => {
+  ): QueryResult<R, unknown, unknown> | InfiniteQueryResult<R, unknown, unknown> | StreamQueryResult<R> => {
     const queryResult = fn(...args);
 
     return new Proxy(queryResult, {
@@ -62,16 +69,16 @@ const riefiedQuery = reactive(
 );
 
 // Overload for standard query
-export function useQuery<R, Args extends readonly Narrowable[]>(
-  fn: (...args: Args) => QueryResult<R>,
+export function useQuery<R, StreamType, OptimisticUpdateType, Args extends readonly Narrowable[]>(
+  fn: (...args: Args) => QueryResult<R, StreamType, OptimisticUpdateType>,
   ...args: Args
-): QueryResult<R>;
+): QueryResult<R, StreamType, OptimisticUpdateType>;
 
 // Overload for infinite query
-export function useQuery<R, Args extends readonly Narrowable[]>(
-  fn: (...args: Args) => InfiniteQueryResult<R>,
+export function useQuery<R, StreamType, OptimisticUpdateType, Args extends readonly Narrowable[]>(
+  fn: (...args: Args) => InfiniteQueryResult<R, StreamType, OptimisticUpdateType>,
   ...args: Args
-): InfiniteQueryResult<R>;
+): InfiniteQueryResult<R, StreamType, OptimisticUpdateType>;
 
 // Overload for stream query
 export function useQuery<R, Args extends readonly Narrowable[]>(
@@ -80,13 +87,21 @@ export function useQuery<R, Args extends readonly Narrowable[]>(
 ): StreamQueryResult<R>;
 
 // Implementation
-export function useQuery<R, Args extends readonly Narrowable[]>(
-  fn: (...args: Args) => QueryResult<R> | InfiniteQueryResult<R> | StreamQueryResult<R>,
+export function useQuery<R, StreamType, OptimisticUpdateType, Args extends readonly Narrowable[]>(
+  fn: (
+    ...args: Args
+  ) =>
+    | QueryResult<R, StreamType, OptimisticUpdateType>
+    | InfiniteQueryResult<R, StreamType, OptimisticUpdateType>
+    | StreamQueryResult<R>,
   ...args: Args
-): QueryResult<R> | InfiniteQueryResult<R> | StreamQueryResult<R> {
+):
+  | QueryResult<R, StreamType, OptimisticUpdateType>
+  | InfiniteQueryResult<R, StreamType, OptimisticUpdateType>
+  | StreamQueryResult<R> {
   const result = useReactive(riefiedQuery, fn, ...args) as
-    | QueryResult<R>
-    | InfiniteQueryResult<R>
+    | QueryResult<R, StreamType, OptimisticUpdateType>
+    | InfiniteQueryResult<R, StreamType, OptimisticUpdateType>
     | StreamQueryResult<R>;
 
   useReactive(() => result.value);

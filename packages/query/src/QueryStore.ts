@@ -13,10 +13,16 @@ import { QueryDefinition } from './QueryClient.js';
 // QueryStore Interface
 // -----------------------------------------------------------------------------
 
+export interface CachedQueryExtra {
+  streamOrphanRefs?: number[];
+  optimisticInsertRefs?: number[];
+}
+
 export interface CachedQuery {
   value: unknown;
   refIds: Set<number> | undefined;
   updatedAt: number;
+  extra?: CachedQueryExtra;
 }
 
 export interface QueryStore {
@@ -25,7 +31,7 @@ export interface QueryStore {
    * May return undefined if the document is not in the store.
    */
   loadQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     entityMap: EntityStore,
   ): MaybePromise<CachedQuery | undefined>;
@@ -35,11 +41,12 @@ export interface QueryStore {
    * This is fire-and-forget for async implementations.
    */
   saveQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     value: unknown,
     updatedAt: number,
     refIds?: Set<number>,
+    extra?: CachedQueryExtra,
   ): void;
 
   /**
@@ -52,7 +59,7 @@ export interface QueryStore {
    * Marks a query as accessed, updating the LRU queue.
    * Handles eviction internally when the cache is full.
    */
-  activateQuery(queryDef: QueryDefinition<any, any>, queryKey: number): void;
+  activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void;
 }
 
 export type MaybePromise<T> = T | Promise<T>;
@@ -92,7 +99,15 @@ export interface AsyncPersistentStore {
 }
 
 export type StoreMessage =
-  | { type: 'saveQuery'; queryDefId: string; queryKey: number; value: unknown; updatedAt: number; refIds?: number[] }
+  | {
+      type: 'saveQuery';
+      queryDefId: string;
+      queryKey: number;
+      value: unknown;
+      updatedAt: number;
+      refIds?: number[];
+      extra?: CachedQueryExtra;
+    }
   | { type: 'saveEntity'; entityKey: number; value: unknown; refIds?: number[] }
   | { type: 'activateQuery'; queryDefId: string; queryKey: number };
 
@@ -148,6 +163,8 @@ export const valueKeyFor = (id: number) => `sq:doc:value:${id}`;
 export const refCountKeyFor = (id: number) => `sq:doc:refCount:${id}`;
 export const refIdsKeyFor = (id: number) => `sq:doc:refIds:${id}`;
 export const updatedAtKeyFor = (id: number) => `sq:doc:updatedAt:${id}`;
+export const streamOrphanRefsKeyFor = (id: number) => `sq:doc:streamOrphanRefs:${id}`;
+export const optimisticInsertRefsKeyFor = (id: number) => `sq:doc:optimisticInsertRefs:${id}`;
 
 // Query Type keys
 export const queueKeyFor = (queryDefId: string) => `sq:doc:queue:${queryDefId}`;
@@ -157,7 +174,11 @@ export class SyncQueryStore implements QueryStore {
 
   constructor(private readonly kv: SyncPersistentStore) {}
 
-  loadQuery(queryDef: QueryDefinition<any, any>, queryKey: number, entityMap: EntityStore): CachedQuery | undefined {
+  loadQuery(
+    queryDef: QueryDefinition<any, any, any>,
+    queryKey: number,
+    entityMap: EntityStore,
+  ): CachedQuery | undefined {
     const updatedAt = this.kv.getNumber(updatedAtKeyFor(queryKey));
 
     if (updatedAt === undefined || updatedAt < Date.now() - (queryDef.cache?.gcTime ?? DEFAULT_GC_TIME)) {
@@ -176,12 +197,36 @@ export class SyncQueryStore implements QueryStore {
       this.preloadEntities(entityIds, entityMap);
     }
 
+    // Load extra data (stream orphans and optimistic inserts)
+    const streamOrphanRefs = this.kv.getBuffer(streamOrphanRefsKeyFor(queryKey));
+    const optimisticInsertRefs = this.kv.getBuffer(optimisticInsertRefsKeyFor(queryKey));
+
+    // Preload entities for extra data
+    if (streamOrphanRefs !== undefined) {
+      this.preloadEntities(streamOrphanRefs, entityMap);
+    }
+    if (optimisticInsertRefs !== undefined) {
+      this.preloadEntities(optimisticInsertRefs, entityMap);
+    }
+
+    let extra: CachedQueryExtra | undefined;
+    if (streamOrphanRefs !== undefined || optimisticInsertRefs !== undefined) {
+      extra = {};
+      if (streamOrphanRefs !== undefined) {
+        extra.streamOrphanRefs = Array.from(streamOrphanRefs);
+      }
+      if (optimisticInsertRefs !== undefined) {
+        extra.optimisticInsertRefs = Array.from(optimisticInsertRefs);
+      }
+    }
+
     this.activateQuery(queryDef, queryKey);
 
     return {
       value: JSON.parse(valueStr) as Record<string, unknown>,
       refIds: entityIds === undefined ? undefined : new Set(entityIds ?? []),
       updatedAt,
+      extra,
     };
   }
 
@@ -207,14 +252,29 @@ export class SyncQueryStore implements QueryStore {
   }
 
   saveQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     value: unknown,
     updatedAt: number,
     refIds?: Set<number>,
+    extra?: CachedQueryExtra,
   ): void {
     this.setValue(queryKey, value, refIds);
     this.kv.setNumber(updatedAtKeyFor(queryKey), updatedAt);
+
+    // Save extra data
+    if (extra?.streamOrphanRefs !== undefined && extra.streamOrphanRefs.length > 0) {
+      this.kv.setBuffer(streamOrphanRefsKeyFor(queryKey), new Uint32Array(extra.streamOrphanRefs));
+    } else {
+      this.kv.delete(streamOrphanRefsKeyFor(queryKey));
+    }
+
+    if (extra?.optimisticInsertRefs !== undefined && extra.optimisticInsertRefs.length > 0) {
+      this.kv.setBuffer(optimisticInsertRefsKeyFor(queryKey), new Uint32Array(extra.optimisticInsertRefs));
+    } else {
+      this.kv.delete(optimisticInsertRefsKeyFor(queryKey));
+    }
+
     this.activateQuery(queryDef, queryKey);
   }
 
@@ -222,7 +282,7 @@ export class SyncQueryStore implements QueryStore {
     this.setValue(entityKey, value, refIds);
   }
 
-  activateQuery(queryDef: QueryDefinition<any, any>, queryKey: number): void {
+  activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void {
     if (!this.kv.has(valueKeyFor(queryKey))) {
       // Query not in store, nothing to do. This can happen if the query has
       // been evicted from the cache, but is still active in memory.
@@ -439,7 +499,7 @@ export class AsyncQueryStore implements QueryStore {
   private async processMessage(msg: StoreMessage): Promise<void> {
     switch (msg.type) {
       case 'saveQuery':
-        await this.writerSaveQuery(msg.queryDefId, msg.queryKey, msg.value, msg.updatedAt, msg.refIds);
+        await this.writerSaveQuery(msg.queryDefId, msg.queryKey, msg.value, msg.updatedAt, msg.refIds, msg.extra);
         break;
       case 'saveEntity':
         await this.writerSaveEntity(msg.entityKey, msg.value, msg.refIds);
@@ -451,7 +511,7 @@ export class AsyncQueryStore implements QueryStore {
   }
 
   async loadQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     entityMap: EntityStore,
   ): Promise<CachedQuery | undefined> {
@@ -477,12 +537,36 @@ export class AsyncQueryStore implements QueryStore {
       await this.preloadEntities(entityIds, entityMap);
     }
 
+    // Load extra data (stream orphans and optimistic inserts)
+    const streamOrphanRefs = await this.delegate.getBuffer(streamOrphanRefsKeyFor(queryKey));
+    const optimisticInsertRefs = await this.delegate.getBuffer(optimisticInsertRefsKeyFor(queryKey));
+
+    // Preload entities for extra data
+    if (streamOrphanRefs !== undefined) {
+      await this.preloadEntities(streamOrphanRefs, entityMap);
+    }
+    if (optimisticInsertRefs !== undefined) {
+      await this.preloadEntities(optimisticInsertRefs, entityMap);
+    }
+
+    let extra: CachedQueryExtra | undefined;
+    if (streamOrphanRefs !== undefined || optimisticInsertRefs !== undefined) {
+      extra = {};
+      if (streamOrphanRefs !== undefined) {
+        extra.streamOrphanRefs = Array.from(streamOrphanRefs);
+      }
+      if (optimisticInsertRefs !== undefined) {
+        extra.optimisticInsertRefs = Array.from(optimisticInsertRefs);
+      }
+    }
+
     this.activateQuery(queryDef, queryKey);
 
     return {
       value: JSON.parse(valueStr) as Record<string, unknown>,
       refIds: entityIds === undefined ? undefined : new Set(entityIds ?? []),
       updatedAt,
+      extra,
     };
   }
 
@@ -512,11 +596,12 @@ export class AsyncQueryStore implements QueryStore {
   }
 
   saveQuery(
-    queryDef: QueryDefinition<any, any>,
+    queryDef: QueryDefinition<any, any, any>,
     queryKey: number,
     value: unknown,
     updatedAt: number,
     refIds?: Set<number>,
+    extra?: CachedQueryExtra,
   ): void {
     const message: StoreMessage = {
       type: 'saveQuery',
@@ -525,6 +610,7 @@ export class AsyncQueryStore implements QueryStore {
       value,
       updatedAt,
       refIds: refIds ? Array.from(refIds) : undefined,
+      extra,
     };
 
     if (this.isWriter) {
@@ -549,7 +635,7 @@ export class AsyncQueryStore implements QueryStore {
     }
   }
 
-  activateQuery(queryDef: QueryDefinition<any, any>, queryKey: number): void {
+  activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void {
     const message: StoreMessage = {
       type: 'activateQuery',
       queryDefId: queryDef.id,
@@ -571,9 +657,24 @@ export class AsyncQueryStore implements QueryStore {
     value: unknown,
     updatedAt: number,
     refIds?: number[],
+    extra?: CachedQueryExtra,
   ): Promise<void> {
     await this.setValue(queryKey, value, refIds ? new Set(refIds) : undefined);
     await this.delegate!.setNumber(updatedAtKeyFor(queryKey), updatedAt);
+
+    // Save extra data
+    if (extra?.streamOrphanRefs !== undefined && extra.streamOrphanRefs.length > 0) {
+      await this.delegate!.setBuffer(streamOrphanRefsKeyFor(queryKey), new Uint32Array(extra.streamOrphanRefs));
+    } else {
+      await this.delegate!.delete(streamOrphanRefsKeyFor(queryKey));
+    }
+
+    if (extra?.optimisticInsertRefs !== undefined && extra.optimisticInsertRefs.length > 0) {
+      await this.delegate!.setBuffer(optimisticInsertRefsKeyFor(queryKey), new Uint32Array(extra.optimisticInsertRefs));
+    } else {
+      await this.delegate!.delete(optimisticInsertRefsKeyFor(queryKey));
+    }
+
     await this.writerActivateQuery(queryDefId, queryKey);
   }
 

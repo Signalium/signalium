@@ -306,7 +306,7 @@ describe('Infinite Query', () => {
         },
       }));
 
-      let query: BaseInfiniteQueryResult<unknown>;
+      let query: InfiniteQueryResult<unknown>;
 
       await testWithClient(client, async () => {
         query = listItems();
