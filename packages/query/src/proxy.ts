@@ -43,7 +43,10 @@ function parseUnionValue(
       const recordShape = unionDef.shape![RECORD_KEY];
 
       if (recordShape === undefined || typeof recordShape === 'number') {
-        return value;
+        // Union of objects/entities requires typename for discrimination
+        throw new Error(
+          `Typename field '${typenameField}' is required for union discrimination but was not found in the data`,
+        );
       }
 
       return parseRecordValue(value as Record<string, unknown>, recordShape as ComplexTypeDef, path);
@@ -102,6 +105,10 @@ export function parseValue(value: unknown, propDef: ObjectFieldTypeDef, path: st
 
   switch (typeof propDef) {
     case 'string':
+      // If value is undefined/null, return the typename from definition
+      if (value === undefined || value === null) {
+        return propDef;
+      }
       if (value !== propDef) {
         throw typeError(path, propDef, value);
       }
