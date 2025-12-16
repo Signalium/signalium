@@ -1,6 +1,6 @@
-import { PendingReactivePromise, ReadyReactivePromise } from 'signalium';
+import { PendingReactivePromise, ReadyReactivePromise, type Signal } from 'signalium';
 import { ReactivePromise } from 'signalium';
-import { HasRequiredKeys, Optionalize, Prettify } from './type-utils.js';
+import { HasRequiredKeys, Optionalize, Prettify, Signalize } from './type-utils.js';
 
 // ================================
 // Type Definitions
@@ -333,14 +333,14 @@ export type QueryFn<
 > =
   HasRequiredKeys<Params> extends true
     ? (
-        params: Prettify<Optionalize<Params>>,
+        params: Prettify<Optionalize<Signalize<Params>>>,
       ) => QueryResult<
         Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>,
         Readonly<Prettify<ExtractTypesFromEntityOrUndefined<StreamType>>>,
         Readonly<Prettify<ExtractTypesFromEntityOrUndefined<OptimisticUpdateType>>>
       >
     : (
-        params?: Prettify<Optionalize<ParamsOrUndefined<Params>>>,
+        params?: Prettify<Optionalize<ParamsOrUndefined<Signalize<Params>>>>,
       ) => QueryResult<
         Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>,
         Readonly<Prettify<ExtractTypesFromEntityOrUndefined<StreamType>>>,
@@ -379,14 +379,14 @@ export type InfiniteQueryFn<
 > =
   HasRequiredKeys<Params> extends true
     ? (
-        params: Prettify<Optionalize<Params>>,
+        params: Prettify<Optionalize<Signalize<Params>>>,
       ) => InfiniteQueryResult<
         Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>[],
         Readonly<Prettify<ExtractTypesFromEntityOrUndefined<StreamType>>>,
         Readonly<Prettify<ExtractTypesFromEntityOrUndefined<OptimisticUpdateType>>>
       >
     : (
-        params?: Prettify<Optionalize<ParamsOrUndefined<Params>>>,
+        params?: Prettify<Optionalize<ParamsOrUndefined<Signalize<Params>>>>,
       ) => InfiniteQueryResult<
         Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>[],
         Readonly<Prettify<ExtractTypesFromEntityOrUndefined<StreamType>>>,

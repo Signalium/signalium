@@ -100,6 +100,7 @@ interface RESTQueryDefinition<
   optimisticInserts?: OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]>
     ? OptimisticInsertOptions<OptimisticInsertDef>
     : undefined;
+  debounce?: number;
 }
 
 interface InfiniteRESTQueryDefinition<
@@ -126,6 +127,7 @@ interface InfiniteRESTQueryDefinition<
       params?: ExtractTypesFromObjectOrEntity<SearchParams> | undefined,
     ): QueryParams | undefined;
   };
+  debounce?: number;
 }
 
 type ExtractQueryParams<Path extends string, SearchParams extends SearchParamsDefinition> = PathParams<Path> &
@@ -172,6 +174,7 @@ function buildQueryFn(
         pagination,
         stream,
         optimisticInserts,
+        debounce,
       } = queryDefinitionBuilder() as InfiniteRESTQueryDefinition<any, any, any, any, any>;
 
       const id = `${method}:${path}`;
@@ -282,6 +285,7 @@ function buildQueryFn(
         cache,
         stream: streamConfig,
         optimisticInserts: optimisticInsertsConfig,
+        debounce,
       };
     }
 

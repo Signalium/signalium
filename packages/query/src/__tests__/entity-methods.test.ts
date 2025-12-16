@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { signal, watcher, context, getContext, withContexts, watchOnce } from 'signalium';
+import { context, getContext, withContexts, watchOnce, signal } from 'signalium';
 import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
-import { QueryClient, QueryClientContext } from '../QueryClient.js';
+import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
 import { query } from '../query.js';
-import type { ExtractType, EntityDef } from '../types.js';
-import { createMockFetch, testWithClient, sleep } from './utils.js';
+import type { ExtractType } from '../types.js';
+import { createMockFetch, testWithClient } from './utils.js';
 
 /**
  * Entity Methods Tests
