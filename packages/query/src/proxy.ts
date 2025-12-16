@@ -3,10 +3,8 @@ import { typeError } from './errors.js';
 import { CaseInsensitiveSet, getFormat, ValidatorDef } from './typeDefs.js';
 import {
   ARRAY_KEY,
-  ArrayDef,
   ComplexTypeDef,
   EntityDef,
-  EntityMethods,
   Mask,
   ObjectDef,
   RECORD_KEY,
@@ -134,13 +132,12 @@ export function parseValue(value: unknown, propDef: ObjectFieldTypeDef, path: st
         throw typeError(path, propDef, value);
       }
 
-      if ((propDef & Mask.HAS_NUMBER_FORMAT) !== 0 && valueType === Mask.NUMBER) {
+      // Check if this field has a format - if so, parse with the format parser
+      if ((propDef & (Mask.HAS_STRING_FORMAT | Mask.HAS_NUMBER_FORMAT)) !== 0) {
+        // Lazy format parsing: parse the raw value using the format parser
         return getFormat(propDef)(value);
       }
 
-      if ((propDef & Mask.HAS_STRING_FORMAT) !== 0 && valueType === Mask.STRING) {
-        return getFormat(propDef)(value);
-      }
       return value;
     }
 
@@ -159,11 +156,8 @@ export function parseValue(value: unknown, propDef: ObjectFieldTypeDef, path: st
       }
 
       if (valueType < Mask.OBJECT) {
-        if ((propMask & Mask.HAS_NUMBER_FORMAT) !== 0 && valueType === Mask.NUMBER) {
-          return getFormat(propMask)(value);
-        }
-
-        if ((propMask & Mask.HAS_STRING_FORMAT) !== 0 && valueType === Mask.STRING) {
+        // Check if this field has a format - if so, parse with the format parser
+        if ((propMask & (Mask.HAS_STRING_FORMAT | Mask.HAS_NUMBER_FORMAT)) !== 0) {
           return getFormat(propMask)(value);
         }
 

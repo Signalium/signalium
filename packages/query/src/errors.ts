@@ -9,7 +9,7 @@ import {
   ObjectFieldTypeDef,
   UnionDef,
 } from './types.js';
-import { CaseInsensitiveSet } from './typeDefs.js';
+import { CaseInsensitiveSet, getFormatName } from './typeDefs.js';
 
 export function typeToString(type: ObjectFieldTypeDef): string {
   // Handle case-insensitive enum sets
@@ -35,6 +35,16 @@ export function typeToString(type: ObjectFieldTypeDef): string {
 
   // Handle primitive masks
   if (typeof type === 'number') {
+    // Check for formatted types first
+    const hasFormat = (type & (Mask.HAS_STRING_FORMAT | Mask.HAS_NUMBER_FORMAT)) !== 0;
+    if (hasFormat) {
+      const formatName = getFormatName(type);
+      if (formatName) {
+        // Show format name instead of base type
+        return `"${formatName}"`;
+      }
+    }
+
     const types: string[] = [];
 
     if (type & Mask.UNDEFINED) types.push('undefined');
@@ -87,6 +97,15 @@ export function typeToString(type: ObjectFieldTypeDef): string {
     }
 
     mask = unionType.mask;
+
+    // Check for formatted types in union mask
+    const hasFormat = (mask & (Mask.HAS_STRING_FORMAT | Mask.HAS_NUMBER_FORMAT)) !== 0;
+    if (hasFormat) {
+      const formatName = getFormatName(mask);
+      if (formatName) {
+        parts.push(`"${formatName}"`);
+      }
+    }
 
     // Add primitive types from the mask
     if (mask & Mask.UNDEFINED) parts.push('undefined');

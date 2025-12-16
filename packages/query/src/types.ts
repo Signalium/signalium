@@ -190,8 +190,30 @@ export interface RecordDef<T extends TypeDef = TypeDef> extends BaseTypeDef {
   shape: T;
 }
 
+/**
+ * Global format registry interface that maps format names to their TypeScript types.
+ * This can be extended via module augmentation using the SignaliumQuery namespace.
+ */
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace SignaliumQuery {
+    interface FormatRegistry {
+      date: Date;
+      'date-time': Date;
+      // Users can extend this via module augmentation
+      // Example: declare global { namespace SignaliumQuery { interface FormatRegistry { 'custom-format': CustomType } } }
+    }
+  }
+}
+
+declare const FormattedSymbol: unique symbol;
+
+export type Formatted<T> = number & {
+  [FormattedSymbol]: T;
+};
+
 export interface APITypes {
-  format: (format: string) => number;
+  format: <K extends keyof SignaliumQuery.FormatRegistry>(format: K) => Formatted<SignaliumQuery.FormatRegistry[K]>;
   typename: <T extends string>(value: T) => T;
   const: <T extends string | boolean | number>(value: T) => Set<T>;
   enum: {
@@ -240,23 +262,26 @@ export type ExtractTypesFromShape<S extends Record<string, ObjectFieldTypeDef>> 
   [K in keyof S]: ExtractType<S[K]>;
 };
 
-export type ExtractType<T extends ObjectFieldTypeDef> = T extends number
-  ? ExtractPrimitiveTypeFromMask<T>
-  : T extends string
-    ? T
-    : T extends Set<infer TSet>
-      ? TSet
-      : T extends ObjectDef<infer S>
-        ? Prettify<ExtractTypesFromShape<S>>
-        : T extends EntityDef<infer S, infer M>
-          ? Prettify<ExtractTypesFromShape<S> & IncludeMethods<M>>
-          : T extends ArrayDef<infer S>
-            ? ExtractType<S>[]
-            : T extends RecordDef<infer S>
-              ? Record<string, ExtractType<S>>
-              : T extends UnionDef<infer VS>
-                ? ExtractType<VS[number]>
-                : never;
+export type ExtractType<T extends ObjectFieldTypeDef> =
+  T extends Formatted<infer U>
+    ? U
+    : T extends number
+      ? ExtractPrimitiveTypeFromMask<T>
+      : T extends string
+        ? T
+        : T extends Set<infer TSet>
+          ? TSet
+          : T extends ObjectDef<infer S>
+            ? Prettify<ExtractTypesFromShape<S>>
+            : T extends EntityDef<infer S, infer M>
+              ? Prettify<ExtractTypesFromShape<S> & IncludeMethods<M>>
+              : T extends ArrayDef<infer S>
+                ? ExtractType<S>[]
+                : T extends RecordDef<infer S>
+                  ? Record<string, ExtractType<S>>
+                  : T extends UnionDef<infer VS>
+                    ? ExtractType<VS[number]>
+                    : never;
 
 export type QueryType<T> = T extends () => infer Response
   ? Response extends QueryResult<infer T, unknown, unknown>
