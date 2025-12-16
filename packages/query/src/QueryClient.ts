@@ -248,11 +248,13 @@ export class QueryClient {
   }
 
   hydrateEntity(key: number, shape: EntityDef): EntityRecord {
-    return this.entityMap.hydratePreloadedEntity(key, shape);
+    // Pass this (QueryClient) as scope owner so entity methods can resolve their reactive scope
+    return this.entityMap.hydratePreloadedEntity(key, shape, this);
   }
 
   saveEntity(key: number, obj: Record<string, unknown>, shape: EntityDef, entityRefs?: Set<number>): EntityRecord {
-    const record = this.entityMap.setEntity(key, obj, shape, entityRefs);
+    // Pass this (QueryClient) as scope owner so entity methods can resolve their reactive scope
+    const record = this.entityMap.setEntity(key, obj, shape, entityRefs, this);
 
     this.store.saveEntity(key, obj, entityRefs);
 

@@ -46,13 +46,13 @@ export class EntityStore {
     return refIds;
   }
 
-  hydratePreloadedEntity(key: number, shape: EntityDef): EntityRecord {
+  hydratePreloadedEntity(key: number, shape: EntityDef, scopeOwner?: object): EntityRecord {
     const record = this.getEntity(key);
     if (record === undefined) {
       throw new Error(`Entity ${key} not found`);
     }
 
-    record.proxy = createEntityProxy(key, record, shape);
+    record.proxy = createEntityProxy(key, record, shape, undefined, scopeOwner);
 
     return record as EntityRecord;
   }
@@ -71,13 +71,19 @@ export class EntityStore {
     return record;
   }
 
-  setEntity(key: number, obj: Record<string, unknown>, shape: EntityDef, entityRefs?: Set<number>): EntityRecord {
+  setEntity(
+    key: number,
+    obj: Record<string, unknown>,
+    shape: EntityDef,
+    entityRefs?: Set<number>,
+    scopeOwner?: object,
+  ): EntityRecord {
     let record = this.map.get(key);
 
     if (record === undefined) {
       record = this.setPreloadedEntity(key, obj);
 
-      record.proxy = createEntityProxy(key, record, shape);
+      record.proxy = createEntityProxy(key, record, shape, undefined, scopeOwner);
     } else {
       record.signal.update(value => mergeValues(value, obj));
       record.cache.clear();
