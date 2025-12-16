@@ -6,6 +6,7 @@ import {
   EntityDef,
   EntityMethods,
   ExtractTypesFromShape,
+  Formatted,
   Mask,
   ObjectDef,
   ObjectShape,
@@ -603,15 +604,18 @@ let nextFormatId = 0;
 const FORMAT_PARSERS: ((value: unknown) => unknown)[] = [];
 const FORMAT_SERIALIZERS: ((value: unknown) => unknown)[] = [];
 const FORMAT_MAP = new Map<string, number>();
+const FORMAT_ID_TO_NAME = new Map<number, string>();
 
-function defineFormatted(format: string): number {
+function defineFormatted<K extends keyof SignaliumQuery.FormatRegistry>(
+  format: K,
+): Formatted<SignaliumQuery.FormatRegistry[K]> {
   const mask = FORMAT_MAP.get(format);
 
   if (mask === undefined) {
     throw new Error(`Format ${format} not registered`);
   }
 
-  return mask;
+  return mask as Formatted<SignaliumQuery.FormatRegistry[K]>;
 }
 
 export function getFormat(mask: number): (value: unknown) => unknown {
@@ -620,15 +624,26 @@ export function getFormat(mask: number): (value: unknown) => unknown {
   return FORMAT_PARSERS[formatId];
 }
 
-export function registerFormat<Input extends string | boolean, T>(
+export function getFormatSerializer(mask: number): ((value: unknown) => unknown) | undefined {
+  const formatId = mask >> FORMAT_MASK_SHIFT;
+  return FORMAT_SERIALIZERS[formatId];
+}
+
+export function getFormatName(mask: number): string | undefined {
+  const formatId = mask >> FORMAT_MASK_SHIFT;
+  return FORMAT_ID_TO_NAME.get(formatId);
+}
+
+export function registerFormat<Input extends Mask.STRING | Mask.NUMBER, T>(
   name: string,
-  type: Input extends string ? Mask.STRING : Mask.BOOLEAN,
-  parse: (value: Input) => T,
-  serialize: (value: T) => Input,
+  type: Input,
+  parse: (value: Input extends Mask.STRING ? string : number) => T,
+  serialize: (value: T) => Input extends Mask.STRING ? string : number,
 ) {
   const maskId = nextFormatId++;
   FORMAT_PARSERS[maskId] = parse as (value: unknown) => unknown;
   FORMAT_SERIALIZERS[maskId] = serialize as (value: unknown) => unknown;
+  FORMAT_ID_TO_NAME.set(maskId, name);
 
   const shiftedId = maskId << FORMAT_MASK_SHIFT;
   const formatMask = type === Mask.STRING ? Mask.HAS_STRING_FORMAT : Mask.HAS_NUMBER_FORMAT;
@@ -636,6 +651,53 @@ export function registerFormat<Input extends string | boolean, T>(
 
   FORMAT_MAP.set(name, mask);
 }
+
+// -----------------------------------------------------------------------------
+// Built-in Formats
+// -----------------------------------------------------------------------------
+
+// Register 'date' format: ISO date string (YYYY-MM-DD) ↔ Date
+registerFormat(
+  'date',
+  Mask.STRING,
+  value => {
+    // Parse YYYY-MM-DD as UTC date to avoid timezone issues
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+      throw new Error(`Invalid date string: ${value}. Expected YYYY-MM-DD format.`);
+    }
+    const [, year, month, day] = match;
+    const date = new Date(Date.UTC(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10)));
+    if (isNaN(date.getTime())) {
+      throw new Error(`Invalid date string: ${value}`);
+    }
+    return date;
+  },
+  value => {
+    // Format as YYYY-MM-DD using UTC to avoid timezone issues
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(value.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  },
+);
+
+// Register 'date-time' format: ISO datetime string (ISO 8601) ↔ Date
+registerFormat(
+  'date-time',
+  Mask.STRING,
+  value => {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) {
+      throw new Error(`Invalid date-time string: ${value}`);
+    }
+    return date;
+  },
+  value => {
+    // Format as ISO 8601 string
+    return value.toISOString();
+  },
+);
 
 // -----------------------------------------------------------------------------
 // Entity Definitions
