@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientContext } from '../QueryClient.js';
-import { SyncQueryStore } from '../QueryStore.js';
-import { MemoryPersistentStore } from '../QueryStore.js';
+import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { query } from '../query.js';
 import { NetworkManager } from '../NetworkManager.js';
 import { NetworkMode } from '../types.js';

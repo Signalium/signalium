@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { ContextProvider, useReactive } from 'signalium/react';
 import React, { memo } from 'react';
-import { SyncQueryStore, MemoryPersistentStore } from '../../QueryStore.js';
+import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { entity, t } from '../../typeDefs.js';
 import { infiniteQuery } from '../../query.js';

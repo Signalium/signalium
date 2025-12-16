@@ -1,19 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  AsyncQueryStore,
-  AsyncPersistentStore,
-  StoreMessage,
-  valueKeyFor,
-  refCountKeyFor,
-  refIdsKeyFor,
-  updatedAtKeyFor,
-  queueKeyFor,
-} from '../QueryStore.js';
-import { QueryClient } from '../QueryClient.js';
+import { AsyncQueryStore, AsyncPersistentStore, StoreMessage } from '../stores/async.js';
+import { valueKeyFor, refCountKeyFor, refIdsKeyFor, updatedAtKeyFor, queueKeyFor } from '../stores/shared.js';
 import { entity, t } from '../typeDefs.js';
 import { query, queryKeyForFn } from '../query.js';
 import { hashValue } from 'signalium/utils';
-import { createMockFetch, testWithClient, sleep } from './utils.js';
+import { createMockFetch, sleep } from './utils.js';
 
 /**
  * AsyncQueryStore Tests

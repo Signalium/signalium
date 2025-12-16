@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
+import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t, registerFormat } from '../typeDefs.js';
 import { query } from '../query.js';
 import type { ExtractType } from '../types.js';
 import { createMockFetch, testWithClient } from './utils.js';
 import { hashValue } from 'signalium/utils';
-import { valueKeyFor, updatedAtKeyFor, refIdsKeyFor, refCountKeyFor } from '../QueryStore.js';
+import { valueKeyFor, updatedAtKeyFor, refIdsKeyFor, refCountKeyFor } from '../stores/shared.js';
 import { queryKeyForFn } from '../query.js';
 
 // Helper to set up a query result in the store (similar to caching-persistence.test.ts)

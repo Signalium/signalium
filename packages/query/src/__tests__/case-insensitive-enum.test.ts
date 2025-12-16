@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { t, CaseInsensitiveSet } from '../typeDefs.js';
 import { parseValue } from '../proxy.js';
 import { typeToString } from '../errors.js';
-import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
+import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { query } from '../query.js';
 import { createMockFetch, testWithClient } from './utils.js';

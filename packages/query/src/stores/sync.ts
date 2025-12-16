@@ -1,18 +1,14 @@
 import { EntityStore } from '../EntityMap.js';
-import { CachedQuery, QueryDefinition, QueryStore } from '../QueryClient.js';
+import { QueryDefinition } from '../QueryClient.js';
+import { CachedQuery, CachedQueryExtra, QueryStore } from '../QueryStore.js';
 import {
-  DEFAULT_GC_TIME,
-  DEFAULT_MAX_COUNT,
-  queueKeyFor,
+  optimisticInsertRefsKeyFor,
   refCountKeyFor,
   refIdsKeyFor,
+  streamOrphanRefsKeyFor,
   updatedAtKeyFor,
   valueKeyFor,
 } from './shared.js';
-
-// -----------------------------------------------------------------------------
-// Sync QueryStore Interfaces
-// -----------------------------------------------------------------------------
 
 export interface SyncPersistentStore {
   has(key: string): boolean;
@@ -29,9 +25,8 @@ export interface SyncPersistentStore {
   delete(key: string): void;
 }
 
-// -----------------------------------------------------------------------------
-// Sync QueryStore Implementation
-// -----------------------------------------------------------------------------
+const DEFAULT_MAX_COUNT = 50;
+const DEFAULT_GC_TIME = 1000 * 60 * 60 * 24; // 24 hours
 
 export class MemoryPersistentStore implements SyncPersistentStore {
   private readonly kv: Record<string, unknown> = Object.create(null);
@@ -69,6 +64,9 @@ export class MemoryPersistentStore implements SyncPersistentStore {
   }
 }
 
+// Query Type keys
+export const queueKeyFor = (queryDefId: string) => `sq:doc:queue:${queryDefId}`;
+
 export class SyncQueryStore implements QueryStore {
   queues: Map<string, Uint32Array> = new Map();
 
@@ -97,12 +95,36 @@ export class SyncQueryStore implements QueryStore {
       this.preloadEntities(entityIds, entityMap);
     }
 
+    // Load extra data (stream orphans and optimistic inserts)
+    const streamOrphanRefs = this.kv.getBuffer(streamOrphanRefsKeyFor(queryKey));
+    const optimisticInsertRefs = this.kv.getBuffer(optimisticInsertRefsKeyFor(queryKey));
+
+    // Preload entities for extra data
+    if (streamOrphanRefs !== undefined) {
+      this.preloadEntities(streamOrphanRefs, entityMap);
+    }
+    if (optimisticInsertRefs !== undefined) {
+      this.preloadEntities(optimisticInsertRefs, entityMap);
+    }
+
+    let extra: CachedQueryExtra | undefined;
+    if (streamOrphanRefs !== undefined || optimisticInsertRefs !== undefined) {
+      extra = {};
+      if (streamOrphanRefs !== undefined) {
+        extra.streamOrphanRefs = Array.from(streamOrphanRefs);
+      }
+      if (optimisticInsertRefs !== undefined) {
+        extra.optimisticInsertRefs = Array.from(optimisticInsertRefs);
+      }
+    }
+
     this.activateQuery(queryDef, queryKey);
 
     return {
       value: JSON.parse(valueStr) as Record<string, unknown>,
       refIds: entityIds === undefined ? undefined : new Set(entityIds ?? []),
       updatedAt,
+      extra,
     };
   }
 
@@ -133,9 +155,24 @@ export class SyncQueryStore implements QueryStore {
     value: unknown,
     updatedAt: number,
     refIds?: Set<number>,
+    extra?: CachedQueryExtra,
   ): void {
     this.setValue(queryKey, value, refIds);
     this.kv.setNumber(updatedAtKeyFor(queryKey), updatedAt);
+
+    // Save extra data
+    if (extra?.streamOrphanRefs !== undefined && extra.streamOrphanRefs.length > 0) {
+      this.kv.setBuffer(streamOrphanRefsKeyFor(queryKey), new Uint32Array(extra.streamOrphanRefs));
+    } else {
+      this.kv.delete(streamOrphanRefsKeyFor(queryKey));
+    }
+
+    if (extra?.optimisticInsertRefs !== undefined && extra.optimisticInsertRefs.length > 0) {
+      this.kv.setBuffer(optimisticInsertRefsKeyFor(queryKey), new Uint32Array(extra.optimisticInsertRefs));
+    } else {
+      this.kv.delete(optimisticInsertRefsKeyFor(queryKey));
+    }
+
     this.activateQuery(queryDef, queryKey);
   }
 

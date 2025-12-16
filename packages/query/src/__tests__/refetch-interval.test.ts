@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { query } from '../query.js';
 import { RefetchInterval } from '../types.js';

@@ -145,6 +145,17 @@ export type EntityMethods = Record<string, (...args: any[]) => any>;
 // We check if M has an index signature by seeing if it allows any string key
 export type IncludeMethods<M> = string extends keyof M ? unknown : M;
 
+// Entity configuration options
+export interface EntityConfig<T extends ObjectShape> {
+  stream: {
+    subscribe: (
+      context: import('./QueryClient.js').QueryContext,
+      id: string | number,
+      onUpdate: (update: Partial<ExtractTypesFromShape<T>>) => void,
+    ) => (() => void) | undefined;
+  };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface EntityDef<T extends ObjectShape = ObjectShape, M extends EntityMethods = {}> extends BaseTypeDef {
   mask: Mask.ENTITY;

@@ -3,7 +3,7 @@ import { render } from 'vitest-browser-react';
 import { ContextProvider } from 'signalium/react';
 import { component } from 'signalium/react';
 import React, { useState } from 'react';
-import { SyncQueryStore, MemoryPersistentStore } from '../../QueryStore.js';
+import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { entity, t } from '../../typeDefs.js';
 import { query } from '../../query.js';

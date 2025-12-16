@@ -1,18 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-expressions */
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  SyncQueryStore,
-  MemoryPersistentStore,
-  valueKeyFor,
-  refCountKeyFor,
-  refIdsKeyFor,
-  updatedAtKeyFor,
-} from '../QueryStore.js';
+import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
 import { query, queryKeyForFn } from '../query.js';
 import { hashValue } from 'signalium/utils';
-import { createMockFetch, testWithClient, createTestWatcher, getClientEntityMap, sleep } from './utils.js';
+import { createMockFetch, testWithClient, sleep } from './utils.js';
+import { valueKeyFor, refCountKeyFor, refIdsKeyFor, updatedAtKeyFor } from '../stores/shared.js';
 
 /**
  * Caching and Persistence Tests

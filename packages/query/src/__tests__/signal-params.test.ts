@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { signal } from 'signalium';
-import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
+import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { entity, t } from '../typeDefs.js';
+import { t } from '../typeDefs.js';
 import { query } from '../query.js';
-import { createMockFetch, testWithClient, getEntityMapSize } from './utils.js';
+import { createMockFetch, testWithClient } from './utils.js';
 
 /**
  * Signal Parameter Tests

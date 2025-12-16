@@ -1,11 +1,14 @@
+import { CachedQueryExtra } from '../QueryStore.js';
 import { EntityStore } from '../EntityMap.js';
 import { CachedQuery, QueryDefinition, QueryStore } from '../QueryClient.js';
 import {
   DEFAULT_GC_TIME,
   DEFAULT_MAX_COUNT,
+  optimisticInsertRefsKeyFor,
   queueKeyFor,
   refCountKeyFor,
   refIdsKeyFor,
+  streamOrphanRefsKeyFor,
   updatedAtKeyFor,
   valueKeyFor,
 } from './shared.js';
@@ -30,7 +33,15 @@ export interface AsyncPersistentStore {
 }
 
 export type StoreMessage =
-  | { type: 'saveQuery'; queryDefId: string; queryKey: number; value: unknown; updatedAt: number; refIds?: number[] }
+  | {
+      type: 'saveQuery';
+      queryDefId: string;
+      queryKey: number;
+      value: unknown;
+      updatedAt: number;
+      refIds?: number[];
+      extra?: CachedQueryExtra;
+    }
   | { type: 'saveEntity'; entityKey: number; value: unknown; refIds?: number[] }
   | { type: 'activateQuery'; queryDefId: string; queryKey: number };
 
@@ -115,7 +126,7 @@ export class AsyncQueryStore implements QueryStore {
   private async processMessage(msg: StoreMessage): Promise<void> {
     switch (msg.type) {
       case 'saveQuery':
-        await this.writerSaveQuery(msg.queryDefId, msg.queryKey, msg.value, msg.updatedAt, msg.refIds);
+        await this.writerSaveQuery(msg.queryDefId, msg.queryKey, msg.value, msg.updatedAt, msg.refIds, msg.extra);
         break;
       case 'saveEntity':
         await this.writerSaveEntity(msg.entityKey, msg.value, msg.refIds);
@@ -153,12 +164,36 @@ export class AsyncQueryStore implements QueryStore {
       await this.preloadEntities(entityIds, entityMap);
     }
 
+    // Load extra data (stream orphans and optimistic inserts)
+    const streamOrphanRefs = await this.delegate.getBuffer(streamOrphanRefsKeyFor(queryKey));
+    const optimisticInsertRefs = await this.delegate.getBuffer(optimisticInsertRefsKeyFor(queryKey));
+
+    // Preload entities for extra data
+    if (streamOrphanRefs !== undefined) {
+      await this.preloadEntities(streamOrphanRefs, entityMap);
+    }
+    if (optimisticInsertRefs !== undefined) {
+      await this.preloadEntities(optimisticInsertRefs, entityMap);
+    }
+
+    let extra: CachedQueryExtra | undefined;
+    if (streamOrphanRefs !== undefined || optimisticInsertRefs !== undefined) {
+      extra = {};
+      if (streamOrphanRefs !== undefined) {
+        extra.streamOrphanRefs = Array.from(streamOrphanRefs);
+      }
+      if (optimisticInsertRefs !== undefined) {
+        extra.optimisticInsertRefs = Array.from(optimisticInsertRefs);
+      }
+    }
+
     this.activateQuery(queryDef, queryKey);
 
     return {
       value: JSON.parse(valueStr) as Record<string, unknown>,
       refIds: entityIds === undefined ? undefined : new Set(entityIds ?? []),
       updatedAt,
+      extra,
     };
   }
 
@@ -193,6 +228,7 @@ export class AsyncQueryStore implements QueryStore {
     value: unknown,
     updatedAt: number,
     refIds?: Set<number>,
+    extra?: CachedQueryExtra,
   ): void {
     const message: StoreMessage = {
       type: 'saveQuery',
@@ -201,6 +237,7 @@ export class AsyncQueryStore implements QueryStore {
       value,
       updatedAt,
       refIds: refIds ? Array.from(refIds) : undefined,
+      extra,
     };
 
     if (this.isWriter) {
@@ -247,9 +284,24 @@ export class AsyncQueryStore implements QueryStore {
     value: unknown,
     updatedAt: number,
     refIds?: number[],
+    extra?: CachedQueryExtra,
   ): Promise<void> {
     await this.setValue(queryKey, value, refIds ? new Set(refIds) : undefined);
     await this.delegate!.setNumber(updatedAtKeyFor(queryKey), updatedAt);
+
+    // Save extra data
+    if (extra?.streamOrphanRefs !== undefined && extra.streamOrphanRefs.length > 0) {
+      await this.delegate!.setBuffer(streamOrphanRefsKeyFor(queryKey), new Uint32Array(extra.streamOrphanRefs));
+    } else {
+      await this.delegate!.delete(streamOrphanRefsKeyFor(queryKey));
+    }
+
+    if (extra?.optimisticInsertRefs !== undefined && extra.optimisticInsertRefs.length > 0) {
+      await this.delegate!.setBuffer(optimisticInsertRefsKeyFor(queryKey), new Uint32Array(extra.optimisticInsertRefs));
+    } else {
+      await this.delegate!.delete(optimisticInsertRefsKeyFor(queryKey));
+    }
+
     await this.writerActivateQuery(queryDefId, queryKey);
   }
 

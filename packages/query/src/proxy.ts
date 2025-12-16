@@ -205,8 +205,9 @@ export function createEntityProxy(
   id: number,
   entityRecord: PreloadedEntityRecord,
   def: ObjectDef | EntityDef,
+  entityRelay: any,
+  scopeOwner: object,
   desc?: string,
-  scopeOwner?: object,
 ): Record<string, unknown> {
   // Cache for nested proxies - each proxy gets its own cache
   const shape = def.shape;
@@ -231,8 +232,14 @@ export function createEntityProxy(
         return toJSON;
       }
 
-      const { signal, cache } = entityRecord;
-      const obj = signal.value;
+      const { data, cache, notifier } = entityRecord;
+
+      // Access relay value if it exists - this will activate it when watched in reactive context
+      // The relay access happens here to establish tracking when signal.value is read
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      entityRelay?.value;
+
+      notifier.consume();
 
       // Check cache first, BEFORE any expensive checks
       if (cache.has(prop)) {
@@ -251,7 +258,7 @@ export function createEntityProxy(
         return wrapped;
       }
 
-      const value = obj[prop as string];
+      const value = data[prop as string];
       const propDef = shape[prop as string];
 
       if (!Object.hasOwnProperty.call(shape, prop)) {
@@ -329,9 +336,7 @@ export function createEntityProxy(
   PROXY_ID.set(proxy, id);
 
   // Associate the proxy with a scope owner for reactive method caching
-  if (scopeOwner) {
-    setScopeOwner(proxy, scopeOwner);
-  }
+  setScopeOwner(proxy, scopeOwner);
 
   return proxy;
 }

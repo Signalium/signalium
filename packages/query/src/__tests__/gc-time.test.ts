@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-expressions */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SyncQueryStore, MemoryPersistentStore, valueKeyFor } from '../QueryStore.js';
+import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { query, queryKeyForFn } from '../query.js';
 import { t, entity } from '../typeDefs.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import { hashValue } from 'signalium/utils';
+import { valueKeyFor } from '../stores/shared.js';
 
 /**
  * GC Time Tests
