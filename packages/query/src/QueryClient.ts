@@ -217,7 +217,7 @@ export const queryKeyFor = (queryDef: AnyQueryDefinition<any, any, any>, params:
 };
 
 export class QueryClient {
-  private entityMap = new EntityStore();
+  private entityMap: EntityStore;
   queryInstances = new Map<number, QueryResultImpl<unknown>>();
   memoryEvictionManager: MemoryEvictionManager;
   refetchManager: RefetchManager;
@@ -236,6 +236,7 @@ export class QueryClient {
     this.refetchManager = refetchManager ?? new RefetchManager(this.context.refetchMultiplier);
     this.networkManager = networkManager ?? new NetworkManager();
     this.isServer = typeof window === 'undefined';
+    this.entityMap = new EntityStore(this);
   }
 
   getContext(): QueryContext {
@@ -297,13 +298,15 @@ export class QueryClient {
   }
 
   hydrateEntity(key: number, shape: EntityDef): EntityRecord {
-    // Pass this (QueryClient) as scope owner so entity methods can resolve their reactive scope
-    return this.entityMap.hydratePreloadedEntity(key, shape, this);
+    return this.entityMap.hydratePreloadedEntity(key, shape);
   }
 
   saveEntity(key: number, obj: Record<string, unknown>, shape: EntityDef, entityRefs?: Set<number>): EntityRecord {
-    // Pass this (QueryClient) as scope owner so entity methods can resolve their reactive scope
-    const record = this.entityMap.setEntity(key, obj, shape, entityRefs, this);
+    // console.log('saveEntity', key, JSON.stringify(obj, null, 2), shape, entityRefs, new Error().stack);
+
+    const record = this.entityMap.setEntity(key, obj, shape, entityRefs);
+
+    // console.log('saveEntity record', JSON.stringify(obj, null, 2), new Error().stack);
 
     this.store.saveEntity(key, obj, entityRefs);
 

@@ -1,24 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
+import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
 import { query, infiniteQuery } from '../query.js';
-import { createMockFetch, testWithClient, sleep } from './utils.js';
-
-/**
- * Helper to send a stream update outside the reactive context.
- * This avoids "signal dirtied after consumed" errors.
- */
-async function sendStreamUpdate(callback: (update: any) => void, update: any): Promise<void> {
-  await new Promise<void>(resolve => {
-    setTimeout(() => {
-      callback(update);
-      resolve();
-    }, 0);
-  });
-  // Give time for update to propagate
-  await sleep(10);
-}
+import { createMockFetch, testWithClient, sleep, sendStreamUpdate } from './utils.js';
 
 /**
  * Query Stream Tests

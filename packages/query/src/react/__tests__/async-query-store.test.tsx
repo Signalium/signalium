@@ -3,11 +3,13 @@ import { render } from 'vitest-browser-react';
 import { ContextProvider } from 'signalium/react';
 import { component } from 'signalium/react';
 import React from 'react';
-import { AsyncQueryStore, AsyncPersistentStore, StoreMessage, valueKeyFor } from '../../QueryStore.js';
+import { AsyncQueryStore } from '../../stores/async.js';
+import { AsyncPersistentStore, StoreMessage } from '../../stores/async.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { entity, t } from '../../typeDefs.js';
 import { query, queryKeyForFn } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
+import { valueKeyFor } from '../../stores/shared.js';
 
 /**
  * React Integration Tests for AsyncQueryStore

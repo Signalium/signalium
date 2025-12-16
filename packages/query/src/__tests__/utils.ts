@@ -123,7 +123,9 @@ export function createMockFetch(): MockFetch {
       if (typeof route.response === 'function') {
         return await route.response();
       }
-      return route.response;
+
+      // Deep clone the response to avoid mutating the original object
+      return JSON.parse(JSON.stringify(route.response));
     };
 
     // Create a mock Response object
@@ -255,4 +257,23 @@ export function getClientEntityMap(client: QueryClient): EntityStore {
 export function getEntityMapSize(client: QueryClient): number {
   const entityMap = getClientEntityMap(client);
   return entityMap['map'].size;
+}
+
+/**
+ * Helper to send a stream update outside the reactive context.
+ * This avoids "signal dirtied after consumed" errors.
+ */
+export async function sendStreamUpdate(callback: ((update: any) => void) | undefined, update: any): Promise<void> {
+  if (callback === undefined) {
+    throw new Error('Update is undefined');
+  }
+
+  await new Promise<void>(resolve => {
+    setTimeout(() => {
+      callback(update);
+      resolve();
+    }, 0);
+  });
+  // Give time for update to propagate
+  await sleep(10);
 }

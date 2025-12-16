@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
+import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
 import { infiniteQuery } from '../query.js';
 import { createMockFetch, testWithClient, getEntityMapSize } from './utils.js';
-import { BaseInfiniteQueryResult, BaseQueryResult, InfiniteQueryResult } from 'src/types.js';
+import { InfiniteQueryResult } from '../types.js';
 
 /**
  * Infinite Query Tests

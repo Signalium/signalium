@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SyncQueryStore, MemoryPersistentStore, valueKeyFor, refIdsKeyFor, refCountKeyFor } from '../QueryStore.js';
+import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
 import { parseEntities } from '../parseEntities.js';
 import { hashValue } from 'signalium/utils';
+import { valueKeyFor, refIdsKeyFor, refCountKeyFor } from '../stores/shared.js';
 
 // Helper to get documents from kv store for testing
 async function getDocument(kv: any, key: number): Promise<unknown | undefined> {

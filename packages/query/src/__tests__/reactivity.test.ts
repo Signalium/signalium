@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
-import { QueryClient, QueryClientContext } from '../QueryClient.js';
-import { entity, t } from '../typeDefs.js';
+import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
+import { QueryClient } from '../QueryClient.js';
+import { t } from '../typeDefs.js';
 import { query } from '../query.js';
-import { watcher, withContexts, reactive } from 'signalium';
+import { watcher, reactive } from 'signalium';
 import { createMockFetch, testWithClient } from './utils.js';
 
 /**

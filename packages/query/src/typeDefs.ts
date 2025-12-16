@@ -3,6 +3,7 @@ import {
   ARRAY_KEY,
   ArrayDef,
   ComplexTypeDef,
+  EntityConfig,
   EntityDef,
   EntityMethods,
   ExtractTypesFromShape,
@@ -57,6 +58,11 @@ export class ValidatorDef<T> {
    */
   public _methods: EntityMethods | undefined = undefined;
 
+  /**
+   * Entity configuration including stream options.
+   */
+  public _entityConfig: EntityConfig<any> | undefined = undefined;
+
   constructor(
     kind: ComplexTypeDefKind,
     mask: Mask,
@@ -82,6 +88,7 @@ export class ValidatorDef<T> {
     newDef.idField = def.idField;
     newDef._methodsFactory = def._methodsFactory;
     newDef._methods = def._methods;
+    newDef._entityConfig = def._entityConfig;
     return newDef;
   }
 
@@ -210,6 +217,9 @@ export class ValidatorDef<T> {
           return { ...parentMethods, ...newMethods } as EntityMethods;
         };
       }
+
+      // Preserve entity config from parent
+      extendedDef._entityConfig = this._entityConfig;
 
       return extendedDef;
     } else {
@@ -733,6 +743,7 @@ registerFormat(
 export function entity<T extends ObjectShape, M extends EntityMethods = {}>(
   shape: () => T,
   methods?: () => M & ThisType<Prettify<ExtractTypesFromShape<T>>>,
+  config?: EntityConfig<T>,
 ): EntityDef<T, M> {
   const def = new ValidatorDef(
     ComplexTypeDefKind.ENTITY,
@@ -743,6 +754,10 @@ export function entity<T extends ObjectShape, M extends EntityMethods = {}>(
 
   if (methods) {
     def._methodsFactory = methods as () => EntityMethods;
+  }
+
+  if (config) {
+    def._entityConfig = config;
   }
 
   return def as unknown as EntityDef<T, M>;

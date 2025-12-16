@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SyncQueryStore, MemoryPersistentStore } from '../QueryStore.js';
+import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient, addOptimisticInsert, removeOptimisticInsert } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
 import { query, infiniteQuery } from '../query.js';
