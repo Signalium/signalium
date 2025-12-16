@@ -20,6 +20,7 @@ import { QueryResultImpl } from './QueryResult.js';
 import { RefetchManager } from './RefetchManager.js';
 import { MemoryEvictionManager } from './MemoryEvictionManager.js';
 import { CachedQueryExtra } from './QueryStore.js';
+import { type Signal } from 'signalium';
 
 // -----------------------------------------------------------------------------
 // Query Types
@@ -50,7 +51,10 @@ export interface QueryPaginationOptions<Result> {
   getNextPageParams?(lastPage: Result, params?: QueryParams | undefined): QueryParams | undefined;
 }
 
-export type QueryParams = Record<string, string | number | boolean | undefined | null>;
+export type QueryParams = Record<
+  string,
+  string | number | boolean | undefined | null | Signal<string | number | boolean | undefined | null>
+>;
 
 export const enum QueryType {
   Query = 'query',
@@ -70,6 +74,7 @@ export interface QueryDefinition<Params extends QueryParams | undefined, Result,
   shape: TypeDef;
   shapeKey: number;
   fetchFn: (context: QueryContext, params: Params, prevResult?: Result) => Promise<Result>;
+  debounce?: number;
   cache?: QueryCacheOptions;
   stream?: {
     shape: TypeDef;
@@ -89,6 +94,7 @@ export interface InfiniteQueryDefinition<Params extends QueryParams | undefined,
   shapeKey: number;
   fetchFn: (context: QueryContext, params: Params, prevResult?: Result) => Promise<Result>;
   pagination: QueryPaginationOptions<Result>;
+  debounce?: number;
   cache?: QueryCacheOptions;
   stream?: {
     shape: TypeDef;
@@ -165,6 +171,47 @@ export interface QueryStore {
 
 export type MaybePromise<T> = T | Promise<T>;
 
+/**
+ * Checks if a value is a Signal instance
+ */
+function isSignal(value: unknown): value is Signal<any> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Extracts actual values from params that may contain Signals.
+ */
+export function extractParamsForKey(
+  params: QueryParams | undefined,
+): Record<string, string | number | boolean | undefined | null> | undefined {
+  if (params === undefined) {
+    return undefined;
+  }
+
+  const extracted: Record<string, string | number | boolean | undefined | null> = {};
+
+  for (const [key, value] of Object.entries(params)) {
+    if (isSignal(value)) {
+      extracted[key] = value.value as string | number | boolean | undefined | null;
+    } else {
+      extracted[key] = value as string | number | boolean | undefined | null;
+    }
+  }
+
+  return extracted;
+}
+
+/**
+ * Computes the query key for instance lookup. This is used for two different keys:
+ *
+ * - Query instance key
+ * - Query storage key
+ *
+ * Instance keys are created by passing in the query definition and parameters WITHOUT
+ * extracting the Signal values, whereas storage keys are created by extracting the Signal values.
+ * This way, we can reuse the same instance for given Signals, but different underlying values
+ * will be stored and put into the LRU cache separately.
+ */
 export const queryKeyFor = (queryDef: AnyQueryDefinition<any, any, any>, params: unknown): number => {
   return hashValue([queryDef.id, queryDef.shapeKey, params]);
 };
@@ -210,13 +257,15 @@ export class QueryClient {
   }
 
   activateQuery(queryInstance: QueryResultImpl<unknown>): void {
-    const { def, queryKey } = queryInstance;
-    this.store.activateQuery(def as any, queryKey);
+    const { def, queryKey, storageKey } = queryInstance;
+    // Use storageKey for cache operations (store.activateQuery)
+    this.store.activateQuery(def as any, storageKey);
 
     // Only add to refetch manager if it's not a stream
     if (def.type !== QueryType.Stream && def.cache?.refetchInterval) {
       this.refetchManager.addQuery(queryInstance);
     }
+    // Use queryKey for instance eviction (memoryEvictionManager)
     this.memoryEvictionManager.cancelEviction(queryKey);
   }
 

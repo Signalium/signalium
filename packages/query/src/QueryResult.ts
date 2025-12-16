@@ -22,6 +22,8 @@ import {
   type AnyQueryDefinition,
   type QueryClient,
   type QueryParams,
+  extractParamsForKey,
+  queryKeyFor,
 } from './QueryClient.js';
 import { CachedQueryExtra } from './QueryStore.js';
 
@@ -328,7 +330,8 @@ class QueryResultExtra {
  */
 export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> {
   def: AnyQueryDefinition<any, any, any>;
-  queryKey: number;
+  queryKey: number; // Instance key (includes Signal identity)
+  storageKey: number = -1; // Storage key (extracted values only)
 
   private queryClient: QueryClient;
   private initialized: boolean = false;
@@ -342,13 +345,13 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
 
   private refetchPromise: Promise<T> | undefined = undefined;
   private fetchMorePromise: Promise<T> | undefined = undefined;
-  private attemptCount: number = 0;
   private unsubscribe?: () => void = undefined;
-  private streamUnsubscribe?: () => void = undefined;
 
   private relay: DiscriminatedReactivePromise<T>;
   private _relayState: RelayState<any> | undefined = undefined;
-  private wasOffline: boolean = false;
+  private wasPaused: boolean = false;
+  private currentParams: QueryParams | undefined = undefined;
+  private debounceTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 
   private get relayState(): RelayState<any> {
     const relayState = this._relayState;
@@ -392,7 +395,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
       } else {
         // Clone current params
         let hasDefinedParams = false;
-        const clonedParams = { ...this.params };
+        const clonedParams = { ...this.currentParams };
 
         // iterate over the next page params and copy any defined values to the
         for (const [key, value] of Object.entries(nextParams)) {
@@ -418,55 +421,27 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
     setReactivePromise(this);
     this.def = def;
     this.queryClient = queryClient;
-    this.queryKey = queryKey;
+    this.queryKey = queryKey; // Instance key (Signal identity)
     this.params = params;
 
     // Create the relay and handle activation/deactivation
     this.relay = relay<T>(state => {
       this._relayState = state;
+
+      // Extract params (reading Signal values establishes tracking)
+      this.currentParams = extractParamsForKey(this.params);
+      this.storageKey = queryKeyFor(this.def, this.currentParams);
+
       // Load from cache first, then fetch fresh data
       this.queryClient.activateQuery(this);
 
-      // Track network status for reconnect handling
-      const networkManager = this.queryClient.networkManager;
-      const isOnline = networkManager.getOnlineSignal().value;
-
       // Store initial offline state
-      this.wasOffline = !isOnline;
+      const isPaused = this.isPaused;
+      this.wasPaused = isPaused;
 
       if (this.initialized) {
-        // For any query with streams, resubscribe on reactivation
-        if (
-          this.def.type === QueryType.Stream ||
-          (this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>).stream
-        ) {
-          this.setupSubscription();
-        }
-
-        if (this.def.type !== QueryType.Stream) {
-          // Check if we just came back online
-          if (!this.wasOffline && isOnline) {
-            // We're back online - check if we should refresh
-            const refreshStaleOnReconnect = this.def.cache?.refreshStaleOnReconnect ?? true;
-            if (refreshStaleOnReconnect && this.isStale) {
-              this.refetch();
-            }
-            // Reset attempt count on reconnect
-            this.attemptCount = 0;
-          } else if (this.isStale && !this.isPaused) {
-            this.refetch();
-          }
-        }
-        // Update wasOffline for next check
-        this.wasOffline = !isOnline;
-      } else {
-        this.initialize();
-      }
-
-      // Return deactivation callback
-      return {
-        update: () => {
-          // For any query with streams, unsubscribe and resubscribe to re-establish connection
+        if (!isPaused) {
+          // For any query with streams, resubscribe on reactivation
           if (
             this.def.type === QueryType.Stream ||
             (this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>).stream
@@ -474,49 +449,84 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
             this.setupSubscription();
           }
 
-          // For StreamQuery, we're done - it doesn't react to network status
-          if (this.def.type === QueryType.Stream) {
+          if (this.def.type !== QueryType.Stream && this.isStale) {
+            this.refetch();
+          }
+        }
+      } else {
+        this.initialize();
+      }
+
+      const deactivate = () => {
+        // Clear debounce timer if active
+        clearTimeout(this.debounceTimer);
+        this.debounceTimer = undefined;
+
+        // Last subscriber left, deactivate refetch and schedule memory eviction
+        // Unsubscribe from any active streams
+        this.unsubscribe?.();
+        this.unsubscribe = undefined;
+
+        // Remove from refetch manager if configured
+        if (this.def.type !== QueryType.Stream && this.def.cache?.refetchInterval) {
+          this.queryClient.refetchManager.removeQuery(this);
+        }
+
+        // Schedule removal from memory using the global eviction manager
+        // This allows quick reactivation from memory if needed again soon
+        // Disk cache (if configured) will still be available after eviction
+        // Use queryKey for instance eviction, storageKey for cache eviction
+        this.queryClient.memoryEvictionManager.scheduleEviction(this.queryKey);
+      };
+
+      // Return deactivation callback
+      return {
+        update: () => {
+          const { wasPaused, isPaused } = this;
+          this.wasPaused = isPaused;
+
+          if (isPaused) {
+            deactivate();
+
+            // TODO: Add abort signal
             return;
           }
 
-          // Network status changed - check if we should react
-          const currentlyOnline = networkManager.getOnlineSignal().value;
+          // Read Signal values again to establish tracking for any new Signals
+          // Extract params (reading Signal values establishes tracking)
+          const newExtractedParams = extractParamsForKey(this.params);
+          const newStorageKey = queryKeyFor(this.def, newExtractedParams);
 
-          // If we just came back online
-          if (this.wasOffline && currentlyOnline) {
-            const refreshStaleOnReconnect = this.def.cache?.refreshStaleOnReconnect ?? true;
-            if (refreshStaleOnReconnect && this.isStale) {
-              state.setPromise(this.runQuery(this.params, true));
+          const paramsDidChange = newStorageKey !== this.storageKey;
+
+          // Check if storage key changed (comparing hash values)
+          if (paramsDidChange) {
+            // Same storage key, just Signal instances changed but values are the same
+            // Update params and trigger debounced refetch
+            this.params = newExtractedParams as QueryParams;
+            this.storageKey = newStorageKey;
+          }
+
+          if (wasPaused) {
+            this.queryClient.activateQuery(this);
+
+            if (this.def.type !== QueryType.Stream) {
+              const refreshStaleOnReconnect = this.def.cache?.refreshStaleOnReconnect ?? true;
+              if (refreshStaleOnReconnect && this.isStale) {
+                state.setPromise(this.runQuery(this.currentParams, true));
+              }
+            } else {
+              this.setupSubscription();
             }
-            // Reset attempt count on reconnect
-            this.attemptCount = 0;
+          } else if (paramsDidChange) {
+            if (this.def.type !== QueryType.Stream) {
+              this.debouncedRefetch();
+            } else {
+              this.setupSubscription();
+            }
           }
-
-          // Update wasOffline for next check
-          this.wasOffline = !currentlyOnline;
         },
-        deactivate: () => {
-          // Last subscriber left, deactivate refetch and schedule memory eviction
-          // Unsubscribe from any active streams
-          if (this.unsubscribe) {
-            this.unsubscribe();
-            this.unsubscribe = undefined;
-          }
-          if (this.streamUnsubscribe) {
-            this.streamUnsubscribe();
-            this.streamUnsubscribe = undefined;
-          }
-
-          // Remove from refetch manager if configured
-          if (this.def.type !== QueryType.Stream && this.def.cache?.refetchInterval) {
-            this.queryClient.refetchManager.removeQuery(this);
-          }
-
-          // Schedule removal from memory using the global eviction manager
-          // This allows quick reactivation from memory if needed again soon
-          // Disk cache (if configured) will still be available after eviction
-          this.queryClient.memoryEvictionManager.scheduleEviction(this.queryKey);
-        },
+        deactivate,
       };
     }) as DiscriminatedReactivePromise<T>;
   }
@@ -632,8 +642,8 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
     try {
       this.initialized = true;
 
-      // Load from cache first
-      const cached = await this.queryClient.loadCachedQuery(this.def, this.queryKey);
+      // Load from cache first (use storage key for cache operations)
+      const cached = await this.queryClient.loadCachedQuery(this.def, this.storageKey);
 
       if (cached !== undefined) {
         // Set the cached timestamp
@@ -662,6 +672,10 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
             : parseValue(cached.value, shape, this.def.id);
       }
 
+      if (this.isPaused) {
+        return;
+      }
+
       // Setup subscriptions (handles both StreamQuery and Query/InfiniteQuery with stream)
       if (
         this.def.type === QueryType.Stream ||
@@ -675,12 +689,17 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
         if (cached !== undefined) {
           // Check if data is stale
           if (this.isStale) {
-            // Data is stale, trigger background refetch
-            this.refetch();
+            // Data is stale, trigger background refetch (with debounce if configured)
+            if (this.def.debounce !== undefined && this.def.debounce > 0) {
+              this.debouncedRefetch();
+            } else {
+              this.refetch();
+            }
           }
         } else {
-          // No cached data, fetch fresh
-          state.setPromise(this.runQuery(this.params, true));
+          // No cached data, fetch fresh immediately (don't debounce initial fetch)
+          // Debounce only applies to refetches triggered by parameter changes
+          state.setPromise(this.runQuery(this.currentParams, true));
         }
       }
     } catch (error) {
@@ -714,7 +733,9 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
       subscribeFn = stream.subscribeFn;
     }
 
-    this.unsubscribe = subscribeFn(this.queryClient.getContext(), this.params, update => {
+    // Extract params (reading Signal values establishes tracking)
+    const extractedParams = this.currentParams;
+    this.unsubscribe = subscribeFn(this.queryClient.getContext(), extractedParams as QueryParams, update => {
       const parsedData = parseObjectEntities(update, shapeDef, this.queryClient);
 
       // Update the relay state
@@ -723,7 +744,8 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
         this.updatedAt = Date.now();
 
         // Cache the data
-        this.queryClient.saveQueryData(this.def, this.queryKey, parsedData, this.updatedAt);
+        // Use storage key for cache operations
+        this.queryClient.saveQueryData(this.def, this.storageKey, parsedData, this.updatedAt);
       } else {
         const allRefIds = this.getAllEntityRefs();
         const proxyId = getProxyId(parsedData);
@@ -753,9 +775,6 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
       try {
         const queryDef = this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>;
         const freshData = await queryDef.fetchFn(this.queryClient.getContext(), params);
-
-        // Success! Reset attempt count
-        this.attemptCount = 0;
 
         // Parse and cache the fresh data
         let entityRefs;
@@ -795,9 +814,10 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
         this._nextPageParams = undefined;
 
         // Cache the data (synchronous, fire-and-forget)
+        // Use storage key for cache operations
         this.queryClient.saveQueryData(
           this.def,
-          this.queryKey,
+          this.storageKey,
           queryData,
           updatedAt,
           entityRefs,
@@ -810,7 +830,6 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
         return queryData as T;
       } catch (error) {
         lastError = error;
-        this.attemptCount = attempt + 1;
 
         // If we've exhausted retries, throw the error
         if (attempt >= retries) {
@@ -833,6 +852,33 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
   }
 
   // ======================================================
+  // Private debounce methods
+  // ======================================================
+
+  /**
+   * Triggers a debounced refetch. If debounce is configured, delays the fetch.
+   * Otherwise, calls refetch immediately.
+   */
+  private debouncedRefetch(): void {
+    // We know this is a non-stream query because we're calling refetch, which is only available on non-stream queries
+    const debounce = (this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>).debounce;
+
+    if (debounce === undefined) {
+      this.refetch();
+      return;
+    }
+
+    // Clear existing timer
+    clearTimeout(this.debounceTimer);
+
+    // Set new timer
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = undefined;
+      this.refetch();
+    }, debounce);
+  }
+
+  // ======================================================
   // Public methods
   // ======================================================
 
@@ -849,6 +895,10 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
       return this.refetchPromise;
     }
 
+    // Clear debounce timer if active (manual refetch should bypass debounce)
+    clearTimeout(this.debounceTimer);
+    this.debounceTimer = undefined;
+
     // Clear memoized nextPageParams so it's recalculated after refetch
     this._nextPageParams = undefined;
 
@@ -857,7 +907,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
     this.isRefetchingSignal.value = true;
     this._version.update(v => v + 1);
 
-    const promise = this.runQuery(this.params, true)
+    const promise = this.runQuery(this.currentParams, true)
       .then(result => {
         this.relayState.value = result;
 
@@ -960,7 +1010,15 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
     }
 
     const extra = this._extra?.getForPersistence();
-    this.queryClient.saveQueryData(this.def, this.queryKey, this.relayState.value, this.updatedAt, this.refIds, extra);
+    // Use storage key for cache operations
+    this.queryClient.saveQueryData(
+      this.def,
+      this.storageKey,
+      this.relayState.value,
+      this.updatedAt,
+      this.refIds,
+      extra,
+    );
   }
 
   /**
