@@ -139,15 +139,30 @@ export interface BaseTypeDef {
   nullish: this | Mask.UNDEFINED | Mask.NULL;
 }
 
-export interface EntityDef<T extends ObjectShape = ObjectShape> extends BaseTypeDef {
+export type EntityMethods = Record<string, (...args: any[]) => any>;
+
+// Helper type to conditionally include methods - unknown (invisible) when M is the default EntityMethods
+// We check if M has an index signature by seeing if it allows any string key
+export type IncludeMethods<M> = string extends keyof M ? unknown : M;
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface EntityDef<T extends ObjectShape = ObjectShape, M extends EntityMethods = {}> extends BaseTypeDef {
   mask: Mask.ENTITY;
   shape: T;
+
   /**
-   * Creates a new EntityDef that extends this one with additional fields.
+   * Creates a new EntityDef that extends this one with additional fields and optional methods.
    * The function is called lazily on first shape access to support circular references.
    * Prevents overriding of existing fields including id and typename.
+   *
+   * @param newFieldsGetter - Lazy factory returning new fields to add
+   * @param newMethodsGetter - Optional lazy factory returning new methods to add (merged with existing)
    */
-  extend<U extends ObjectShape>(newFieldsGetter: () => StrictExtend<T, U> & U): EntityDef<T & U>;
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  extend<U extends ObjectShape, N extends EntityMethods = {}>(
+    newFieldsGetter: () => StrictExtend<T, U> & U,
+    newMethodsGetter?: () => N & ThisType<ExtractTypesFromShape<T & U> & IncludeMethods<M>>,
+  ): EntityDef<T & U, M & N>;
 }
 
 export interface ObjectDef<T extends ObjectShape = ObjectShape> extends BaseTypeDef {
@@ -221,7 +236,7 @@ type ExtractPrimitiveTypeFromMask<T extends number> = T extends Mask.UNDEFINED
             ? string
             : never;
 
-type ExtractTypesFromShape<S extends Record<string, ObjectFieldTypeDef>> = {
+export type ExtractTypesFromShape<S extends Record<string, ObjectFieldTypeDef>> = {
   [K in keyof S]: ExtractType<S[K]>;
 };
 
@@ -233,8 +248,8 @@ export type ExtractType<T extends ObjectFieldTypeDef> = T extends number
       ? TSet
       : T extends ObjectDef<infer S>
         ? Prettify<ExtractTypesFromShape<S>>
-        : T extends EntityDef<infer S>
-          ? Prettify<ExtractTypesFromShape<S>>
+        : T extends EntityDef<infer S, infer M>
+          ? Prettify<ExtractTypesFromShape<S> & IncludeMethods<M>>
           : T extends ArrayDef<infer S>
             ? ExtractType<S>[]
             : T extends RecordDef<infer S>
@@ -266,8 +281,8 @@ export type ExtractTypesFromObjectOrEntity<S extends ResponseTypeDef> =
         {};
 
 export type ExtractTypesFromEntityOrUndefined<S extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined> =
-  S extends EntityDef<infer S>
-    ? Prettify<ExtractTypesFromShape<S>>
+  S extends EntityDef<infer Shape, infer Methods>
+    ? Prettify<ExtractTypesFromShape<Shape> & IncludeMethods<Methods>>
     : S extends UnionDef<infer VS>
       ? ExtractType<VS[number]>
       : undefined;

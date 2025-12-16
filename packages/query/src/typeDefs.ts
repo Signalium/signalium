@@ -4,6 +4,8 @@ import {
   ArrayDef,
   ComplexTypeDef,
   EntityDef,
+  EntityMethods,
+  ExtractTypesFromShape,
   Mask,
   ObjectDef,
   ObjectShape,
@@ -13,6 +15,7 @@ import {
   UnionDef,
   UnionTypeDefs,
 } from './types.js';
+import { Prettify } from './type-utils.js';
 import { hashValue } from 'signalium/utils';
 
 const entries = Object.entries;
@@ -40,6 +43,18 @@ export class ValidatorDef<T> {
   public typenameValue: string | undefined = undefined;
   public idField: string | undefined = undefined;
   public values: Set<string | boolean | number> | undefined = undefined;
+  /**
+   * Lazy factory function for creating entity methods.
+   * Evaluated once during reifyShape() and cached in _methods.
+   */
+  public _methodsFactory: (() => EntityMethods) | undefined = undefined;
+
+  /**
+   * Cached methods object from evaluating _methodsFactory.
+   * Populated during reifyShape() - the same methods object is shared across all proxies,
+   * but each proxy binds its own reactive method wrappers.
+   */
+  public _methods: EntityMethods | undefined = undefined;
 
   constructor(
     kind: ComplexTypeDefKind,
@@ -64,6 +79,8 @@ export class ValidatorDef<T> {
     newDef.typenameField = def.typenameField;
     newDef.typenameValue = def.typenameValue;
     newDef.idField = def.idField;
+    newDef._methodsFactory = def._methodsFactory;
+    newDef._methods = def._methods;
     return newDef;
   }
 
@@ -73,6 +90,10 @@ export class ValidatorDef<T> {
         case ComplexTypeDefKind.ENTITY: {
           const shape = (this._shape as () => ObjectShape)();
           this._shape = reifyObjectShape(this, shape);
+          // Evaluate and cache the methods factory once during shape reification
+          if (this._methodsFactory && !this._methods) {
+            this._methods = this._methodsFactory();
+          }
           break;
         }
         case ComplexTypeDefKind.OBJECT:
@@ -98,6 +119,12 @@ export class ValidatorDef<T> {
     this.reifyShape();
 
     return this._shape as TypeDef | ObjectShape | UnionTypeDefs | undefined;
+  }
+
+  get methods(): EntityMethods | undefined {
+    this.reifyShape();
+
+    return this._methods;
   }
 
   get shapeKey(): number {
@@ -132,14 +159,21 @@ export class ValidatorDef<T> {
   }
 
   /**
-   * Creates a new ValidatorDef that extends this one with additional fields.
+   * Creates a new ValidatorDef that extends this one with additional fields and optional methods.
    * Only valid for ENTITY and OBJECT types.
    * Prevents overriding of existing fields including id and typename.
    *
    * For entities, accepts a function that returns the new fields (lazy reification).
    * For objects, accepts the new fields directly.
+   *
+   * @param newFieldsOrGetter - New fields to add (lazy function for entities, direct object for objects)
+   * @param newMethodsGetter - Optional lazy factory returning new methods to add (entities only, merged with existing)
    */
-  extend<U extends ObjectShape>(newFieldsOrGetter: U | (() => U)): ValidatorDef<any> {
+  extend<U extends ObjectShape, N extends EntityMethods = EntityMethods>(
+    newFieldsOrGetter: U | (() => U),
+    // Note: ThisType here will be the extended entity type - TypeScript infers it from context
+    newMethodsGetter?: () => N,
+  ): ValidatorDef<any> {
     // Validate that this is an extendable type (ENTITY or OBJECT)
     if (this.kind !== ComplexTypeDefKind.ENTITY && this.kind !== ComplexTypeDefKind.OBJECT) {
       throw new Error('extend() can only be called on Entity or Object types');
@@ -151,8 +185,9 @@ export class ValidatorDef<T> {
       // We bind getParentShape to access the parent's `.shape` getter which properly
       // reifies and caches the shape, avoiding multiple reification calls
       const newFieldsGetter = newFieldsOrGetter as () => U;
+      const parentMethodsFactory = this._methodsFactory;
 
-      return new ValidatorDef(ComplexTypeDefKind.ENTITY, this.mask, () => {
+      const extendedDef = new ValidatorDef(ComplexTypeDefKind.ENTITY, this.mask, () => {
         const existingShape = this.shape as ObjectShape;
         const newFields = newFieldsGetter();
 
@@ -165,6 +200,17 @@ export class ValidatorDef<T> {
 
         return { ...existingShape, ...newFields };
       });
+
+      // Merge methods factories if either parent or new methods exist
+      if (parentMethodsFactory || newMethodsGetter) {
+        extendedDef._methodsFactory = () => {
+          const parentMethods = parentMethodsFactory ? parentMethodsFactory() : {};
+          const newMethods = newMethodsGetter ? newMethodsGetter() : {};
+          return { ...parentMethods, ...newMethods } as EntityMethods;
+        };
+      }
+
+      return extendedDef;
     } else {
       // For objects, reify immediately since they're not lazy
       this.reifyShape();
@@ -595,13 +641,49 @@ export function registerFormat<Input extends string | boolean, T>(
 // Entity Definitions
 // -----------------------------------------------------------------------------
 
-export function entity<T extends ObjectShape>(shape: () => T): EntityDef<T> {
-  return new ValidatorDef(
+/**
+ * Creates an entity definition with optional methods.
+ *
+ * @param shape - Lazy factory function that returns the entity's field definitions
+ * @param methods - Optional lazy factory function that returns methods for the entity.
+ *                  Methods have access to `this` typed as the reified entity shape.
+ *                  Methods are wrapped with reactiveMethod for automatic caching.
+ *
+ * @example
+ * const User = entity(
+ *   () => ({
+ *     __typename: t.typename('User'),
+ *     id: t.id,
+ *     name: t.string,
+ *     age: t.number,
+ *   }),
+ *   () => ({
+ *     greet() {
+ *       return `Hello, ${this.name}!`;
+ *     },
+ *     isAdult() {
+ *       return this.age >= 18;
+ *     },
+ *   })
+ * );
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export function entity<T extends ObjectShape, M extends EntityMethods = {}>(
+  shape: () => T,
+  methods?: () => M & ThisType<Prettify<ExtractTypesFromShape<T>>>,
+): EntityDef<T, M> {
+  const def = new ValidatorDef(
     ComplexTypeDefKind.ENTITY,
     // The mask should be OBJECT | ENTITY so that values match when compared
     Mask.ENTITY | Mask.OBJECT,
     shape,
-  ) as unknown as EntityDef<T>;
+  );
+
+  if (methods) {
+    def._methodsFactory = methods as () => EntityMethods;
+  }
+
+  return def as unknown as EntityDef<T, M>;
 }
 
 export const t: APITypes = {
