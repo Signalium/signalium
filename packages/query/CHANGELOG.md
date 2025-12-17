@@ -1,5 +1,16 @@
 # @signalium/query
 
+## 1.0.11
+
+### Patch Changes
+
+- 7f94377: Fixup format registry and add global format type registry
+- d1f9def: Add ability to defined cached methods to entities
+- e0a4844: Add ability for Entities to subscribe to streams when in use
+- 6b961f0: Add support for Signal query parameters and debounced updates
+- Updated dependencies [2cf6766]
+  - signalium@2.1.4
+
 ## 1.0.10
 
 ### Patch Changes
