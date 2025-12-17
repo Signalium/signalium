@@ -1,13 +1,12 @@
 export { hashValue, registerCustomHash } from './internals/utils/hash.js';
 
-import { watcher } from './internals/core-api.js';
+import { watcher, reactive } from './internals/core-api.js';
 import { watchSignal, unwatchSignal } from './internals/watch.js';
 import { getSignal } from './internals/get.js';
-import { isReactivePromise, ReactivePromise } from './internals/async.js';
-import { settled } from './internals/scheduling.js';
+import { isReactivePromise, ReactivePromiseImpl } from './internals/async.js';
 import type { ReactiveSignal } from './internals/reactive.js';
 import { isPromise } from './internals/utils/type-utils.js';
-import { ReactiveValue } from './types.js';
+import { ReactiveValue, RelayState, DiscriminatedReactivePromise } from './types.js';
 
 /**
  * Watches a function once in a reactive context, activating any relays,
@@ -58,3 +57,65 @@ export function watchOnce<T>(fn: () => T): T {
 }
 
 export { setReactivePromise } from './internals/async.js';
+
+/**
+ * Forwards state from a source relay to the target relay's state.
+ * This enables composition patterns where relays can add side effects
+ * while transparently forwarding state from another relay.
+ *
+ * The forwarding is automatically tracked through the signal graph.
+ * When the source relay updates, the target relay will re-run its
+ * activation function, and forwardRelay will forward the new state.
+ * No cleanup is needed - dependencies are managed automatically.
+ *
+ * @param state - The target relay's state object
+ * @param sourceRelay - The source relay to forward state from
+ *
+ * @example
+ * ```ts
+ * const sourceRelay = relay(state => {
+ *   // ... source relay logic
+ * });
+ *
+ * const forwardedRelay = relay(state => {
+ *   // Add additional side effect
+ *   const cleanup = setupSomeEffect();
+ *
+ *   // Forward state from source relay (automatically tracked and cleaned up)
+ *   forwardRelay(state, sourceRelay);
+ *
+ *   return cleanup; // Only return cleanup for the additional effect
+ * });
+ * ```
+ */
+export function forwardRelay<T>(state: RelayState<T>, sourceRelay: DiscriminatedReactivePromise<T>): void {
+  // Verify that sourceRelay is actually a ReactivePromiseImpl
+  if (!isReactivePromise(sourceRelay)) {
+    throw new Error('forwardRelay: sourceRelay must be a ReactivePromise');
+  }
+
+  // Read from source relay to establish dependency and forward state
+  // When sourceRelay updates, this relay's activation function will be called again,
+  // and forwardRelay will be called again, forwarding the new state
+  if (sourceRelay.isPending) {
+    // For pending state, try to forward the promise if available
+    // Accessing isPending establishes the dependency
+    const source = sourceRelay as ReactivePromiseImpl<T>;
+    const promise = source['_promise'] as Promise<T> | undefined;
+    if (promise) {
+      state.setPromise(promise);
+    }
+  } else if (sourceRelay.isRejected) {
+    // Accessing error establishes dependency and forwards it
+    const error = sourceRelay.error;
+    if (error !== undefined) {
+      state.setError(error);
+    }
+  } else if (sourceRelay.isResolved && sourceRelay.isReady) {
+    // Accessing value establishes dependency and forwards it
+    const value = sourceRelay.value;
+    if (value !== undefined) {
+      state.value = value;
+    }
+  }
+}
