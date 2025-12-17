@@ -1,5 +1,11 @@
 # signalium
 
+## 2.1.4
+
+### Patch Changes
+
+- 2cf6766: Add forwardRelay utility
+
 ## 2.1.3
 
 ### Patch Changes
