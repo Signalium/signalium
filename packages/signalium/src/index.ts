@@ -35,4 +35,4 @@ export {
   setScopeOwner,
 } from './internals/contexts.js';
 
-export { watchOnce } from './utils.js';
+export { watchOnce, forwardRelay } from './utils.js';

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { signal } from '../index.js';
+import { signal, forwardRelay } from '../index.js';
 import { reactive, relay } from './utils/instrumented-hooks.js';
 import { nextTick } from './utils/async.js';
 
@@ -499,5 +499,236 @@ describe('relays', () => {
     expect(inner1.withParams(2)).toHaveCounts({ compute: 2 });
     expect(inner2.withParams(2)).toHaveCounts({ compute: 2 });
     expect(outer.withParams(2)).toHaveCounts({ compute: 2 });
+  });
+
+  describe('forwardRelay', () => {
+    test('Forwards values from source to target relay', async () => {
+      const externalValue = signal(1);
+
+      const sourceRelay = relay(state => {
+        state.value = externalValue.value;
+
+        return {
+          update: () => {
+            state.value = externalValue.value;
+          },
+        };
+      });
+
+      const forwardedRelay = relay(state => {
+        forwardRelay(state, sourceRelay);
+      });
+
+      expect(sourceRelay).toHaveValueAndCounts(undefined, { compute: 0, internalSet: 0 });
+      expect(forwardedRelay).toHaveValueAndCounts(undefined, { compute: 0, internalSet: 0 });
+
+      const consumer = reactive(() => {
+        return forwardedRelay.value;
+      });
+
+      expect(consumer).toHaveValueAndCounts(1, { compute: 1 });
+      expect(sourceRelay).toHaveValueAndCounts(1, { compute: 1, internalSet: 1 });
+      expect(forwardedRelay).toHaveValueAndCounts(1, { compute: 1, internalSet: 1 });
+
+      externalValue.value = 2;
+
+      await nextTick();
+
+      expect(consumer).toHaveValueAndCounts(2, { compute: 2 });
+      expect(sourceRelay).toHaveValueAndCounts(2, { compute: 2, internalSet: 2 });
+      expect(forwardedRelay).toHaveValueAndCounts(2, { compute: 2, internalSet: 2 });
+    });
+
+    test('Forwards errors from source to target relay', async () => {
+      const shouldError = signal(false);
+
+      const sourceRelay = relay(state => {
+        if (shouldError.value) {
+          state.setError(new Error('Test error'));
+        } else {
+          state.value = 1;
+        }
+
+        return {
+          update: () => {
+            if (shouldError.value) {
+              state.setError(new Error('Test error'));
+            } else {
+              state.value = 1;
+            }
+          },
+        };
+      });
+
+      const forwardedRelay = relay(state => {
+        forwardRelay(state, sourceRelay);
+      });
+
+      const consumer = reactive(() => {
+        if (forwardedRelay.isRejected) {
+          return forwardedRelay.error;
+        }
+        return forwardedRelay.value;
+      });
+
+      expect(consumer).toHaveValueAndCounts(1, { compute: 1 });
+      expect(forwardedRelay.isRejected).toBe(false);
+
+      shouldError.value = true;
+
+      await nextTick();
+
+      expect(consumer).toHaveValueAndCounts(new Error('Test error'), { compute: 2 });
+      expect(forwardedRelay.isRejected).toBe(true);
+      expect(forwardedRelay.error).toEqual(new Error('Test error'));
+    });
+
+    test('Forwards pending states from source to target relay', async () => {
+      const sourceRelay = relay(state => {
+        setTimeout(() => {
+          state.value = 42;
+        }, 10);
+      });
+
+      const forwardedRelay = relay(state => {
+        forwardRelay(state, sourceRelay);
+      });
+
+      expect(sourceRelay.isPending).toBe(true);
+      expect(forwardedRelay.isPending).toBe(true);
+
+      const consumer = reactive(() => {
+        return forwardedRelay.isPending ? undefined : forwardedRelay.value;
+      });
+
+      expect(consumer).toHaveValueAndCounts(undefined, { compute: 1 });
+
+      await new Promise(resolve => setTimeout(resolve, 15));
+
+      expect(sourceRelay.isPending).toBe(false);
+      expect(forwardedRelay.isPending).toBe(false);
+      expect(consumer).toHaveValueAndCounts(42, { compute: 2 });
+    });
+
+    test('Multiple relays can forward from the same source', async () => {
+      const externalValue = signal(1);
+
+      const sourceRelay = relay(state => {
+        state.value = externalValue.value;
+
+        return {
+          update: () => {
+            state.value = externalValue.value;
+          },
+        };
+      });
+
+      const forwardedRelay1 = relay(state => {
+        forwardRelay(state, sourceRelay);
+      });
+
+      const forwardedRelay2 = relay(state => {
+        forwardRelay(state, sourceRelay);
+      });
+
+      const consumer1 = reactive(() => forwardedRelay1.value);
+      const consumer2 = reactive(() => forwardedRelay2.value);
+
+      expect(consumer1).toHaveValueAndCounts(1, { compute: 1 });
+      expect(consumer2).toHaveValueAndCounts(1, { compute: 1 });
+      expect(sourceRelay).toHaveValueAndCounts(1, { compute: 1, internalSet: 1 });
+
+      externalValue.value = 2;
+
+      await nextTick();
+
+      expect(consumer1).toHaveValueAndCounts(2, { compute: 2 });
+      expect(consumer2).toHaveValueAndCounts(2, { compute: 2 });
+      expect(sourceRelay).toHaveValueAndCounts(2, { compute: 2, internalSet: 2 });
+    });
+
+    test('Forwarding works with additional side effects', async () => {
+      const externalValue = signal(1);
+      const sideEffectValue = signal(0);
+
+      const sourceRelay = relay(state => {
+        state.value = externalValue.value;
+
+        return {
+          update: () => {
+            state.value = externalValue.value;
+          },
+        };
+      });
+
+      const forwardedRelay = relay(state => {
+        // Add side effect
+        sideEffectValue.value = externalValue.value * 2;
+
+        // Forward state from source relay
+        forwardRelay(state, sourceRelay);
+
+        return {
+          update: () => {
+            sideEffectValue.value = externalValue.value * 2;
+            forwardRelay(state, sourceRelay);
+          },
+        };
+      });
+
+      const consumer = reactive(() => forwardedRelay.value);
+
+      expect(consumer).toHaveValueAndCounts(1, { compute: 1 });
+      expect(sideEffectValue.value).toBe(2);
+
+      externalValue.value = 3;
+
+      await nextTick();
+
+      expect(consumer).toHaveValueAndCounts(3, { compute: 2 });
+      expect(sideEffectValue.value).toBe(6);
+    });
+
+    test('Automatic cleanup when relay deactivates', async () => {
+      const externalValue = signal(1);
+      const useRelay = signal(true);
+
+      const sourceRelay = relay(state => {
+        state.value = externalValue.value;
+
+        return {
+          update: () => {
+            state.value = externalValue.value;
+          },
+        };
+      });
+
+      const forwardedRelay = relay(state => {
+        forwardRelay(state, sourceRelay);
+      });
+
+      const consumer = reactive(() => {
+        return useRelay.value ? forwardedRelay.value : 0;
+      });
+
+      expect(consumer).toHaveValueAndCounts(1, { compute: 1 });
+      expect(sourceRelay).toHaveValueAndCounts(1, { compute: 1, internalSet: 1, subscribe: 1 });
+
+      useRelay.value = false;
+
+      await nextTick();
+
+      expect(consumer).toHaveValueAndCounts(0, { compute: 2 });
+      // Source relay should be deactivated (unsubscribed) when forwarded relay deactivates
+      // Note: The dependency is established through reading sourceRelay properties in forwardRelay,
+      // which connects the forwarded relay's signal to the source relay's signal
+      expect(sourceRelay).toHaveValueAndCounts(1, { compute: 1, internalSet: 1, subscribe: 1 });
+
+      // Verify that the forwarded relay is no longer active by checking that
+      // updating externalValue doesn't trigger forwarded relay updates
+      externalValue.value = 99;
+      await nextTick();
+      expect(forwardedRelay.value).toBe(1); // Should still be 1, not 99, since it's deactivated
+    });
   });
 });
