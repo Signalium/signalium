@@ -229,7 +229,7 @@ export interface APITypes {
   const: <T extends string | boolean | number>(value: T) => Set<T>;
   enum: {
     <T extends readonly (string | boolean | number)[]>(...values: T): Set<T[number]>;
-    caseInsensitive<T extends readonly (string | boolean | number)[]>(...values: T): CaseInsensitiveEnumSet<T[number]>;
+    caseInsensitive<T extends readonly (string | boolean | number)[]>(...values: T): Set<T[number]>;
   };
 
   id: Mask.ID;

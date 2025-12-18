@@ -6,6 +6,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { query } from '../query.js';
 import { createMockFetch, testWithClient } from './utils.js';
+import { CaseInsensitiveEnumSet } from 'src/types.js';
 
 /**
  * Tests for t.enum.caseInsensitive() API
@@ -55,7 +56,7 @@ describe('t.enum.caseInsensitive()', () => {
     });
 
     it('should return true for case-insensitive string matches', () => {
-      const enumSet = t.enum.caseInsensitive('Active', 'Inactive', 'Pending');
+      const enumSet = t.enum.caseInsensitive('Active', 'Inactive', 'Pending') as CaseInsensitiveEnumSet<string>;
 
       expect(enumSet.has('active')).toBe(true);
       expect(enumSet.has('ACTIVE')).toBe(true);
@@ -65,7 +66,7 @@ describe('t.enum.caseInsensitive()', () => {
     });
 
     it('should return false for non-matching values', () => {
-      const enumSet = t.enum.caseInsensitive('Active', 'Inactive');
+      const enumSet = t.enum.caseInsensitive('Active', 'Inactive') as CaseInsensitiveEnumSet<string>;
 
       expect(enumSet.has('Unknown')).toBe(false);
       expect(enumSet.has('')).toBe(false);
@@ -73,7 +74,7 @@ describe('t.enum.caseInsensitive()', () => {
     });
 
     it('should perform exact match for numbers', () => {
-      const enumSet = t.enum.caseInsensitive(1, 2, 3);
+      const enumSet = t.enum.caseInsensitive(1, 2, 3) as CaseInsensitiveEnumSet<number>;
 
       expect(enumSet.has(1)).toBe(true);
       expect(enumSet.has(2)).toBe(true);
@@ -81,7 +82,7 @@ describe('t.enum.caseInsensitive()', () => {
     });
 
     it('should perform exact match for booleans', () => {
-      const enumSet = t.enum.caseInsensitive(true, false);
+      const enumSet = t.enum.caseInsensitive(true, false) as CaseInsensitiveEnumSet<boolean>;
 
       expect(enumSet.has(true)).toBe(true);
       expect(enumSet.has(false)).toBe(true);
@@ -90,7 +91,7 @@ describe('t.enum.caseInsensitive()', () => {
 
   describe('get() method', () => {
     it('should return canonical casing for string matches', () => {
-      const enumSet = t.enum.caseInsensitive('Active', 'INACTIVE', 'pending');
+      const enumSet = t.enum.caseInsensitive('Active', 'INACTIVE', 'pending') as CaseInsensitiveEnumSet<string>;
 
       expect(enumSet.get('active')).toBe('Active');
       expect(enumSet.get('ACTIVE')).toBe('Active');
@@ -99,14 +100,14 @@ describe('t.enum.caseInsensitive()', () => {
     });
 
     it('should return undefined for non-matching strings', () => {
-      const enumSet = t.enum.caseInsensitive('Active', 'Inactive');
+      const enumSet = t.enum.caseInsensitive('Active', 'Inactive') as CaseInsensitiveEnumSet<string>;
 
       expect(enumSet.get('Unknown')).toBeUndefined();
       expect(enumSet.get('')).toBeUndefined();
     });
 
     it('should return the value for exact number matches', () => {
-      const enumSet = t.enum.caseInsensitive(1, 2, 3);
+      const enumSet = t.enum.caseInsensitive(1, 2, 3) as CaseInsensitiveEnumSet<number>;
 
       expect(enumSet.get(1)).toBe(1);
       expect(enumSet.get(2)).toBe(2);
@@ -114,7 +115,7 @@ describe('t.enum.caseInsensitive()', () => {
     });
 
     it('should return the value for exact boolean matches', () => {
-      const enumSet = t.enum.caseInsensitive(true);
+      const enumSet = t.enum.caseInsensitive(true) as CaseInsensitiveEnumSet<boolean>;
 
       expect(enumSet.get(true)).toBe(true);
       expect(enumSet.get(false)).toBeUndefined();
