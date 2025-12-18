@@ -25,7 +25,7 @@ import {
   extractParamsForKey,
   queryKeyFor,
 } from './QueryClient.js';
-import { CachedQueryExtra } from './QueryStore.js';
+import { CachedQuery, CachedQueryExtra } from './QueryClient.js';
 
 // ======================================================
 // QueryResultExtra - Manages stream orphans and optimistic inserts
@@ -639,11 +639,13 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
   private async initialize(): Promise<void> {
     const state = this.relayState;
 
-    try {
-      this.initialized = true;
+    this.initialized = true;
 
+    let cached: CachedQuery | undefined;
+
+    try {
       // Load from cache first (use storage key for cache operations)
-      const cached = await this.queryClient.loadCachedQuery(this.def, this.storageKey);
+      cached = await this.queryClient.loadCachedQuery(this.def, this.storageKey);
 
       if (cached !== undefined) {
         // Set the cached timestamp
@@ -671,11 +673,18 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
             ? parseEntities(cached.value, shape as ComplexTypeDef, this.queryClient, new Set())
             : parseValue(cached.value, shape, this.def.id);
       }
+    } catch (error) {
+      this.queryClient.deleteCachedQuery(this.storageKey);
+      this.queryClient
+        .getContext()
+        .log?.warn?.('Failed to initialize query, the query cache may be corrupted or invalid', error);
+    }
 
-      if (this.isPaused) {
-        return;
-      }
+    if (this.isPaused) {
+      return;
+    }
 
+    try {
       // Setup subscriptions (handles both StreamQuery and Query/InfiniteQuery with stream)
       if (
         this.def.type === QueryType.Stream ||

@@ -266,7 +266,7 @@ type ExtractPrimitiveTypeFromMask<T extends number> = T extends Mask.UNDEFINED
         : T extends Mask.BOOLEAN
           ? boolean
           : T extends Mask.ID
-            ? string
+            ? string | number
             : never;
 
 export type ExtractTypesFromShape<S extends Record<string, ObjectFieldTypeDef>> = {

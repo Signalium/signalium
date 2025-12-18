@@ -1,6 +1,5 @@
 import { watchOnce, watcher, withContexts } from 'signalium';
-import { QueryClient, QueryClientContext } from '../QueryClient.js';
-import { QueryStore } from '../QueryStore.js';
+import { QueryClient, QueryClientContext, QueryStore } from '../QueryClient.js';
 import { EntityStore } from '../EntityMap.js';
 
 // Re-export watchOnce for convenience
