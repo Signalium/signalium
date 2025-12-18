@@ -112,11 +112,24 @@ export class ValidatorDef<T> {
           break;
         case ComplexTypeDefKind.ARRAY:
         case ComplexTypeDefKind.RECORD: {
-          const shape = this._shape as ComplexTypeDef;
-          this._shapeKey = hashValue([this.mask, this.values, shape.shapeKey]);
-          if (shape.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
-            this.mask |= Mask.HAS_SUB_ENTITY;
+          const shape = this._shape;
+
+          let shapeKey;
+
+          if (shape instanceof ValidatorDef) {
+            shapeKey = shape.shapeKey;
+
+            if (shape.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
+              this.mask |= Mask.HAS_SUB_ENTITY;
+            }
+          } else if (shape instanceof CaseInsensitiveSet) {
+            shapeKey = hashValue(Array.from(shape));
+          } else {
+            shapeKey = hashValue(shape);
           }
+
+          this._shapeKey = hashValue([this.kind, this.mask, this.values, shapeKey]);
+
           break;
         }
       }
