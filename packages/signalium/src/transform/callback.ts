@@ -76,7 +76,7 @@ function createSignaliumCallbackTransform(api: any, opts?: SignaliumCallbackTran
     return false;
   }
 
-  function ensureCallbackIdentifier(programPath: NodePath<t.Program>): t.Identifier {
+  function ensureCallbackIdentifier(programPath: NodePath<t.Program>): string {
     // Try to find an existing direct import: import { callback as X } from 'signalium'
     for (const bodyPath of programPath.get('body')) {
       if (!bodyPath.isImportDeclaration()) continue;
@@ -87,7 +87,7 @@ function createSignaliumCallbackTransform(api: any, opts?: SignaliumCallbackTran
           const ispec = spec as unknown as t.ImportSpecifier;
           const imported = ispec.imported as t.Identifier;
           if (imported && (imported as any).name === 'callback') {
-            return t.identifier((ispec.local as t.Identifier).name);
+            return (ispec.local as t.Identifier).name;
           }
         }
       }
@@ -100,7 +100,7 @@ function createSignaliumCallbackTransform(api: any, opts?: SignaliumCallbackTran
       if (node.source.value !== callbackImportPath) continue;
       const localName = programPath.scope.generateUidIdentifier('callback').name;
       node.specifiers.push(t.importSpecifier(t.identifier(localName), t.identifier('callback')));
-      return t.identifier(localName);
+      return localName;
     }
 
     // Otherwise, insert a new import from 'signalium'
@@ -117,7 +117,7 @@ function createSignaliumCallbackTransform(api: any, opts?: SignaliumCallbackTran
       programPath.pushContainer('body', importDecl);
     }
 
-    return t.identifier(localName);
+    return localName;
   }
 
   function collectDeps(
@@ -170,8 +170,7 @@ function createSignaliumCallbackTransform(api: any, opts?: SignaliumCallbackTran
 
         const outerFn = arg0 as NodePath<t.FunctionExpression | t.ArrowFunctionExpression>;
         const programPath = callPath.findParent((p: NodePath) => p.isProgram()) as NodePath<t.Program>;
-        const callbackId = ensureCallbackIdentifier(programPath);
-        const callbackName = (callbackId as t.Identifier).name;
+        const callbackName = ensureCallbackIdentifier(programPath);
 
         // Maintain per-function counters
         const counters = new WeakMap<object, number>();
@@ -234,7 +233,7 @@ function createSignaliumCallbackTransform(api: any, opts?: SignaliumCallbackTran
               if (deps.length > 0) {
                 args.push(t.arrayExpression(deps.map(n => t.identifier(n))));
               }
-              const wrapped = t.callExpression(callbackId, args);
+              const wrapped = t.callExpression(t.identifier(callbackName), args);
               innerFnPath.replaceWith(wrapped);
               innerFnPath.skip();
             },
@@ -287,7 +286,7 @@ function createSignaliumCallbackTransform(api: any, opts?: SignaliumCallbackTran
               if (deps.length > 0) {
                 args.push(t.arrayExpression(deps.map(n => t.identifier(n))));
               }
-              const wrapped = t.callExpression(callbackId, args);
+              const wrapped = t.callExpression(t.identifier(callbackName), args);
               innerFnPath.replaceWith(wrapped);
               innerFnPath.skip();
             },
@@ -316,7 +315,7 @@ function createSignaliumCallbackTransform(api: any, opts?: SignaliumCallbackTran
               if (deps.length > 0) {
                 args.push(t.arrayExpression(deps.map(n => t.identifier(n))));
               }
-              const wrapped = t.callExpression(callbackId, args);
+              const wrapped = t.callExpression(t.identifier(callbackName), args);
 
               const constDecl = t.variableDeclaration('const', [t.variableDeclarator(id, wrapped)]);
               innerDeclPath.replaceWith(constDecl);
@@ -343,7 +342,7 @@ function createSignaliumCallbackTransform(api: any, opts?: SignaliumCallbackTran
               if (deps.length > 0) {
                 args.push(t.arrayExpression(deps.map(n => t.identifier(n))));
               }
-              const wrapped = t.callExpression(callbackId, args);
+              const wrapped = t.callExpression(t.identifier(callbackName), args);
 
               const key = innerMethodPath.node.key;
               const computed = innerMethodPath.node.computed || false;

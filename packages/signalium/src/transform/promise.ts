@@ -55,7 +55,7 @@ function createSignaliumPromiseMethodsTransform(api: any, opts?: SignaliumPromis
     return false;
   };
 
-  function ensureReactivePromiseIdentifier(programPath: NodePath<t.Program>): t.Identifier {
+  function ensureReactivePromiseIdentifier(programPath: NodePath<t.Program>): string {
     for (const bodyPath of programPath.get('body')) {
       if (!bodyPath.isImportDeclaration()) continue;
       const importDecl = bodyPath.node as t.ImportDeclaration;
@@ -65,7 +65,7 @@ function createSignaliumPromiseMethodsTransform(api: any, opts?: SignaliumPromis
           const ispec = spec as unknown as t.ImportSpecifier;
           const imported = ispec.imported as t.Identifier;
           if (imported && (imported as any).name === 'ReactivePromise') {
-            return t.identifier((ispec.local as t.Identifier).name);
+            return (ispec.local as t.Identifier).name;
           }
         }
       }
@@ -77,7 +77,7 @@ function createSignaliumPromiseMethodsTransform(api: any, opts?: SignaliumPromis
       if (node.source.value !== promiseImportPath) continue;
       const localName = 'ReactivePromise';
       node.specifiers.push(t.importSpecifier(t.identifier(localName), t.identifier('ReactivePromise')));
-      return t.identifier(localName);
+      return localName;
     }
 
     const localName = 'ReactivePromise';
@@ -93,7 +93,7 @@ function createSignaliumPromiseMethodsTransform(api: any, opts?: SignaliumPromis
       programPath.pushContainer('body', importDecl);
     }
 
-    return t.identifier(localName);
+    return localName;
   }
 
   return {
@@ -118,7 +118,7 @@ function createSignaliumPromiseMethodsTransform(api: any, opts?: SignaliumPromis
 
         const programPath = callPath.findParent((p: NodePath) => p.isProgram()) as NodePath<t.Program>;
         const reactivePromiseId = ensureReactivePromiseIdentifier(programPath);
-        const newCallee = t.memberExpression(reactivePromiseId, t.identifier(methodName));
+        const newCallee = t.memberExpression(t.identifier(reactivePromiseId), t.identifier(methodName));
         callPath.node.callee = newCallee;
       },
     },
