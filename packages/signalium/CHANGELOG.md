@@ -1,5 +1,11 @@
 # signalium
 
+## 2.1.5
+
+### Patch Changes
+
+- 985abb0: Fix reused identifier node in Babel transforms
+
 ## 2.1.4
 
 ### Patch Changes
