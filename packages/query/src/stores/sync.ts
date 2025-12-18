@@ -1,6 +1,5 @@
 import { EntityStore } from '../EntityMap.js';
-import { QueryDefinition } from '../QueryClient.js';
-import { CachedQuery, CachedQueryExtra, QueryStore } from '../QueryStore.js';
+import { CachedQuery, CachedQueryExtra, QueryDefinition, QueryStore } from '../QueryClient.js';
 import {
   optimisticInsertRefsKeyFor,
   refCountKeyFor,
@@ -224,7 +223,7 @@ export class SyncQueryStore implements QueryStore {
     queue[0] = queryKey;
 
     if (evicted !== 0) {
-      this.deleteValue(evicted);
+      this.deleteQuery(evicted);
       this.kv.delete(updatedAtKeyFor(evicted));
     }
   }
@@ -275,7 +274,7 @@ export class SyncQueryStore implements QueryStore {
     }
   }
 
-  private deleteValue(id: number): void {
+  deleteQuery(id: number): void {
     const kv = this.kv;
 
     kv.delete(valueKeyFor(id));
@@ -316,7 +315,7 @@ export class SyncQueryStore implements QueryStore {
 
     if (newCount === 0) {
       // Entity exists, cascade delete it
-      this.deleteValue(refId);
+      this.deleteQuery(refId);
     } else {
       this.kv.setNumber(refCountKey, newCount);
     }

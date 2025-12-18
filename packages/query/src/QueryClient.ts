@@ -19,7 +19,6 @@ import { NetworkManager } from './NetworkManager.js';
 import { QueryResultImpl } from './QueryResult.js';
 import { RefetchManager } from './RefetchManager.js';
 import { MemoryEvictionManager } from './MemoryEvictionManager.js';
-import { CachedQueryExtra } from './QueryStore.js';
 import { type Signal } from 'signalium';
 
 // -----------------------------------------------------------------------------
@@ -28,6 +27,12 @@ import { type Signal } from 'signalium';
 
 export interface QueryContext {
   fetch: typeof fetch;
+  log?: {
+    error?: (message: string, error?: unknown) => void;
+    warn?: (message: string, error?: unknown) => void;
+    info?: (message: string) => void;
+    debug?: (message: string) => void;
+  };
   evictionMultiplier?: number;
   refetchMultiplier?: number;
 }
@@ -132,6 +137,11 @@ export interface CachedQuery {
   extra?: CachedQueryExtra;
 }
 
+export interface CachedQueryExtra {
+  streamOrphanRefs?: number[];
+  optimisticInsertRefs?: number[];
+}
+
 export interface QueryStore {
   /**
    * Asynchronously retrieves a document by key.
@@ -167,6 +177,8 @@ export interface QueryStore {
    * Handles eviction internally when the cache is full.
    */
   activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void;
+
+  deleteQuery(queryKey: number): void;
 }
 
 export type MaybePromise<T> = T | Promise<T>;
@@ -226,7 +238,7 @@ export class QueryClient {
 
   constructor(
     private store: QueryStore,
-    private context: QueryContext = { fetch },
+    private context: QueryContext = { fetch, log: console },
     networkManager?: NetworkManager,
     memoryEvictionManager?: MemoryEvictionManager,
     refetchManager?: RefetchManager,
@@ -272,6 +284,10 @@ export class QueryClient {
 
   loadCachedQuery(queryDef: AnyQueryDefinition<QueryParams | undefined, unknown, unknown>, queryKey: number) {
     return this.store.loadQuery(queryDef as any, queryKey, this.entityMap);
+  }
+
+  deleteCachedQuery(queryKey: number): void {
+    this.store.deleteQuery(queryKey);
   }
 
   /**

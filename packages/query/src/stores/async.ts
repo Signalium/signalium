@@ -1,6 +1,5 @@
-import { CachedQueryExtra } from '../QueryStore.js';
 import { EntityStore } from '../EntityMap.js';
-import { CachedQuery, QueryDefinition, QueryStore } from '../QueryClient.js';
+import { CachedQuery, CachedQueryExtra, QueryDefinition, QueryStore } from '../QueryClient.js';
 import {
   DEFAULT_GC_TIME,
   DEFAULT_MAX_COUNT,
@@ -43,7 +42,8 @@ export type StoreMessage =
       extra?: CachedQueryExtra;
     }
   | { type: 'saveEntity'; entityKey: number; value: unknown; refIds?: number[] }
-  | { type: 'activateQuery'; queryDefId: string; queryKey: number };
+  | { type: 'activateQuery'; queryDefId: string; queryKey: number }
+  | { type: 'deleteQuery'; queryKey: number };
 
 export interface AsyncQueryStoreConfig {
   isWriter: boolean;
@@ -133,6 +133,9 @@ export class AsyncQueryStore implements QueryStore {
         break;
       case 'activateQuery':
         await this.writerActivateQuery(msg.queryDefId, msg.queryKey);
+        break;
+      case 'deleteQuery':
+        await this.writerDeleteValue(msg.queryKey);
         break;
     }
   }
@@ -276,6 +279,19 @@ export class AsyncQueryStore implements QueryStore {
     }
   }
 
+  deleteQuery(queryKey: number): void {
+    const message: StoreMessage = {
+      type: 'deleteQuery',
+      queryKey,
+    };
+
+    if (this.isWriter) {
+      this.enqueueMessage(message);
+    } else {
+      this.sendMessage(message);
+    }
+  }
+
   // Writer-specific methods below
 
   private async writerSaveQuery(
@@ -354,7 +370,7 @@ export class AsyncQueryStore implements QueryStore {
     queue[0] = queryKey;
 
     if (evicted !== 0) {
-      await this.deleteValue(evicted);
+      await this.writerDeleteValue(evicted);
       await this.delegate!.delete(updatedAtKeyFor(evicted));
     }
   }
@@ -405,7 +421,7 @@ export class AsyncQueryStore implements QueryStore {
     }
   }
 
-  private async deleteValue(id: number): Promise<void> {
+  private async writerDeleteValue(id: number): Promise<void> {
     const delegate = this.delegate!;
 
     await delegate.delete(valueKeyFor(id));
@@ -448,7 +464,7 @@ export class AsyncQueryStore implements QueryStore {
 
     if (newCount === 0) {
       // Entity exists, cascade delete it
-      await this.deleteValue(refId);
+      await this.writerDeleteValue(refId);
     } else {
       await delegate.setNumber(refCountKey, newCount);
     }
