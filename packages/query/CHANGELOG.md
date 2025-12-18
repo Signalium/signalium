@@ -1,5 +1,15 @@
 # @signalium/query
 
+## 1.0.12
+
+### Patch Changes
+
+- f3e1ef0: Fix case-insensitive enum type inference
+- 11116da: Add more tests for shapeKey and fix some small issues
+- 0219742: Fix initialization error handling
+- Updated dependencies [985abb0]
+  - signalium@2.1.5
+
 ## 1.0.11
 
 ### Patch Changes
