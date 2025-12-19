@@ -1,5 +1,11 @@
 # @signalium/query
 
+## 1.0.13
+
+### Patch Changes
+
+- d2d633e: Ensure Entity methods can call other methods
+
 ## 1.0.12
 
 ### Patch Changes
