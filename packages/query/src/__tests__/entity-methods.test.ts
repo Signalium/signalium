@@ -1150,4 +1150,514 @@ describe('Entity Methods', () => {
       });
     });
   });
+
+  describe('Methods Calling Other Methods', () => {
+    it('should allow methods to call other methods on the same definition', async () => {
+      const User = entity(
+        () => ({
+          __typename: t.typename('User'),
+          id: t.id,
+          firstName: t.string,
+          lastName: t.string,
+          age: t.number,
+        }),
+        () => ({
+          getFullName() {
+            return `${this.firstName} ${this.lastName}`;
+          },
+          getInitials() {
+            return `${this.firstName[0]}${this.lastName[0]}`;
+          },
+          greet() {
+            return `Hello, ${this.getFullName()}!`;
+          },
+          getFormattedAge() {
+            return `${this.getFullName()} is ${this.age} years old`;
+          },
+          getDisplayInfo() {
+            return `${this.greet()} (${this.getInitials()})`;
+          },
+        }),
+      );
+
+      mockFetch.get('/users/[id]', {
+        user: {
+          __typename: 'User',
+          id: 1,
+          firstName: 'Alice',
+          lastName: 'Smith',
+          age: 30,
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: User },
+        }));
+
+        const relay = getUser({ id: '1' });
+        const result = await relay;
+
+        // Test direct method calls
+        expect(result.user.getFullName()).toBe('Alice Smith');
+        expect(result.user.getInitials()).toBe('AS');
+
+        // Test method calling another method
+        expect(result.user.greet()).toBe('Hello, Alice Smith!');
+        expect(result.user.getFormattedAge()).toBe('Alice Smith is 30 years old');
+
+        // Test method calling multiple other methods
+        expect(result.user.getDisplayInfo()).toBe('Hello, Alice Smith! (AS)');
+      });
+    });
+
+    it('should allow methods to call other methods with parameters', async () => {
+      const Calculator = entity(
+        () => ({
+          __typename: t.typename('Calculator'),
+          id: t.id,
+          baseValue: t.number,
+        }),
+        () => ({
+          add(n: number) {
+            return this.baseValue + n;
+          },
+          multiply(n: number) {
+            return this.baseValue * n;
+          },
+          addThenMultiply(addend: number, multiplier: number) {
+            // Add the addend, then multiply the result by the multiplier
+            const sum = this.add(addend);
+            return sum * multiplier;
+          },
+          multiplyThenAdd(multiplier: number, addend: number) {
+            // Multiply baseValue by multiplier, then add the addend
+            return this.add(this.multiply(multiplier));
+          },
+          complexOperation(x: number, y: number, z: number) {
+            // Add x, multiply by y, then add z
+            const sum = this.add(x);
+            const product = this.multiply(y);
+            return sum + product + z;
+          },
+        }),
+      );
+
+      mockFetch.get('/calc/[id]', {
+        calc: {
+          __typename: 'Calculator',
+          id: 1,
+          baseValue: 10,
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getCalc = query(() => ({
+          path: '/calc/[id]',
+          response: { calc: Calculator },
+        }));
+
+        const relay = getCalc({ id: '1' });
+        const result = await relay;
+
+        // Test basic methods
+        expect(result.calc.add(5)).toBe(15);
+        expect(result.calc.multiply(3)).toBe(30);
+
+        // Test method calling another method with parameters
+        // addThenMultiply(5, 3) = add(5) * 3 = 15 * 3 = 45
+        expect(result.calc.addThenMultiply(5, 3)).toBe(45);
+
+        // multiplyThenAdd(3, 5) = add(multiply(3)) = add(30) = 40
+        expect(result.calc.multiplyThenAdd(3, 5)).toBe(40);
+
+        // complexOperation(2, 4, 1) = add(2) + multiply(4) + 1 = 12 + 40 + 1 = 53
+        expect(result.calc.complexOperation(2, 4, 1)).toBe(53);
+      });
+    });
+
+    it('should allow methods in extended definitions to call parent methods', async () => {
+      const BaseUser = entity(
+        () => ({
+          __typename: t.typename('User'),
+          id: t.id,
+          firstName: t.string,
+          lastName: t.string,
+        }),
+        () => ({
+          getFullName() {
+            return `${this.firstName} ${this.lastName}`;
+          },
+          greet() {
+            return `Hello, ${this.getFullName()}!`;
+          },
+        }),
+      );
+
+      const ExtendedUser = BaseUser.extend(
+        () => ({
+          email: t.string,
+          age: t.number,
+        }),
+        () => ({
+          isAdult() {
+            return this.age >= 18;
+          },
+          getContactInfo() {
+            // Call parent method
+            return `${this.getFullName()} <${this.email}>`;
+          },
+          getGreetingWithAge() {
+            // Call parent method
+            return `${this.greet()} You are ${this.age} years old.`;
+          },
+          getFullInfo() {
+            // Call both parent and new methods
+            return `${this.getContactInfo()} - ${this.isAdult() ? 'Adult' : 'Minor'}`;
+          },
+        }),
+      );
+
+      mockFetch.get('/users/[id]', {
+        user: {
+          __typename: 'User',
+          id: 1,
+          firstName: 'Bob',
+          lastName: 'Johnson',
+          email: 'bob@example.com',
+          age: 25,
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: ExtendedUser },
+        }));
+
+        const relay = getUser({ id: '1' });
+        const result = await relay;
+
+        // Test parent methods still work
+        expect(result.user.getFullName()).toBe('Bob Johnson');
+        expect(result.user.greet()).toBe('Hello, Bob Johnson!');
+
+        // Test new methods
+        expect(result.user.isAdult()).toBe(true);
+
+        // Test new method calling parent method
+        expect(result.user.getContactInfo()).toBe('Bob Johnson <bob@example.com>');
+        expect(result.user.getGreetingWithAge()).toBe('Hello, Bob Johnson! You are 25 years old.');
+
+        // Test new method calling both parent and new methods
+        expect(result.user.getFullInfo()).toBe('Bob Johnson <bob@example.com> - Adult');
+      });
+    });
+
+    it('should allow methods in extended definitions to call other new methods', async () => {
+      const BaseUser = entity(
+        () => ({
+          __typename: t.typename('User'),
+          id: t.id,
+          name: t.string,
+        }),
+        () => ({
+          greet() {
+            return `Hello, ${this.name}!`;
+          },
+        }),
+      );
+
+      const ExtendedUser = BaseUser.extend(
+        () => ({
+          email: t.string,
+          age: t.number,
+        }),
+        () => ({
+          isAdult() {
+            return this.age >= 18;
+          },
+          getAgeCategory() {
+            if (this.isAdult()) {
+              return 'adult';
+            }
+            return 'minor';
+          },
+          getEmailDomain() {
+            return this.email.split('@')[1];
+          },
+          getEmailInfo() {
+            return `${this.email} (domain: ${this.getEmailDomain()})`;
+          },
+          getFullProfile() {
+            // Call parent method, new method, and another new method
+            return `${this.greet()} Age: ${this.age} (${this.getAgeCategory()}). ${this.getEmailInfo()}`;
+          },
+        }),
+      );
+
+      mockFetch.get('/users/[id]', {
+        user: {
+          __typename: 'User',
+          id: 1,
+          name: 'Charlie',
+          email: 'charlie@example.com',
+          age: 17,
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: ExtendedUser },
+        }));
+
+        const relay = getUser({ id: '1' });
+        const result = await relay;
+
+        // Test individual new methods
+        expect(result.user.isAdult()).toBe(false);
+        expect(result.user.getAgeCategory()).toBe('minor');
+        expect(result.user.getEmailDomain()).toBe('example.com');
+        expect(result.user.getEmailInfo()).toBe('charlie@example.com (domain: example.com)');
+
+        // Test new method calling another new method
+        expect(result.user.getFullProfile()).toBe(
+          'Hello, Charlie! Age: 17 (minor). charlie@example.com (domain: example.com)',
+        );
+      });
+    });
+
+    it('should allow methods to call both parent and new methods in extended definitions', async () => {
+      const BaseUser = entity(
+        () => ({
+          __typename: t.typename('User'),
+          id: t.id,
+          firstName: t.string,
+          lastName: t.string,
+        }),
+        () => ({
+          getFullName() {
+            return `${this.firstName} ${this.lastName}`;
+          },
+          getInitials() {
+            return `${this.firstName[0]}${this.lastName[0]}`;
+          },
+        }),
+      );
+
+      const ExtendedUser = BaseUser.extend(
+        () => ({
+          email: t.string,
+          age: t.number,
+        }),
+        () => ({
+          isAdult() {
+            return this.age >= 18;
+          },
+          getEmailDomain() {
+            return this.email.split('@')[1];
+          },
+          // Method that calls parent methods
+          getDisplayName() {
+            return `${this.getFullName()} (${this.getInitials()})`;
+          },
+          // Method that calls new methods
+          getAgeStatus() {
+            return `${this.isAdult() ? 'Adult' : 'Minor'} - ${this.getEmailDomain()}`;
+          },
+          // Method that calls both parent and new methods
+          getCompleteProfile() {
+            return `${this.getDisplayName()} - ${this.getAgeStatus()}`;
+          },
+        }),
+      );
+
+      mockFetch.get('/users/[id]', {
+        user: {
+          __typename: 'User',
+          id: 1,
+          firstName: 'David',
+          lastName: 'Williams',
+          email: 'david@company.com',
+          age: 28,
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: ExtendedUser },
+        }));
+
+        const relay = getUser({ id: '1' });
+        const result = await relay;
+
+        // Test parent methods
+        expect(result.user.getFullName()).toBe('David Williams');
+        expect(result.user.getInitials()).toBe('DW');
+
+        // Test new methods
+        expect(result.user.isAdult()).toBe(true);
+        expect(result.user.getEmailDomain()).toBe('company.com');
+
+        // Test method calling parent methods
+        expect(result.user.getDisplayName()).toBe('David Williams (DW)');
+
+        // Test method calling new methods
+        expect(result.user.getAgeStatus()).toBe('Adult - company.com');
+
+        // Test method calling both parent and new methods
+        expect(result.user.getCompleteProfile()).toBe('David Williams (DW) - Adult - company.com');
+      });
+    });
+
+    it('should handle chained method calls across multiple extensions', async () => {
+      const BaseEntity = entity(
+        () => ({
+          __typename: t.typename('Entity'),
+          id: t.id,
+        }),
+        () => ({
+          getId() {
+            return this.id;
+          },
+        }),
+      );
+
+      const NamedEntity = BaseEntity.extend(
+        () => ({
+          name: t.string,
+        }),
+        () => ({
+          getName() {
+            return this.name;
+          },
+          getIdAndName() {
+            // Call parent method
+            return `${this.getId()}: ${this.getName()}`;
+          },
+        }),
+      );
+
+      const ContactEntity = NamedEntity.extend(
+        () => ({
+          email: t.string,
+        }),
+        () => ({
+          getEmail() {
+            return this.email;
+          },
+          getContact() {
+            // Call grandparent and parent methods
+            return `${this.getIdAndName()} <${this.getEmail()}>`;
+          },
+          getFullContact() {
+            // Call new method which calls parent methods
+            return this.getContact();
+          },
+        }),
+      );
+
+      mockFetch.get('/entity/[id]', {
+        entity: {
+          __typename: 'Entity',
+          id: '123',
+          name: 'Test Entity',
+          email: 'test@example.com',
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getEntity = query(() => ({
+          path: '/entity/[id]',
+          response: { entity: ContactEntity },
+        }));
+
+        const relay = getEntity({ id: '123' });
+        const result = await relay;
+
+        // Test all methods are available
+        expect(result.entity.getId()).toBe('123');
+        expect(result.entity.getName()).toBe('Test Entity');
+        expect(result.entity.getEmail()).toBe('test@example.com');
+
+        // Test method calling parent method
+        expect(result.entity.getIdAndName()).toBe('123: Test Entity');
+
+        // Test method calling grandparent and parent methods
+        expect(result.entity.getContact()).toBe('123: Test Entity <test@example.com>');
+
+        // Test method calling another method that calls parent methods
+        expect(result.entity.getFullContact()).toBe('123: Test Entity <test@example.com>');
+      });
+    });
+
+    it('should properly cache method results when methods call other methods', async () => {
+      let fullNameCallCount = 0;
+      let initialsCallCount = 0;
+      let greetCallCount = 0;
+
+      const User = entity(
+        () => ({
+          __typename: t.typename('User'),
+          id: t.id,
+          firstName: t.string,
+          lastName: t.string,
+        }),
+        () => ({
+          getFullName() {
+            fullNameCallCount++;
+            return `${this.firstName} ${this.lastName}`;
+          },
+          getInitials() {
+            initialsCallCount++;
+            return `${this.firstName[0]}${this.lastName[0]}`;
+          },
+          greet() {
+            greetCallCount++;
+            // This calls getFullName, which should be cached
+            return `Hello, ${this.getFullName()}!`;
+          },
+        }),
+      );
+
+      mockFetch.get('/users/[id]', {
+        user: {
+          __typename: 'User',
+          id: 1,
+          firstName: 'Eve',
+          lastName: 'Brown',
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const getUser = query(() => ({
+          path: '/users/[id]',
+          response: { user: User },
+        }));
+
+        const relay = getUser({ id: '1' });
+        const result = await relay;
+
+        // Call greet multiple times - it calls getFullName internally
+        expect(result.user.greet()).toBe('Hello, Eve Brown!');
+        expect(result.user.greet()).toBe('Hello, Eve Brown!');
+        expect(result.user.greet()).toBe('Hello, Eve Brown!');
+
+        // greet should only be called once (cached)
+        expect(greetCallCount).toBe(1);
+
+        // getFullName should only be called once per greet call (cached within greet)
+        // Since greet is cached, getFullName should only be called once total
+        expect(fullNameCallCount).toBe(1);
+
+        // Call getFullName directly
+        expect(result.user.getFullName()).toBe('Eve Brown');
+        // Should use cached value, so count shouldn't increase
+        expect(fullNameCallCount).toBe(1);
+      });
+    });
+  });
 });

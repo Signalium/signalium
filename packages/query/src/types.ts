@@ -172,7 +172,7 @@ export interface EntityDef<T extends ObjectShape = ObjectShape, M extends Entity
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   extend<U extends ObjectShape, N extends EntityMethods = {}>(
     newFieldsGetter: () => StrictExtend<T, U> & U,
-    newMethodsGetter?: () => N & ThisType<ExtractTypesFromShape<T & U> & IncludeMethods<M>>,
+    newMethodsGetter?: () => N & ThisType<N & ExtractTypesFromShape<T & U> & IncludeMethods<M>>,
   ): EntityDef<T & U, M & N>;
 }
 

@@ -755,7 +755,7 @@ registerFormat(
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export function entity<T extends ObjectShape, M extends EntityMethods = {}>(
   shape: () => T,
-  methods?: () => M & ThisType<Prettify<ExtractTypesFromShape<T>>>,
+  methods?: () => M & ThisType<M & Prettify<ExtractTypesFromShape<T>>>,
   config?: EntityConfig<T>,
 ): EntityDef<T, M> {
   const def = new ValidatorDef(
