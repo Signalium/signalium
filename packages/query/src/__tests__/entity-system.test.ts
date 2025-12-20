@@ -995,7 +995,7 @@ describe('Entity System', () => {
       });
     });
 
-    it('should throw error when union data omits typename', async () => {
+    it('should filter out union items that omit typename in arrays', async () => {
       const TextPost = entity(() => ({
         __typename: t.typename('TextPost'),
         id: t.id,
@@ -1010,7 +1010,7 @@ describe('Entity System', () => {
 
       const PostUnion = t.union(TextPost, ImagePost);
 
-      // Data without __typename - should fail for unions
+      // Data without __typename - should be filtered out in arrays (resilient parsing)
       mockFetch.get('/posts', {
         posts: [{ id: '1', content: 'Hello' }],
       });
@@ -1024,8 +1024,10 @@ describe('Entity System', () => {
         }));
 
         const relay = getPosts();
+        const result = await relay;
 
-        await expect(relay).rejects.toThrow(/typename.*required.*union/i);
+        // Item without typename should be filtered out, resulting in empty array
+        expect(result.posts).toEqual([]);
       });
     });
 

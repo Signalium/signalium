@@ -62,7 +62,16 @@ export const enum Mask {
   HAS_SUB_ENTITY = 1 << 11,
   HAS_NUMBER_FORMAT = 1 << 12,
   HAS_STRING_FORMAT = 1 << 13,
+  PARSE_RESULT = 1 << 14,
 }
+
+// ================================
+// ParseResult Types
+// ================================
+
+export type ParseSuccess<T> = { success: true; value: T };
+export type ParseError = { success: false; error: Error };
+export type ParseResult<T> = ParseSuccess<T> | ParseError;
 
 /**
  * Interface for case-insensitive enum sets.
@@ -95,8 +104,8 @@ export type SimpleTypeDef =
   | Mask;
 
 export type ComplexTypeDef =
-  // Objects, arrays, records, and unions are definitions
-  ObjectDef | EntityDef | ArrayDef | RecordDef | UnionDef;
+  // Objects, arrays, records, unions, and parse results are definitions
+  ObjectDef | EntityDef | ArrayDef | RecordDef | UnionDef | ParseResultDef;
 
 export type TypeDef = SimpleTypeDef | ComplexTypeDef;
 
@@ -201,6 +210,11 @@ export interface RecordDef<T extends TypeDef = TypeDef> extends BaseTypeDef {
   shape: T;
 }
 
+export interface ParseResultDef<T extends TypeDef = TypeDef> extends BaseTypeDef {
+  mask: Mask.PARSE_RESULT;
+  shape: T;
+}
+
 /**
  * Global format registry interface that maps format names to their TypeScript types.
  * This can be extended via module augmentation using the SignaliumQuery namespace.
@@ -249,6 +263,8 @@ export interface APITypes {
   nullish: <T extends TypeDef>(type: T) => T | Mask.UNDEFINED | Mask.NULL;
   optional: <T extends TypeDef>(type: T) => T | Mask.UNDEFINED;
   nullable: <T extends TypeDef>(type: T) => T | Mask.NULL;
+
+  result: <T extends TypeDef>(type: T) => ParseResultDef<T>;
 }
 
 // ================================
@@ -292,7 +308,9 @@ export type ExtractType<T extends ObjectFieldTypeDef> =
                   ? Record<string, ExtractType<S>>
                   : T extends UnionDef<infer VS>
                     ? ExtractType<VS[number]>
-                    : never;
+                    : T extends ParseResultDef<infer S>
+                      ? ParseResult<ExtractType<S>>
+                      : never;
 
 export type QueryType<T> = T extends () => infer Response
   ? Response extends QueryResult<infer T, unknown, unknown>

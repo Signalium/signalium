@@ -138,6 +138,7 @@ export class EntityStore {
       });
     }
 
-    return createEntityProxy(record.key, record, shape, entityRelay, this.queryClient);
+    const warn = this.queryClient.getContext().log?.warn;
+    return createEntityProxy(record.key, record, shape, entityRelay, this.queryClient, warn);
   }
 }
