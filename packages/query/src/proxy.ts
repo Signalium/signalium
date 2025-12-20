@@ -15,6 +15,9 @@ import {
 import { typeMaskOf } from './utils.js';
 import { PreloadedEntityRecord } from './EntityMap.js';
 
+export type WarnFn = (message: string, context?: Record<string, unknown>) => void;
+const noopWarn: WarnFn = () => {};
+
 const entries = Object.entries;
 const isArray = Array.isArray;
 
@@ -25,6 +28,7 @@ function parseUnionValue(
   value: Record<string, unknown> | unknown[],
   unionDef: UnionDef,
   path: string,
+  warn: WarnFn = noopWarn,
 ): unknown {
   if (valueType === Mask.ARRAY) {
     const shape = unionDef.shape![ARRAY_KEY];
@@ -33,7 +37,7 @@ function parseUnionValue(
       return value;
     }
 
-    return parseArrayValue(value as unknown[], shape, path);
+    return parseArrayValue(value as unknown[], shape, path, warn);
   } else {
     // Use the cached typename field from the union definition
     const typenameField = unionDef.typenameField;
@@ -49,36 +53,56 @@ function parseUnionValue(
         );
       }
 
-      return parseRecordValue(value as Record<string, unknown>, recordShape as ComplexTypeDef, path);
+      return parseRecordValue(value as Record<string, unknown>, recordShape as ComplexTypeDef, path, warn);
     }
 
     const matchingDef = unionDef.shape![typename];
 
     if (matchingDef === undefined || typeof matchingDef === 'number') {
-      return value;
+      throw new Error(`Unknown typename '${typename}' in union`);
     }
 
-    return parseObjectValue(value as Record<string, unknown>, matchingDef as ObjectDef | EntityDef, path);
+    return parseObjectValue(value as Record<string, unknown>, matchingDef as ObjectDef | EntityDef, path, warn);
   }
 }
 
-export function parseArrayValue(array: unknown[], arrayShape: TypeDef, path: string) {
+export function parseArrayValue(array: unknown[], arrayShape: TypeDef, path: string, warn: WarnFn = noopWarn) {
+  const result: unknown[] = [];
+
   for (let i = 0; i < array.length; i++) {
-    array[i] = parseValue(array[i], arrayShape, `${path}[${i}]`);
+    try {
+      result.push(parseValue(array[i], arrayShape, `${path}[${i}]`, false, warn));
+    } catch (e) {
+      warn('Failed to parse array item, filtering out', {
+        index: i,
+        value: array[i],
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
   }
 
-  return array;
+  return result;
 }
 
-export function parseRecordValue(record: Record<string, unknown>, recordShape: ComplexTypeDef, path: string) {
+export function parseRecordValue(
+  record: Record<string, unknown>,
+  recordShape: ComplexTypeDef,
+  path: string,
+  warn: WarnFn = noopWarn,
+) {
   for (const [key, value] of entries(record)) {
-    record[key] = parseValue(value, recordShape, `${path}["${key}"]`);
+    record[key] = parseValue(value, recordShape, `${path}["${key}"]`, false, warn);
   }
 
   return record;
 }
 
-export function parseObjectValue(object: Record<string, unknown>, objectShape: ObjectDef | EntityDef, path: string) {
+export function parseObjectValue(
+  object: Record<string, unknown>,
+  objectShape: ObjectDef | EntityDef,
+  path: string,
+  warn: WarnFn = noopWarn,
+) {
   if (PROXY_ID.has(object)) {
     // Is an entity proxy, so return it directly
     return object;
@@ -88,13 +112,19 @@ export function parseObjectValue(object: Record<string, unknown>, objectShape: O
 
   for (const [key, propShape] of entries(shape)) {
     // parse and replace the property in place
-    object[key] = parseValue(object[key], propShape, `${path}.${key}`);
+    object[key] = parseValue(object[key], propShape, `${path}.${key}`, false, warn);
   }
 
   return object;
 }
 
-export function parseValue(value: unknown, propDef: ObjectFieldTypeDef, path: string): unknown {
+export function parseValue(
+  value: unknown,
+  propDef: ObjectFieldTypeDef,
+  path: string,
+  skipFallbacks = false,
+  warn: WarnFn = noopWarn,
+): unknown {
   // Handle case-insensitive enums
   if (propDef instanceof CaseInsensitiveSet) {
     const canonical = propDef.get(value);
@@ -129,13 +159,29 @@ export function parseValue(value: unknown, propDef: ObjectFieldTypeDef, path: st
       let valueType = typeMaskOf(value);
 
       if ((propDef & valueType) === 0) {
+        if (!skipFallbacks && (propDef & Mask.UNDEFINED) !== 0) {
+          warn('Invalid value for optional type, defaulting to undefined', { value, path });
+          return undefined;
+        }
         throw typeError(path, propDef, value);
       }
 
       // Check if this field has a format - if so, parse with the format parser
       if ((propDef & (Mask.HAS_STRING_FORMAT | Mask.HAS_NUMBER_FORMAT)) !== 0) {
         // Lazy format parsing: parse the raw value using the format parser
-        return getFormat(propDef)(value);
+        try {
+          return getFormat(propDef)(value);
+        } catch (e) {
+          if (!skipFallbacks && (propDef & Mask.UNDEFINED) !== 0) {
+            warn('Invalid formatted value for optional type, defaulting to undefined', {
+              value,
+              path,
+              error: e instanceof Error ? e.message : String(e),
+            });
+            return undefined;
+          }
+          throw e;
+        }
       }
 
       return value;
@@ -149,16 +195,43 @@ export function parseValue(value: unknown, propDef: ObjectFieldTypeDef, path: st
       let valueType = typeMaskOf(value);
       const propMask = propDef.mask;
 
+      // Handle parseResult wrapper - wraps parsing in try-catch and returns discriminated union
+      // Pass skipFallbacks=true so errors are thrown instead of defaulting to undefined
+      if ((propMask & Mask.PARSE_RESULT) !== 0) {
+        try {
+          const innerResult = parseValue(value, propDef.shape as ObjectFieldTypeDef, path, true, warn);
+          return { success: true as const, value: innerResult };
+        } catch (e) {
+          return { success: false as const, error: e instanceof Error ? e : new Error(String(e)) };
+        }
+      }
+
       // Check if the value type is allowed by the propMask
       // Also check if it's in a values set (for enums/constants stored in ValidatorDef)
       if ((propMask & valueType) === 0 && !propDef.values?.has(value as string | boolean | number)) {
+        if (!skipFallbacks && (propMask & Mask.UNDEFINED) !== 0) {
+          warn('Invalid value for optional type, defaulting to undefined', { value, path });
+          return undefined;
+        }
         throw typeError(path, propMask, value);
       }
 
       if (valueType < Mask.OBJECT) {
         // Check if this field has a format - if so, parse with the format parser
         if ((propMask & (Mask.HAS_STRING_FORMAT | Mask.HAS_NUMBER_FORMAT)) !== 0) {
-          return getFormat(propMask)(value);
+          try {
+            return getFormat(propMask)(value);
+          } catch (e) {
+            if (!skipFallbacks && (propMask & Mask.UNDEFINED) !== 0) {
+              warn('Invalid formatted value for optional type, defaulting to undefined', {
+                value,
+                path,
+                error: e instanceof Error ? e.message : String(e),
+              });
+              return undefined;
+            }
+            throw e;
+          }
         }
 
         // value is a primitive, it has already passed the mask so return it now
@@ -166,14 +239,20 @@ export function parseValue(value: unknown, propDef: ObjectFieldTypeDef, path: st
       }
 
       if ((valueType & Mask.UNION) !== 0) {
-        return parseUnionValue(valueType, value as Record<string, unknown> | unknown[], propDef as UnionDef, path);
+        return parseUnionValue(
+          valueType,
+          value as Record<string, unknown> | unknown[],
+          propDef as UnionDef,
+          path,
+          warn,
+        );
       }
 
       if (valueType === Mask.ARRAY) {
-        return parseArrayValue(value as unknown[], propDef.shape as ComplexTypeDef, path);
+        return parseArrayValue(value as unknown[], propDef.shape as ComplexTypeDef, path, warn);
       }
 
-      return parseObjectValue(value as Record<string, unknown>, propDef as ObjectDef | EntityDef, path);
+      return parseObjectValue(value as Record<string, unknown>, propDef as ObjectDef | EntityDef, path, warn);
     }
   }
 }
@@ -207,6 +286,7 @@ export function createEntityProxy(
   def: ObjectDef | EntityDef,
   entityRelay: any,
   scopeOwner: object,
+  warn: WarnFn = noopWarn,
   desc?: string,
 ): Record<string, unknown> {
   // Cache for nested proxies - each proxy gets its own cache
@@ -265,7 +345,7 @@ export function createEntityProxy(
         return value;
       }
 
-      const parsed = parseValue(value, propDef, `[[${desc}]].${prop as string}`);
+      const parsed = parseValue(value, propDef, `[[${desc}]].${prop as string}`, false, warn);
 
       cache.set(prop, parsed);
 

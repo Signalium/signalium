@@ -11,6 +11,7 @@ import {
   Mask,
   ObjectDef,
   ObjectShape,
+  ParseResultDef,
   RECORD_KEY,
   RecordDef,
   TypeDef,
@@ -30,6 +31,7 @@ const enum ComplexTypeDefKind {
   ARRAY = 3,
   RECORD = 4,
   ENTITY = 5,
+  PARSE_RESULT = 6,
 }
 
 export class ValidatorDef<T> {
@@ -111,7 +113,8 @@ export class ValidatorDef<T> {
           this._shape = reifyUnionShape(this, this._shape as ComplexTypeDef[]);
           break;
         case ComplexTypeDefKind.ARRAY:
-        case ComplexTypeDefKind.RECORD: {
+        case ComplexTypeDefKind.RECORD:
+        case ComplexTypeDefKind.PARSE_RESULT: {
           const shape = this._shape;
 
           let shapeKey;
@@ -324,6 +327,14 @@ export function defineArray<T extends TypeDef>(shape: T): ArrayDef<T> {
 
 export function defineRecord<T extends TypeDef>(shape: T): RecordDef<T> {
   return new ValidatorDef(ComplexTypeDefKind.RECORD, Mask.RECORD | Mask.OBJECT, shape) as unknown as RecordDef<T>;
+}
+
+export function defineParseResult<T extends TypeDef>(innerType: T): ParseResultDef<T> {
+  return new ValidatorDef(
+    ComplexTypeDefKind.PARSE_RESULT,
+    Mask.PARSE_RESULT,
+    innerType,
+  ) as unknown as ParseResultDef<T>;
 }
 
 export function defineObject<T extends ObjectShape>(shape: T): ObjectDef<T> {
@@ -770,7 +781,8 @@ export function entity<T extends ObjectShape, M extends EntityMethods = {}>(
   }
 
   if (config) {
-    def._entityConfig = config;
+    // `any` because of infinite recursive type issue
+    (def as any)._entityConfig = config;
   }
 
   return def as unknown as EntityDef<T, M>;
@@ -794,4 +806,5 @@ export const t: APITypes = {
   nullish: defineNullish,
   optional: defineOptional,
   nullable: defineNullable,
+  result: defineParseResult,
 };

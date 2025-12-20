@@ -13,6 +13,7 @@ import {
   Mask,
   ObjectDef,
   ObjectFieldTypeDef,
+  ParseResultDef,
   RECORD_KEY,
   RecordDef,
   UnionDef,
@@ -67,7 +68,7 @@ export function parseUnionEntities(
     const matchingDef = unionDef.shape![typename];
 
     if (matchingDef === undefined || typeof matchingDef === 'number') {
-      return value;
+      throw new Error(`Unknown typename '${typename}' in union`);
     }
 
     return parseObjectEntities(
@@ -85,11 +86,21 @@ export function parseArrayEntities(
   queryClient: QueryClient,
   entityRefs?: Set<number>,
 ): unknown[] {
+  const result: unknown[] = [];
+
   for (let i = 0; i < array.length; i++) {
-    array[i] = parseEntities(array[i], arrayShape, queryClient, entityRefs);
+    try {
+      result.push(parseEntities(array[i], arrayShape, queryClient, entityRefs));
+    } catch (e) {
+      queryClient.getContext().log?.warn?.('Failed to parse array item, filtering out', {
+        index: i,
+        value: array[i],
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
   }
 
-  return array;
+  return result;
 }
 
 export function parseRecordEntities(
@@ -168,6 +179,7 @@ export function parseObjectEntities(
 
   // For non-entity objects, parse all fields (including enums, formatted values, etc.)
   // Entities handle this lazily via their proxy
+  const warn = queryClient.getContext().log?.warn;
   for (const [key, propDef] of entries(shape)) {
     // Skip fields that were already processed as sub-entity paths
     if (subEntityPaths !== undefined) {
@@ -175,7 +187,13 @@ export function parseObjectEntities(
         continue;
       }
     }
-    obj[key] = parseValue(obj[key], propDef as ObjectFieldTypeDef, `${objectShape.typenameValue ?? 'object'}.${key}`);
+    obj[key] = parseValue(
+      obj[key],
+      propDef as ObjectFieldTypeDef,
+      `${objectShape.typenameValue ?? 'object'}.${key}`,
+      false,
+      warn,
+    );
   }
 
   return obj;
@@ -189,6 +207,21 @@ export function parseEntities(
 ): unknown {
   const valueType = typeMaskOf(value);
   const defType = def.mask;
+
+  // Handle parseResult wrapper - wraps parsing in try-catch and returns discriminated union
+  if ((defType & Mask.PARSE_RESULT) !== 0) {
+    try {
+      const innerResult = parseEntities(
+        value,
+        (def as ParseResultDef).shape as ComplexTypeDef,
+        queryClient,
+        entityRefs,
+      );
+      return { success: true as const, value: innerResult };
+    } catch (e) {
+      return { success: false as const, error: e instanceof Error ? e : new Error(String(e)) };
+    }
+  }
 
   // Skip primitives and incompatible types - they can't contain entities
   // Note: We silently return incompatible values rather than erroring
