@@ -19,14 +19,16 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
 
     if (prevConsumedAt !== computedCount) {
       if (prevEdge === undefined) {
-        getTracerProxy()?.emit({
-          type: TracerEventType.Connected,
-          id: currentConsumer.tracerMeta!.id,
-          childId: signal.tracerMeta!.id,
-          name: signal.tracerMeta!.desc,
-          params: signal.tracerMeta!.params,
-          nodeType: SignalType.Reactive,
-        });
+        if (IS_DEV) {
+          getTracerProxy()?.emit({
+            type: TracerEventType.Connected,
+            id: currentConsumer.tracerMeta!.id,
+            childId: signal.tracerMeta!.id,
+            name: signal.tracerMeta!.desc,
+            params: signal.tracerMeta!.params,
+            nodeType: SignalType.Reactive,
+          });
+        }
 
         if (currentConsumer.watchCount > 0) {
           watchSignal(signal);
@@ -127,7 +129,7 @@ export function checkSignal(signal: ReactiveSignal<any, any>): number {
   signal._state = ReactiveFnState.Clean;
   signal.dirtyHead = undefined;
 
-  if (getTracerProxy() !== undefined && signal.tracerMeta?.tracer) {
+  if (IS_DEV && getTracerProxy() !== undefined && signal.tracerMeta?.tracer) {
     scheduleTracer(signal.tracerMeta.tracer);
   }
 
@@ -135,11 +137,14 @@ export function checkSignal(signal: ReactiveSignal<any, any>): number {
 }
 
 export function runSignal(signal: ReactiveSignal<any, any[]>) {
-  let tracer = getTracerProxy();
-  tracer?.emit({
-    type: TracerEventType.StartUpdate,
-    id: signal.tracerMeta!.id,
-  });
+  let tracer: ReturnType<typeof getTracerProxy> | undefined;
+  if (IS_DEV) {
+    tracer = getTracerProxy();
+    tracer?.emit({
+      type: TracerEventType.StartUpdate,
+      id: signal.tracerMeta!.id,
+    });
+  }
 
   const prevConsumer = getCurrentConsumer();
 
@@ -190,11 +195,13 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
   } finally {
     setCurrentConsumer(prevConsumer);
 
-    tracer?.emit({
-      type: TracerEventType.EndUpdate,
-      id: signal.tracerMeta!.id,
-      value: isRelay(signal) ? '...' : signal._value,
-    });
+    if (IS_DEV) {
+      tracer?.emit({
+        type: TracerEventType.EndUpdate,
+        id: signal.tracerMeta!.id,
+        value: isRelay(signal) ? '...' : signal._value,
+      });
+    }
   }
 }
 

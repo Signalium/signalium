@@ -10,6 +10,7 @@ function write(filePath, content) {
 }
 
 // Generate CJS wrappers using re-export pattern for all subpaths
+// These point to production builds by default
 function makeReexportWrapper(requirePath) {
   return [
     "'use strict';",
@@ -42,15 +43,17 @@ if (!fs.existsSync(storesDir)) {
   fs.mkdirSync(storesDir, { recursive: true });
 }
 
-// Generate legacy entries
-write(path.join(pkgRoot, 'react.js'), makeReexportWrapper('./dist/cjs/react/index.js'));
-write(path.join(storesDir, 'async.js'), makeReexportWrapper('../dist/cjs/stores/async.js'));
-write(path.join(storesDir, 'sync.js'), makeReexportWrapper('../dist/cjs/stores/sync.js'));
+// Generate legacy entries - pointing to production builds
+write(path.join(pkgRoot, 'react.js'), makeReexportWrapper('./dist/cjs/production/react/index.js'));
+write(path.join(storesDir, 'async.js'), makeReexportWrapper('../dist/cjs/production/stores/async.js'));
+write(path.join(storesDir, 'sync.js'), makeReexportWrapper('../dist/cjs/production/stores/sync.js'));
 
-// Write package.json to CJS directory to mark it as CommonJS
-write(path.join(pkgRoot, 'dist/cjs/package.json'), JSON.stringify({ type: 'commonjs' }, null, 2) + '\n');
+// Write package.json to CJS directories to mark them as CommonJS
+const cjsPackageJson = JSON.stringify({ type: 'commonjs' }, null, 2) + '\n';
+write(path.join(pkgRoot, 'dist/cjs/production/package.json'), cjsPackageJson);
+write(path.join(pkgRoot, 'dist/cjs/development/package.json'), cjsPackageJson);
 
-// Type re-export wrappers for legacy entry points
+// Type re-export wrappers for legacy entry points (shared types in dist/esm)
 write(path.join(pkgRoot, 'index.d.ts'), makeTypeReexportWrapper('./dist/esm/index.js'));
 write(path.join(pkgRoot, 'react.d.ts'), makeTypeReexportWrapper('./dist/esm/react/index.js'));
 write(path.join(storesDir, 'async.d.ts'), makeTypeReexportWrapper('../dist/esm/stores/async.js'));

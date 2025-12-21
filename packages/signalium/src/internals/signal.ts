@@ -45,18 +45,20 @@ export class StateSignal<T> implements Signal<T> {
 
   consume(): void {
     const currentConsumer = getCurrentConsumer();
-    const tracer = getTracerProxy();
     if (currentConsumer !== undefined) {
-      tracer?.emit({
-        type: TracerEventType.ConsumeState,
-        id: currentConsumer.tracerMeta!.id,
-        name: this._desc,
-        childId: this._id,
-        value: this._value,
-        setValue: (value: unknown) => {
-          this.value = value as T;
-        },
-      });
+      if (IS_DEV) {
+        const tracer = getTracerProxy();
+        tracer?.emit({
+          type: TracerEventType.ConsumeState,
+          id: currentConsumer.tracerMeta!.id,
+          name: this._desc,
+          childId: this._id,
+          value: this._value,
+          setValue: (value: unknown) => {
+            this.value = value as T;
+          },
+        });
+      }
       this._subs.set(currentConsumer.ref, currentConsumer.computedCount);
     }
   }
