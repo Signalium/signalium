@@ -10,7 +10,6 @@ import { valueKeyFor, updatedAtKeyFor, refIdsKeyFor, refCountKeyFor } from '../s
 import { queryKeyForFn } from '../query.js';
 
 // Helper to set up a query result in the store (similar to caching-persistence.test.ts)
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 function setQuery(
   kv: MemoryPersistentStore,
   // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type

@@ -16,5 +16,5 @@
       "signalium/transform": ["../signalium/src/transform/index.ts"]
     }
   },
-  "include": ["src", "vitest.config.ts"]
+  "include": ["src", "vitest.config.ts", "src/globals.d.ts", "../signalium/src/globals.d.ts"]
 }

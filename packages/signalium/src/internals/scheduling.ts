@@ -3,7 +3,7 @@ import { ReactiveSignal } from './reactive.js';
 import { checkAndRunListeners, checkSignal } from './get.js';
 import { runListeners as runDerivedListeners } from './reactive.js';
 import { runListeners as runStateListeners } from './signal.js';
-import { Tracer } from './trace.js';
+import type { Tracer } from './trace.js';
 import { unwatchSignal } from './watch.js';
 import { StateSignal } from './signal.js';
 import { SignalScope } from './contexts.js';
@@ -16,7 +16,7 @@ let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
 let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
 let PENDING_UNWATCH = new Map<ReactiveSignal<any, any>, number>();
 let PENDING_LISTENERS: (ReactiveSignal<any, any> | StateSignal<any>)[] = [];
-let PENDING_TRACERS: Tracer[] = [];
+let PENDING_TRACERS: Tracer[] | undefined = IS_DEV ? [] : undefined;
 let PENDING_GC = new Set<SignalScope>();
 
 const microtask = () => Promise.resolve();
@@ -62,8 +62,10 @@ export const scheduleListeners = (signal: ReactiveSignal<any, any> | StateSignal
 };
 
 export const scheduleTracer = (tracer: Tracer) => {
-  PENDING_TRACERS.push(tracer);
-  scheduleFlush(flushWatchers);
+  if (IS_DEV) {
+    PENDING_TRACERS!.push(tracer);
+    scheduleFlush(flushWatchers);
+  }
 };
 
 export const scheduleGcSweep = (scope: SignalScope) => {
@@ -126,13 +128,15 @@ const flushWatchers = async () => {
       }
     }
 
-    for (const tracer of PENDING_TRACERS) {
-      tracer.flush();
+    if (IS_DEV) {
+      for (const tracer of PENDING_TRACERS!) {
+        tracer.flush();
+      }
+      PENDING_TRACERS = [];
     }
 
     PENDING_UNWATCH.clear();
     PENDING_LISTENERS = [];
-    PENDING_TRACERS = [];
   });
 
   // resolve the flush promise

@@ -128,7 +128,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     this.args = args;
     this.def = def;
 
-    if (getTracerProxy() !== undefined) {
+    if (IS_DEV && getTracerProxy() !== undefined) {
       this.tracerMeta = {
         id: def.id ?? key ?? hashValue([def.compute, ID++]),
         desc: def.desc ?? def.compute.name ?? getUnknownSignalFnName(def.compute),

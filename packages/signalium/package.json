@@ -7,44 +7,92 @@
     "url": "git+https://github.com/Signalium/signalium.git"
   },
   "description": "Scalable signals, effortless async. Reactivity at critical mass.",
-  "main": "./dist/cjs/index.js",
-  "module": "./dist/esm/index.js",
+  "main": "./dist/cjs/production/index.js",
+  "module": "./dist/esm/production/index.js",
   "exports": {
     ".": {
       "types": "./dist/esm/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js",
-      "default": "./dist/esm/index.js"
+      "development": {
+        "import": "./dist/esm/development/index.js",
+        "require": "./dist/cjs/development/index.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/index.js",
+        "require": "./dist/cjs/production/index.js"
+      },
+      "import": "./dist/esm/production/index.js",
+      "require": "./dist/cjs/production/index.js",
+      "default": "./dist/esm/production/index.js"
     },
     "./config": {
       "types": "./dist/esm/config.d.ts",
-      "import": "./dist/esm/config.js",
-      "require": "./dist/cjs/config.js",
-      "default": "./dist/esm/config.js"
+      "development": {
+        "import": "./dist/esm/development/config.js",
+        "require": "./dist/cjs/development/config.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/config.js",
+        "require": "./dist/cjs/production/config.js"
+      },
+      "import": "./dist/esm/production/config.js",
+      "require": "./dist/cjs/production/config.js",
+      "default": "./dist/esm/production/config.js"
     },
     "./utils": {
       "types": "./dist/esm/utils.d.ts",
-      "import": "./dist/esm/utils.js",
-      "require": "./dist/cjs/utils.js",
-      "default": "./dist/esm/utils.js"
+      "development": {
+        "import": "./dist/esm/development/utils.js",
+        "require": "./dist/cjs/development/utils.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/utils.js",
+        "require": "./dist/cjs/production/utils.js"
+      },
+      "import": "./dist/esm/production/utils.js",
+      "require": "./dist/cjs/production/utils.js",
+      "default": "./dist/esm/production/utils.js"
     },
     "./debug": {
       "types": "./dist/esm/debug.d.ts",
-      "import": "./dist/esm/debug.js",
-      "require": "./dist/cjs/debug.js",
-      "default": "./dist/esm/debug.js"
+      "development": {
+        "import": "./dist/esm/development/debug.js",
+        "require": "./dist/cjs/development/debug.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/debug.js",
+        "require": "./dist/cjs/production/debug.js"
+      },
+      "import": "./dist/esm/production/debug.js",
+      "require": "./dist/cjs/production/debug.js",
+      "default": "./dist/esm/production/debug.js"
     },
     "./react": {
       "types": "./dist/esm/react/index.d.ts",
-      "import": "./dist/esm/react/index.js",
-      "require": "./dist/cjs/react/index.js",
-      "default": "./dist/esm/react/index.js"
+      "development": {
+        "import": "./dist/esm/development/react/index.js",
+        "require": "./dist/cjs/development/react/index.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/react/index.js",
+        "require": "./dist/cjs/production/react/index.js"
+      },
+      "import": "./dist/esm/production/react/index.js",
+      "require": "./dist/cjs/production/react/index.js",
+      "default": "./dist/esm/production/react/index.js"
     },
     "./transform": {
       "types": "./dist/esm/transform/index.d.ts",
-      "import": "./dist/esm/transform/index.js",
-      "require": "./dist/cjs/transform/index.js",
-      "default": "./dist/esm/transform/index.js"
+      "development": {
+        "import": "./dist/esm/development/transform/index.js",
+        "require": "./dist/cjs/development/transform/index.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/transform/index.js",
+        "require": "./dist/cjs/production/transform/index.js"
+      },
+      "import": "./dist/esm/production/transform/index.js",
+      "require": "./dist/cjs/production/transform/index.js",
+      "default": "./dist/esm/production/transform/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -78,9 +126,11 @@
     "test:transform": "vitest run --project transform",
     "test:react": "vitest run --project react",
     "check-types": "tsc --noEmit",
-    "build": "npm run build:esm && npm run build:cjs && node scripts/generate-legacy-entries.cjs",
-    "build:esm": "tsc",
-    "build:cjs": "tsc --module commonjs --outDir dist/cjs --moduleResolution node"
+    "build": "npm run build:clean && npm run build:types && npm run build:dev && npm run build:prod && node scripts/generate-legacy-entries.cjs",
+    "build:clean": "rm -rf dist",
+    "build:types": "tsc --emitDeclarationOnly --outDir dist/esm",
+    "build:dev": "BUILD_MODE=development vite build",
+    "build:prod": "BUILD_MODE=production vite build"
   },
   "author": "Kristen Hewell Garrett <me@pzuraq.com>",
   "license": "ISC",

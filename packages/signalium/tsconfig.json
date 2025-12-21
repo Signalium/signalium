@@ -8,6 +8,6 @@
     "sourceMap": true,
     "jsx": "react-jsx"
   },
-  "include": ["src"],
+  "include": ["src", "src/globals.d.ts"],
   "exclude": ["**/__tests__"]
 }

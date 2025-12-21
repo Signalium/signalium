@@ -12,6 +12,14 @@ const nextConfig = {
       '.js': ['.js', '.ts', '.jsx', '.tsx'],
       '.jsx': ['.jsx', '.tsx', '.js', '.ts'],
     };
+    // Use development builds of signalium to enable tracing in docs
+    config.resolve.conditionNames = [
+      'development',
+      'browser',
+      'module',
+      'import',
+      'default',
+    ];
     return config;
   },
 };

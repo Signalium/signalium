@@ -7,33 +7,65 @@
     "url": "git+https://github.com/Signalium/signalium.git"
   },
   "description": "Chain-reactivity at critical mass",
-  "main": "./dist/cjs/index.js",
-  "module": "./dist/esm/index.js",
-  "types": "./dist/types/index.d.ts",
+  "main": "./dist/cjs/production/index.js",
+  "module": "./dist/esm/production/index.js",
+  "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/esm/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js",
-      "default": "./dist/esm/index.js"
+      "development": {
+        "import": "./dist/esm/development/index.js",
+        "require": "./dist/cjs/development/index.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/index.js",
+        "require": "./dist/cjs/production/index.js"
+      },
+      "import": "./dist/esm/production/index.js",
+      "require": "./dist/cjs/production/index.js",
+      "default": "./dist/esm/production/index.js"
     },
     "./react": {
       "types": "./dist/esm/react/index.d.ts",
-      "import": "./dist/esm/react/index.js",
-      "require": "./dist/cjs/react/index.js",
-      "default": "./dist/esm/react/index.js"
+      "development": {
+        "import": "./dist/esm/development/react/index.js",
+        "require": "./dist/cjs/development/react/index.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/react/index.js",
+        "require": "./dist/cjs/production/react/index.js"
+      },
+      "import": "./dist/esm/production/react/index.js",
+      "require": "./dist/cjs/production/react/index.js",
+      "default": "./dist/esm/production/react/index.js"
     },
     "./stores/async": {
       "types": "./dist/esm/stores/async.d.ts",
-      "import": "./dist/esm/stores/async.js",
-      "require": "./dist/cjs/stores/async.js",
-      "default": "./dist/esm/stores/async.js"
+      "development": {
+        "import": "./dist/esm/development/stores/async.js",
+        "require": "./dist/cjs/development/stores/async.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/stores/async.js",
+        "require": "./dist/cjs/production/stores/async.js"
+      },
+      "import": "./dist/esm/production/stores/async.js",
+      "require": "./dist/cjs/production/stores/async.js",
+      "default": "./dist/esm/production/stores/async.js"
     },
     "./stores/sync": {
       "types": "./dist/esm/stores/sync.d.ts",
-      "import": "./dist/esm/stores/sync.js",
-      "require": "./dist/cjs/stores/sync.js",
-      "default": "./dist/esm/stores/sync.js"
+      "development": {
+        "import": "./dist/esm/development/stores/sync.js",
+        "require": "./dist/cjs/development/stores/sync.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/stores/sync.js",
+        "require": "./dist/cjs/production/stores/sync.js"
+      },
+      "import": "./dist/esm/production/stores/sync.js",
+      "require": "./dist/cjs/production/stores/sync.js",
+      "default": "./dist/esm/production/stores/sync.js"
     },
     "./package.json": "./package.json"
   },
@@ -65,9 +97,11 @@
     "test:transform": "vitest run --project transform",
     "test:react": "vitest run --project react",
     "check-types": "tsc --noEmit",
-    "build": "npm run build:esm && npm run build:cjs && node scripts/generate-legacy-entries.cjs",
-    "build:esm": "tsc --build tsconfig.esm.json",
-    "build:cjs": "tsc --build tsconfig.cjs.json"
+    "build": "npm run build:clean && npm run build:types && npm run build:dev && npm run build:prod && node scripts/generate-legacy-entries.cjs",
+    "build:clean": "rm -rf dist",
+    "build:types": "tsc --emitDeclarationOnly --outDir dist/esm --project tsconfig.esm.json",
+    "build:dev": "BUILD_MODE=development vite build",
+    "build:prod": "BUILD_MODE=production vite build"
   },
   "author": "",
   "license": "ISC",

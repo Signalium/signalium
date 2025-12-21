@@ -259,12 +259,14 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
   }
 
   private _initFlags(baseFlags: number) {
-    const tracer = getTracerProxy();
-    if (tracer !== undefined && this._signal !== undefined && (baseFlags & AsyncFlags.Pending) !== 0) {
-      tracer.emit({
-        type: TracerEventType.StartLoading,
-        id: this._signal.tracerMeta!.id,
-      });
+    if (IS_DEV) {
+      const tracer = getTracerProxy();
+      if (tracer !== undefined && this._signal !== undefined && (baseFlags & AsyncFlags.Pending) !== 0) {
+        tracer.emit({
+          type: TracerEventType.StartLoading,
+          id: this._signal.tracerMeta!.id,
+        });
+      }
     }
 
     this._flags = baseFlags;
@@ -337,19 +339,21 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
 
     this._version.update(v => v + 1);
 
-    const tracer = getTracerProxy();
-    if (tracer !== undefined && this._signal !== undefined) {
-      if (setTrue & AsyncFlags.Pending && allChanged & AsyncFlags.Pending) {
-        tracer.emit({
-          type: TracerEventType.StartLoading,
-          id: this._signal.tracerMeta!.id,
-        });
-      } else if (setFalse & AsyncFlags.Pending && allChanged & AsyncFlags.Pending) {
-        tracer.emit({
-          type: TracerEventType.EndLoading,
-          id: this._signal.tracerMeta!.id,
-          value: isRelay(this) ? '...' : this._value,
-        });
+    if (IS_DEV) {
+      const tracer = getTracerProxy();
+      if (tracer !== undefined && this._signal !== undefined) {
+        if (setTrue & AsyncFlags.Pending && allChanged & AsyncFlags.Pending) {
+          tracer.emit({
+            type: TracerEventType.StartLoading,
+            id: this._signal.tracerMeta!.id,
+          });
+        } else if (setFalse & AsyncFlags.Pending && allChanged & AsyncFlags.Pending) {
+          tracer.emit({
+            type: TracerEventType.EndLoading,
+            id: this._signal.tracerMeta!.id,
+            value: isRelay(this) ? '...' : this._value,
+          });
+        }
       }
     }
   }
