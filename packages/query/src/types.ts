@@ -3,6 +3,43 @@ import { ReactivePromise } from 'signalium';
 import { HasRequiredKeys, Optionalize, Prettify, Signalize } from './type-utils.js';
 
 // ================================
+// Base URL and Request Types
+// ================================
+
+/**
+ * Flexible base URL value - can be a static string, a Signal, or a function.
+ * Functions are wrapped in reactiveSignal internally for memoization.
+ */
+export type BaseUrlValue = string | Signal<string> | (() => string);
+
+/**
+ * Extended RequestInit with additional query-specific options.
+ * This is what gets passed to the fetch function.
+ */
+export interface QueryRequestInit extends RequestInit {
+  baseUrl?: string;
+  searchParams?: URLSearchParams;
+}
+
+/**
+ * Request options that can be specified at the query definition level.
+ * These can override context-level settings.
+ */
+export interface QueryRequestOptions {
+  baseUrl?: BaseUrlValue;
+  headers?: HeadersInit;
+  credentials?: RequestCredentials;
+  mode?: RequestMode;
+  cache?: RequestCache;
+  redirect?: RequestRedirect;
+  referrer?: string;
+  referrerPolicy?: ReferrerPolicy;
+  integrity?: string;
+  keepalive?: boolean;
+  signal?: AbortSignal;
+}
+
+// ================================
 // Type Definitions
 // ================================
 

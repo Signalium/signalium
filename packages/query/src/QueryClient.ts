@@ -13,7 +13,17 @@
 
 import { context, type Context } from 'signalium';
 import { hashValue } from 'signalium/utils';
-import { QueryResult, EntityDef, RefetchInterval, NetworkMode, RetryConfig, TypeDef, UnionDef } from './types.js';
+import {
+  QueryResult,
+  EntityDef,
+  RefetchInterval,
+  NetworkMode,
+  RetryConfig,
+  TypeDef,
+  UnionDef,
+  BaseUrlValue,
+  QueryRequestInit,
+} from './types.js';
 import { EntityRecord, EntityStore } from './EntityMap.js';
 import { NetworkManager } from './NetworkManager.js';
 import { QueryResultImpl } from './QueryResult.js';
@@ -26,7 +36,8 @@ import { type Signal } from 'signalium';
 // -----------------------------------------------------------------------------
 
 export interface QueryContext {
-  fetch: typeof fetch;
+  fetch: (url: string, init?: QueryRequestInit) => Promise<Response>;
+  baseUrl?: BaseUrlValue;
   log?: {
     error?: (message: string, error?: unknown) => void;
     warn?: (message: string, error?: unknown) => void;
@@ -35,6 +46,17 @@ export interface QueryContext {
   };
   evictionMultiplier?: number;
   refetchMultiplier?: number;
+}
+
+/**
+ * Resolves a BaseUrlValue to a string.
+ * Handles static strings, Signals, and functions.
+ */
+export function resolveBaseUrl(baseUrl: BaseUrlValue | undefined): string | undefined {
+  if (baseUrl === undefined) return undefined;
+  if (typeof baseUrl === 'string') return baseUrl;
+  if (typeof baseUrl === 'function') return baseUrl();
+  return baseUrl.value; // Signal
 }
 
 export interface QueryCacheOptions {
