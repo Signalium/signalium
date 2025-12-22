@@ -10,6 +10,7 @@ import {
   EntityDef,
   StreamQueryFn,
   TypeDef,
+  QueryRequestOptions,
 } from './types.js';
 import {
   QueryCacheOptions,
@@ -20,6 +21,7 @@ import {
   StreamCacheOptions,
   QueryType,
   queryKeyFor,
+  resolveBaseUrl,
 } from './QueryClient.js';
 import { entity, t, ValidatorDef } from './typeDefs.js';
 import { createPathInterpolator } from './pathInterpolator.js';
@@ -93,6 +95,7 @@ interface RESTQueryDefinition<
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   searchParams?: SearchParams;
   response: ResponseDef;
+  requestOptions?: QueryRequestOptions;
   cache?: QueryCacheOptions;
   stream?: StreamEntityDef extends EntityDef | UnionDef<EntityDef[]>
     ? StreamOptions<SearchParams, StreamEntityDef>
@@ -114,6 +117,7 @@ interface InfiniteRESTQueryDefinition<
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   searchParams?: SearchParams;
   response: ResponseDef;
+  requestOptions?: QueryRequestOptions;
   cache?: QueryCacheOptions;
   stream?: StreamEntityDef extends EntityDef | UnionDef<EntityDef[]>
     ? StreamOptions<SearchParams, StreamEntityDef>
@@ -170,6 +174,7 @@ function buildQueryFn(
         path,
         method = 'GET',
         response,
+        requestOptions,
         cache,
         pagination,
         stream,
@@ -203,10 +208,18 @@ function buildQueryFn(
 
       const fetchFn = async (context: QueryContext, params: QueryParams) => {
         // Interpolate path params and append search params automatically
-        const url = interpolatePath(params);
+        const interpolatedPath = interpolatePath(params);
 
-        const response = await context.fetch(url, {
+        // Resolve baseUrl: query-level requestOptions overrides context-level
+        const baseUrl = resolveBaseUrl(requestOptions?.baseUrl) ?? resolveBaseUrl(context.baseUrl);
+        const fullUrl = baseUrl ? `${baseUrl}${interpolatedPath}` : interpolatedPath;
+
+        // Extract request init options (excluding baseUrl which is not a valid RequestInit property)
+        const { baseUrl: _baseUrl, ...fetchOptions } = requestOptions ?? {};
+
+        const response = await context.fetch(fullUrl, {
           method,
+          ...fetchOptions,
         });
 
         return response.json();

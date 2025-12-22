@@ -566,3 +566,202 @@ describe('REST Query API', () => {
     });
   });
 });
+
+describe('BaseUrl and RequestOptions', () => {
+  let mockFetch: ReturnType<typeof createMockFetch>;
+
+  beforeEach(() => {
+    mockFetch = createMockFetch();
+  });
+
+  describe('Context-level baseUrl', () => {
+    it('should prepend static baseUrl from context to request URL', async () => {
+      mockFetch.get('https://api.example.com/users/[id]', { id: 123, name: 'Test User' });
+
+      const store = new SyncQueryStore(new MemoryPersistentStore());
+      const client = new QueryClient(store, {
+        fetch: mockFetch as any,
+        baseUrl: 'https://api.example.com',
+      });
+
+      const getUser = query(() => ({
+        path: '/users/[id]',
+        response: {
+          id: t.number,
+          name: t.string,
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        const relay = getUser({ id: '123' });
+        await relay;
+
+        expect(mockFetch.calls[0].url).toBe('https://api.example.com/users/123');
+      });
+
+      client.destroy();
+    });
+
+    it('should support Signal-based baseUrl from context', async () => {
+      const { signal } = await import('signalium');
+
+      mockFetch.get('https://api-v1.example.com/users', { users: [] });
+      mockFetch.get('https://api-v2.example.com/users', { users: [] });
+
+      const baseUrlSignal = signal('https://api-v1.example.com');
+
+      const store = new SyncQueryStore(new MemoryPersistentStore());
+      const client = new QueryClient(store, {
+        fetch: mockFetch as any,
+        baseUrl: baseUrlSignal,
+      });
+
+      const listUsers = query(() => ({
+        path: '/users',
+        response: {
+          users: t.array(t.object({ id: t.number, name: t.string })),
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        const relay1 = listUsers();
+        await relay1;
+
+        expect(mockFetch.calls[0].url).toBe('https://api-v1.example.com/users');
+      });
+
+      // Update the signal and make another request
+      baseUrlSignal.value = 'https://api-v2.example.com';
+
+      await testWithClient(client, async () => {
+        const relay2 = listUsers();
+        await relay2;
+
+        expect(mockFetch.calls[1].url).toBe('https://api-v2.example.com/users');
+      });
+
+      client.destroy();
+    });
+
+    it('should support function-based baseUrl from context', async () => {
+      mockFetch.get('https://dynamic.example.com/users', { users: [] });
+
+      const store = new SyncQueryStore(new MemoryPersistentStore());
+      const client = new QueryClient(store, {
+        fetch: mockFetch as any,
+        baseUrl: () => 'https://dynamic.example.com',
+      });
+
+      const listUsers = query(() => ({
+        path: '/users',
+        response: {
+          users: t.array(t.object({ id: t.number, name: t.string })),
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        const relay = listUsers();
+        await relay;
+
+        expect(mockFetch.calls[0].url).toBe('https://dynamic.example.com/users');
+      });
+
+      client.destroy();
+    });
+  });
+
+  describe('Query-level requestOptions', () => {
+    it('should allow query-level baseUrl to override context baseUrl', async () => {
+      mockFetch.get('https://special-api.example.com/items', { items: [] });
+
+      const store = new SyncQueryStore(new MemoryPersistentStore());
+      const client = new QueryClient(store, {
+        fetch: mockFetch as any,
+        baseUrl: 'https://api.example.com',
+      });
+
+      const listItems = query(() => ({
+        path: '/items',
+        requestOptions: {
+          baseUrl: 'https://special-api.example.com',
+        },
+        response: {
+          items: t.array(t.object({ id: t.number })),
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        const relay = listItems();
+        await relay;
+
+        // Query-level baseUrl should override context baseUrl
+        expect(mockFetch.calls[0].url).toBe('https://special-api.example.com/items');
+      });
+
+      client.destroy();
+    });
+
+    it('should pass additional request options to fetch', async () => {
+      mockFetch.get('https://api.example.com/secure', { data: 'secret' });
+
+      const store = new SyncQueryStore(new MemoryPersistentStore());
+      const client = new QueryClient(store, {
+        fetch: mockFetch as any,
+        baseUrl: 'https://api.example.com',
+      });
+
+      const getSecureData = query(() => ({
+        path: '/secure',
+        requestOptions: {
+          credentials: 'include',
+          mode: 'cors',
+          headers: {
+            'X-Custom-Header': 'custom-value',
+          },
+        },
+        response: {
+          data: t.string,
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        const relay = getSecureData();
+        await relay;
+
+        expect(mockFetch.calls[0].options.credentials).toBe('include');
+        expect(mockFetch.calls[0].options.mode).toBe('cors');
+        expect(mockFetch.calls[0].options.headers).toEqual({
+          'X-Custom-Header': 'custom-value',
+        });
+      });
+
+      client.destroy();
+    });
+
+    it('should work without any baseUrl configured', async () => {
+      mockFetch.get('/users', { users: [] });
+
+      const store = new SyncQueryStore(new MemoryPersistentStore());
+      const client = new QueryClient(store, {
+        fetch: mockFetch as any,
+      });
+
+      const listUsers = query(() => ({
+        path: '/users',
+        response: {
+          users: t.array(t.object({ id: t.number, name: t.string })),
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        const relay = listUsers();
+        await relay;
+
+        // Should use relative path when no baseUrl
+        expect(mockFetch.calls[0].url).toBe('/users');
+      });
+
+      client.destroy();
+    });
+  });
+});
