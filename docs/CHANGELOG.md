@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.34
+
+### Patch Changes
+
+- Updated dependencies [f07ed0e]
+  - signalium@2.1.6
+
 ## 0.0.33
 
 ### Patch Changes
