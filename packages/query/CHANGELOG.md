@@ -1,5 +1,19 @@
 # @signalium/query
 
+## 1.0.14
+
+### Patch Changes
+
+- 7462836: Add mutation support
+- 84265ca: Add API resilience features:
+  - Array filtering for parse failures
+  - Undefined fallback for optional types
+  - `t.result` wrapper for handling and exposing parse errors directly
+- f07ed0e: Add separate dev-mode and prod-mode builds
+- 093cbb2: Add baseUrl and ability to override baseUrl + other request options
+- Updated dependencies [f07ed0e]
+  - signalium@2.1.6
+
 ## 1.0.13
 
 ### Patch Changes

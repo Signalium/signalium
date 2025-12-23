@@ -1,5 +1,11 @@
 # signalium
 
+## 2.1.6
+
+### Patch Changes
+
+- f07ed0e: Add separate dev-mode and prod-mode builds
+
 ## 2.1.5
 
 ### Patch Changes
