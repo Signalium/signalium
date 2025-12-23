@@ -4,6 +4,31 @@ import { createEntityProxy, mergeValues } from './proxy.js';
 import type { QueryClient } from './QueryClient.js';
 import { ValidatorDef } from './typeDefs.js';
 
+/**
+ * Deep clone an object, handling nested objects and arrays.
+ * Used for snapshotting entity data before optimistic updates.
+ */
+function deepClone<T>(value: T): T {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => deepClone(item)) as T;
+  }
+
+  if (value instanceof Date) {
+    return new Date(value.getTime()) as T;
+  }
+
+  // For plain objects, create a shallow copy and recursively clone values
+  const cloned = {} as Record<string, unknown>;
+  for (const key of Object.keys(value)) {
+    cloned[key] = deepClone((value as Record<string, unknown>)[key]);
+  }
+  return cloned as T;
+}
+
 export interface PreloadedEntityRecord {
   key: number;
   data: Record<string, unknown>;
@@ -16,9 +41,23 @@ export interface PreloadedEntityRecord {
 
 export type EntityRecord = Required<PreloadedEntityRecord>;
 
+/**
+ * Tracks pending optimistic updates for an entity.
+ * Includes the snapshot of original data for rollback.
+ */
+interface PendingOptimisticUpdate {
+  snapshot: Record<string, unknown>; // Original data before optimistic update
+}
+
 export class EntityStore {
   private map = new Map<number, PreloadedEntityRecord | EntityRecord>();
   private queryClient: QueryClient;
+
+  /**
+   * Tracks pending optimistic updates by entity key.
+   * Each entity can only have one pending update at a time (throws if concurrent).
+   */
+  private pendingOptimisticUpdates = new Map<number, PendingOptimisticUpdate>();
 
   constructor(queryClient: QueryClient) {
     this.queryClient = queryClient;
@@ -97,6 +136,81 @@ export class EntityStore {
     record.entityRefs = entityRefs;
 
     return record as EntityRecord;
+  }
+
+  // ======================================================
+  // Optimistic Update Tracking
+  // ======================================================
+
+  /**
+   * Register a pending optimistic update for an entity.
+   * Snapshots the current state and applies the optimistic update.
+   *
+   * @throws Error if the entity already has a pending optimistic update
+   */
+  registerOptimisticUpdate(entityKey: number, fields: Record<string, unknown>): void {
+    // Throw if entity already has pending optimistic updates
+    if (this.pendingOptimisticUpdates.has(entityKey)) {
+      throw new Error(
+        `Cannot apply optimistic update: entity ${entityKey} already has a pending optimistic update from another mutation.`,
+      );
+    }
+
+    const record = this.map.get(entityKey);
+    if (!record) {
+      // Entity doesn't exist yet - nothing to snapshot, just track
+      this.pendingOptimisticUpdates.set(entityKey, { snapshot: {} });
+      return;
+    }
+
+    // Deep snapshot the current data BEFORE applying the update
+    const snapshot = deepClone(record.data);
+
+    // Store the pending update with snapshot
+    this.pendingOptimisticUpdates.set(entityKey, { snapshot });
+
+    // Apply the optimistic update to the entity
+    record.data = mergeValues(record.data, fields);
+    record.cache.clear();
+
+    // Defer notification to avoid dirtying signal within reactive context
+    queueMicrotask(() => {
+      record.notifier.notify();
+    });
+  }
+
+  /**
+   * Revert the optimistic update for an entity, restoring its snapshot.
+   * Called when a mutation fails.
+   */
+  revertOptimisticUpdate(entityKey: number): void {
+    const pending = this.pendingOptimisticUpdates.get(entityKey);
+    if (!pending) {
+      return; // No pending update to revert
+    }
+
+    const record = this.map.get(entityKey);
+    if (record && Object.keys(pending.snapshot).length > 0) {
+      // Restore the snapshot
+      record.data = pending.snapshot;
+      record.cache.clear();
+
+      // Defer notification to avoid dirtying signal within reactive context
+      queueMicrotask(() => {
+        record.notifier.notify();
+      });
+    }
+
+    // Clear the pending update
+    this.pendingOptimisticUpdates.delete(entityKey);
+  }
+
+  /**
+   * Clear the optimistic update for an entity without reverting.
+   * Called when a mutation succeeds (the optimistic update is now confirmed).
+   */
+  clearOptimisticUpdates(entityKey: number): void {
+    this.pendingOptimisticUpdates.delete(entityKey);
   }
 
   private createEntityProxy(record: PreloadedEntityRecord, shape: EntityDef): Record<string, unknown> {

@@ -268,8 +268,19 @@ export function mergeValues<T extends Record<string, unknown>>(
 ): T {
   // Iterate over update properties
   for (const [key, value] of entries(update)) {
-    if (typeof value === 'object' && value !== null && !isArray(value) && !PROXY_ID.has(value)) {
-      mergeValues(target[key] as Record<string, unknown>, value as Record<string, unknown>);
+    const targetValue = target[key];
+    // Only merge if both value and targetValue are plain objects (not arrays or proxies)
+    if (
+      typeof value === 'object' &&
+      value !== null &&
+      !isArray(value) &&
+      !PROXY_ID.has(value) &&
+      typeof targetValue === 'object' &&
+      targetValue !== null &&
+      !isArray(targetValue) &&
+      !PROXY_ID.has(targetValue)
+    ) {
+      mergeValues(targetValue as Record<string, unknown>, value as Record<string, unknown>);
     } else {
       target[key] = value;
     }
