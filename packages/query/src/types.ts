@@ -506,3 +506,43 @@ export type StreamQueryFn<Params extends Record<string, unknown>, Response exten
     : (
         params?: Prettify<Optionalize<ParamsOrUndefined<Params>>>,
       ) => StreamQueryResult<Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>>;
+
+// ================================
+// Mutation Types
+// ================================
+
+/**
+ * Base mutation result interface extending ReactivePromise with mutation-specific properties.
+ */
+interface MutationResultExtensions<Request, Response> {
+  /**
+   * Reset the mutation state.
+   */
+  reset(): void;
+  /**
+   * Execute the mutation with the given request data.
+   */
+  run(request: Request): MutationResult<Request, Response>;
+}
+
+export type BaseMutationResult<Request, Response> = ReactivePromise<Response> &
+  MutationResultExtensions<Request, Response>;
+
+export type PendingMutationResult<Request, Response> = PendingReactivePromise<Response> &
+  MutationResultExtensions<Request, Response>;
+
+export type ReadyMutationResult<Request, Response> = ReadyReactivePromise<Response> &
+  MutationResultExtensions<Request, Response>;
+
+export type MutationResult<Request, Response> =
+  | PendingMutationResult<Request, Response>
+  | ReadyMutationResult<Request, Response>;
+
+/**
+ * A mutation function that returns a MutationResult.
+ * The mutation must be explicitly run via `.run(request)`.
+ */
+export type MutationFn<Request, Response extends ResponseTypeDef> = () => MutationResult<
+  Request,
+  Readonly<Prettify<ExtractTypesFromObjectOrEntity<Response>>>
+>;

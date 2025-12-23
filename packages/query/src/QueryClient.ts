@@ -23,10 +23,13 @@ import {
   UnionDef,
   BaseUrlValue,
   QueryRequestInit,
+  MutationResult,
 } from './types.js';
 import { EntityRecord, EntityStore } from './EntityMap.js';
 import { NetworkManager } from './NetworkManager.js';
 import { QueryResultImpl } from './QueryResult.js';
+import { MutationResultImpl } from './MutationResult.js';
+import { MutationDefinition } from './mutation.js';
 import { RefetchManager } from './RefetchManager.js';
 import { MemoryEvictionManager } from './MemoryEvictionManager.js';
 import { type Signal } from 'signalium';
@@ -253,6 +256,7 @@ export const queryKeyFor = (queryDef: AnyQueryDefinition<any, any, any>, params:
 export class QueryClient {
   private entityMap: EntityStore;
   queryInstances = new Map<number, QueryResultImpl<unknown>>();
+  mutationInstances = new Map<string, MutationResultImpl<unknown, unknown>>();
   memoryEvictionManager: MemoryEvictionManager;
   refetchManager: RefetchManager;
   networkManager: NetworkManager;
@@ -333,6 +337,56 @@ export class QueryClient {
     }
 
     return queryInstance as unknown as QueryResult<T, unknown, unknown>;
+  }
+
+  /**
+   * Gets or creates a MutationResult for the given mutation definition.
+   * Mutations are cached by their definition ID.
+   */
+  getMutation<Request, Response>(
+    mutationDef: MutationDefinition<Request, Response>,
+  ): MutationResult<Request, Response> {
+    const mutationId = mutationDef.id;
+
+    let mutationInstance = this.mutationInstances.get(mutationId) as MutationResultImpl<Request, Response> | undefined;
+
+    // Create a new instance if it doesn't exist
+    if (mutationInstance === undefined) {
+      mutationInstance = new MutationResultImpl(mutationDef, this);
+
+      // Store for future use
+      this.mutationInstances.set(mutationId, mutationInstance as MutationResultImpl<unknown, unknown>);
+    }
+
+    return mutationInstance as MutationResult<Request, Response>;
+  }
+
+  // ======================================================
+  // Optimistic Update Management
+  // ======================================================
+
+  /**
+   * Register pending optimistic updates for an entity.
+   * Called by MutationResult when applying optimistic updates.
+   */
+  registerOptimisticUpdate(entityKey: number, fields: Record<string, unknown>): void {
+    this.entityMap.registerOptimisticUpdate(entityKey, fields);
+  }
+
+  /**
+   * Clear pending optimistic updates for an entity without reverting.
+   * Called by MutationResult when mutation succeeds.
+   */
+  clearOptimisticUpdates(entityKey: number): void {
+    this.entityMap.clearOptimisticUpdates(entityKey);
+  }
+
+  /**
+   * Revert pending optimistic updates for an entity, restoring its snapshot.
+   * Called by MutationResult when mutation fails.
+   */
+  revertOptimisticUpdate(entityKey: number): void {
+    this.entityMap.revertOptimisticUpdate(entityKey);
   }
 
   hydrateEntity(key: number, shape: EntityDef): EntityRecord {
