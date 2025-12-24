@@ -1,35 +1,27 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
-import { QueryClient } from '../QueryClient.js';
-import { entity, t } from '../typeDefs.js';
-import { parseEntities } from '../parseEntities.js';
+import { describe, it, expect } from 'vitest';
+import { t, entity } from '../../typeDefs.js';
+import { parseEntities } from '../../parseEntities.js';
 import { hashValue } from 'signalium/utils';
-import { valueKeyFor, refIdsKeyFor, refCountKeyFor } from '../stores/shared.js';
+import { refIdsKeyFor, refCountKeyFor } from '../../stores/shared.js';
+import { setupParsingTests, getEntityKey, getDocument } from './test-utils.js';
 
-// Helper to get documents from kv store for testing
-async function getDocument(kv: any, key: number): Promise<unknown | undefined> {
-  const value = kv.getString(valueKeyFor(key));
-  return value ? JSON.parse(value) : undefined;
-}
+/**
+ * Entity Parsing Tests
+ *
+ * Tests for entity reference tracking and normalization:
+ * - Nested entities (parent-child relationships)
+ * - Entities in collections (arrays, records)
+ * - Shared/duplicate entity references
+ * - Complex nested structures
+ */
 
-describe('Parse Entities', () => {
-  let client: QueryClient;
-  let kv: any;
-  let store: any;
-
-  beforeEach(() => {
-    kv = new MemoryPersistentStore();
-    const queryStore = new SyncQueryStore(kv);
-    client = new QueryClient(queryStore, { fetch: fetch });
-    store = queryStore;
-  });
-
-  afterEach(() => {
-    client?.destroy();
-  });
+describe('Entity parsing', () => {
+  const getContext = setupParsingTests();
 
   describe('nested entities', () => {
     it('should track refs for deeply nested entities (A->B->C)', async () => {
+      const { client, kv } = getContext();
+
       const EntityC = entity(() => ({
         __typename: t.typename('EntityC'),
         id: t.id,
@@ -106,6 +98,8 @@ describe('Parse Entities', () => {
     });
 
     it('should track refs for sibling entities (A->[B,C])', async () => {
+      const { client, kv } = getContext();
+
       const EntityB = entity(() => ({
         __typename: t.typename('EntityB'),
         id: t.id,
@@ -172,6 +166,8 @@ describe('Parse Entities', () => {
 
   describe('entities in collections', () => {
     it('should track refs for entities in arrays', async () => {
+      const { client, kv } = getContext();
+
       const EntityItem = entity(() => ({
         __typename: t.typename('EntityItem'),
         id: t.id,
@@ -217,6 +213,8 @@ describe('Parse Entities', () => {
     });
 
     it('should track refs for entities in records', async () => {
+      const { client, kv } = getContext();
+
       const EntityValue = entity(() => ({
         __typename: t.typename('EntityValue'),
         id: t.id,
@@ -256,6 +254,8 @@ describe('Parse Entities', () => {
     });
 
     it('should handle nested entities in arrays', async () => {
+      const { client, kv } = getContext();
+
       const EntityChild = entity(() => ({
         __typename: t.typename('EntityChild'),
         id: t.id,
@@ -318,6 +318,8 @@ describe('Parse Entities', () => {
 
   describe('shared entities', () => {
     it('should handle same entity referenced multiple times', async () => {
+      const { client, kv } = getContext();
+
       const EntityShared = entity(() => ({
         __typename: t.typename('EntityShared'),
         id: t.id,
@@ -378,6 +380,8 @@ describe('Parse Entities', () => {
 
   describe('complex structures', () => {
     it('should handle entity with array of nested entities', async () => {
+      const { client, kv } = getContext();
+
       const EntityTag = entity(() => ({
         __typename: t.typename('EntityTag'),
         id: t.id,
