@@ -11,6 +11,7 @@ import {
   ObjectFieldTypeDef,
   UnionDef,
   TypeDef,
+  RecordDef,
 } from './types.js';
 import { typeMaskOf } from './utils.js';
 import { PreloadedEntityRecord } from './EntityMap.js';
@@ -86,7 +87,7 @@ export function parseArrayValue(array: unknown[], arrayShape: TypeDef, path: str
 
 export function parseRecordValue(
   record: Record<string, unknown>,
-  recordShape: ComplexTypeDef,
+  recordShape: ObjectFieldTypeDef,
   path: string,
   warn: WarnFn = noopWarn,
 ) {
@@ -250,6 +251,10 @@ export function parseValue(
 
       if (valueType === Mask.ARRAY) {
         return parseArrayValue(value as unknown[], propDef.shape as ComplexTypeDef, path, warn);
+      }
+
+      if ((propMask & Mask.RECORD) !== 0) {
+        return parseRecordValue(value as Record<string, unknown>, (propDef as RecordDef).shape, path, warn);
       }
 
       return parseObjectValue(value as Record<string, unknown>, propDef as ObjectDef | EntityDef, path, warn);
