@@ -6,13 +6,7 @@ import { entity, t } from '../typeDefs.js';
 import { query, queryKeyForFn, streamQuery } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
-import {
-  valueKeyFor,
-  refIdsKeyFor,
-  updatedAtKeyFor,
-  streamOrphanRefsKeyFor,
-  optimisticInsertRefsKeyFor,
-} from '../stores/shared.js';
+import { valueKeyFor, refIdsKeyFor, updatedAtKeyFor } from '../stores/shared.js';
 import type { QueryStore } from '../QueryClient.js';
 
 /**
@@ -221,105 +215,6 @@ describe('Cache Error Handling', () => {
     });
   });
 
-  describe('Extra data loading errors', () => {
-    it('should continue query execution if loading stream orphans fails', async () => {
-      const User = entity(() => ({
-        __typename: t.typename('User'),
-        id: t.id,
-        name: t.string,
-      }));
-
-      const getUser = query(() => ({
-        path: '/users/[id]',
-        response: { user: User },
-        stream: {
-          type: User,
-          subscribe: () => () => {},
-        },
-        cache: {
-          staleTime: 0, // Always stale to force refetch
-        },
-      }));
-
-      const queryKey = queryKeyForFn(getUser, { id: '1' });
-      const invalidEntityId = 99999; // Entity that doesn't exist
-
-      // Store cached value with invalid stream orphan reference
-      kv.setString(valueKeyFor(queryKey), JSON.stringify({ user: { __typename: 'User', id: 1, name: 'Cached' } }));
-      kv.setNumber(updatedAtKeyFor(queryKey), Date.now() - 10000); // Old timestamp to make it stale
-      kv.setBuffer(streamOrphanRefsKeyFor(queryKey), new Uint32Array([invalidEntityId]));
-
-      mockFetch.get('/users/[id]', {
-        user: { __typename: 'User', id: 1, name: 'Fresh User' },
-      });
-
-      await testWithClient(client, async () => {
-        const relay = getUser({ id: '1' });
-        // Wait for cache error to be handled and query to refetch
-        await sleep(50);
-        const result = await relay;
-
-        // Query should succeed despite stream orphan loading error
-        expect(result).toEqual({
-          user: { __typename: 'User', id: 1, name: 'Fresh User' },
-        });
-        expect(relay.value).toEqual({
-          user: { __typename: 'User', id: 1, name: 'Fresh User' },
-        });
-        expect(relay.isPending).toBe(false);
-        expect(relay.isRejected).toBe(false);
-      });
-    });
-
-    it('should continue query execution if loading optimistic inserts fails', async () => {
-      const User = entity(() => ({
-        __typename: t.typename('User'),
-        id: t.id,
-        name: t.string,
-      }));
-
-      const getUser = query(() => ({
-        path: '/users/[id]',
-        response: { user: User },
-        optimisticInserts: {
-          type: User,
-        },
-        cache: {
-          staleTime: 0, // Always stale to force refetch
-        },
-      }));
-
-      const queryKey = queryKeyForFn(getUser, { id: '1' });
-      const invalidEntityId = 99999; // Entity that doesn't exist
-
-      // Store cached value with invalid optimistic insert reference
-      kv.setString(valueKeyFor(queryKey), JSON.stringify({ user: { __typename: 'User', id: 1, name: 'Cached' } }));
-      kv.setNumber(updatedAtKeyFor(queryKey), Date.now() - 10000); // Old timestamp to make it stale
-      kv.setBuffer(optimisticInsertRefsKeyFor(queryKey), new Uint32Array([invalidEntityId]));
-
-      mockFetch.get('/users/[id]', {
-        user: { __typename: 'User', id: 1, name: 'Fresh User' },
-      });
-
-      await testWithClient(client, async () => {
-        const relay = getUser({ id: '1' });
-        // Wait for cache error to be handled and query to refetch
-        await sleep(50);
-        const result = await relay;
-
-        // Query should succeed despite optimistic insert loading error
-        expect(result).toEqual({
-          user: { __typename: 'User', id: 1, name: 'Fresh User' },
-        });
-        expect(relay.value).toEqual({
-          user: { __typename: 'User', id: 1, name: 'Fresh User' },
-        });
-        expect(relay.isPending).toBe(false);
-        expect(relay.isRejected).toBe(false);
-      });
-    });
-  });
-
   describe('Entity preloading errors', () => {
     it('should continue query execution if entity preloading fails', async () => {
       const User = entity(() => ({
@@ -382,9 +277,6 @@ describe('Cache Error Handling', () => {
             return () => {};
           },
         },
-        optimisticInserts: {
-          type: User,
-        },
       }));
 
       const queryKey = queryKeyForFn(getUser, { id: '1' });
@@ -393,8 +285,6 @@ describe('Cache Error Handling', () => {
       kv.setString(valueKeyFor(queryKey), 'invalid json{');
       kv.setNumber(updatedAtKeyFor(queryKey), Date.now());
       kv.setBuffer(refIdsKeyFor(queryKey), new Uint32Array([99999])); // Invalid entity
-      kv.setBuffer(streamOrphanRefsKeyFor(queryKey), new Uint32Array([88888])); // Invalid entity
-      kv.setBuffer(optimisticInsertRefsKeyFor(queryKey), new Uint32Array([77777])); // Invalid entity
 
       mockFetch.get('/users/[id]', {
         user: { __typename: 'User', id: 1, name: 'Fresh User' },
@@ -739,74 +629,6 @@ describe('Cache Error Handling', () => {
       // Store invalid JSON in cache
       kv.setString(valueKeyFor(queryKey), 'invalid json{');
       kv.setNumber(updatedAtKeyFor(queryKey), Date.now() - 10000); // Old timestamp
-
-      mockFetch.get('/users/[id]', {
-        user: { __typename: 'User', id: 1, name: 'Fresh User', email: 'fresh@example.com' },
-      });
-
-      await testWithClient(client, async () => {
-        const relay = getUser({ id: '1' });
-
-        // Query should fetch fresh data despite cache error
-        const result = await relay;
-        expect(result.user.name).toBe('Fresh User');
-
-        // Background stream should be subscribed despite cache error
-        await sleep(40);
-        expect(subscribeCallCount).toBe(1);
-        expect(updateCallback).toBeDefined();
-
-        // Stream update should be received
-        await sleep(20);
-        expect(subscribeCallCount).toBe(1);
-      });
-    });
-
-    it('should start background stream subscription correctly if loading extra data fails', async () => {
-      const User = entity(() => ({
-        __typename: t.typename('User'),
-        id: t.id,
-        name: t.string,
-        email: t.string,
-      }));
-
-      let subscribeCallCount = 0;
-      let updateCallback: ((update: any) => void) | undefined;
-
-      const getUser = query(() => ({
-        path: '/users/[id]',
-        response: { user: User },
-        stream: {
-          type: User,
-          subscribe: (context, params, onUpdate) => {
-            subscribeCallCount++;
-            updateCallback = onUpdate;
-
-            // Send stream update after a delay
-            setTimeout(() => {
-              onUpdate({
-                __typename: 'User',
-                id: 1,
-                name: 'Updated User',
-                email: 'updated@example.com',
-              });
-            }, 30);
-
-            return () => {};
-          },
-        },
-        cache: {
-          staleTime: 0, // Always stale to force refetch
-        },
-      }));
-
-      const queryKey = queryKeyForFn(getUser, { id: '1' });
-      const invalidEntityId = 99999; // Entity that doesn't exist
-
-      // Store cached value with invalid stream orphan reference
-      kv.setString(valueKeyFor(queryKey), JSON.stringify({ user: { __typename: 'User', id: 1, name: 'Cached' } }));
-      kv.setNumber(updatedAtKeyFor(queryKey), Date.now() - 10000); // Old timestamp
-      kv.setBuffer(streamOrphanRefsKeyFor(queryKey), new Uint32Array([invalidEntityId]));
 
       mockFetch.get('/users/[id]', {
         user: { __typename: 'User', id: 1, name: 'Fresh User', email: 'fresh@example.com' },

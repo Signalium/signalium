@@ -6,11 +6,9 @@ import {
   signal,
   ReadonlySignal,
   reactiveSignal,
-  Notifier,
-  notifier,
 } from 'signalium';
 import { setReactivePromise } from 'signalium/utils';
-import { EntityDef, BaseQueryResult, ComplexTypeDef, NetworkMode, QueryExtra } from './types.js';
+import { EntityDef, BaseQueryResult, ComplexTypeDef, NetworkMode } from './types.js';
 import { getProxyId, parseValue } from './proxy.js';
 import { parseEntities, parseObjectEntities } from './parseEntities.js';
 import { ValidatorDef } from './typeDefs.js';
@@ -25,299 +23,7 @@ import {
   extractParamsForKey,
   queryKeyFor,
 } from './QueryClient.js';
-import { CachedQuery, CachedQueryExtra } from './QueryClient.js';
-
-// ======================================================
-// QueryResultExtra - Manages stream orphans and optimistic inserts
-// ======================================================
-
-/**
- * Manages extra data for a query result: stream orphans and optimistic inserts.
- * Created lazily when first needed.
- */
-class QueryResultExtra {
-  private _streamOrphansNotifier: Notifier | undefined = undefined;
-  private _streamOrphans: Set<Record<string, unknown>> | undefined = undefined;
-
-  private _optimisticInsertsNotifier: Notifier | undefined = undefined;
-  private _optimisticInserts: Set<Record<string, unknown>> | undefined = undefined;
-
-  private onChanged: () => void;
-
-  constructor(onChanged: () => void) {
-    this.onChanged = onChanged;
-  }
-
-  private get streamOrphansNotifier(): Notifier {
-    return this._streamOrphansNotifier ?? (this._streamOrphansNotifier = notifier());
-  }
-
-  private get optimisticInsertsNotifier(): Notifier {
-    return this._optimisticInsertsNotifier ?? (this._optimisticInsertsNotifier = notifier());
-  }
-
-  get streamOrphans(): Set<Record<string, unknown>> {
-    return this._streamOrphans ?? (this._streamOrphans = new Set());
-  }
-
-  get optimisticInserts(): Set<Record<string, unknown>> {
-    return this._optimisticInserts ?? (this._optimisticInserts = new Set());
-  }
-
-  /**
-   * Returns the QueryExtra object for public API consumption.
-   * Consumes the notifiers to establish reactive tracking.
-   */
-  getExtra(): QueryExtra<unknown, unknown> {
-    this.streamOrphansNotifier.consume();
-    this.optimisticInsertsNotifier.consume();
-    return {
-      streamOrphans: this.streamOrphans,
-      optimisticInserts: this.optimisticInserts,
-    };
-  }
-
-  /**
-   * Add a stream orphan entity.
-   * Returns true if the orphan was added (not a duplicate).
-   */
-  addStreamOrphan(entity: Record<string, unknown>): boolean {
-    const orphans = this.streamOrphans;
-    const sizeBefore = orphans.size;
-    orphans.add(entity);
-
-    if (orphans.size !== sizeBefore) {
-      this.streamOrphansNotifier.notify();
-
-      // Check if this orphan was an optimistic insert - if so, remove it
-      const proxyId = getProxyId(entity);
-      if (proxyId !== undefined) {
-        this.removeOptimisticInsertById(proxyId);
-      }
-
-      this.onChanged();
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Add an optimistic insert entity.
-   * Returns true if the insert was added (not a duplicate).
-   */
-  addOptimisticInsert(entity: Record<string, unknown>): boolean {
-    const inserts = this.optimisticInserts;
-    const sizeBefore = inserts.size;
-    inserts.add(entity);
-
-    if (inserts.size !== sizeBefore) {
-      this.optimisticInsertsNotifier.notify();
-      this.onChanged();
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Remove an optimistic insert by its entity.
-   * Returns true if the insert was removed.
-   */
-  removeOptimisticInsert(entity: Record<string, unknown>): boolean {
-    const proxyId = getProxyId(entity);
-    if (proxyId === undefined) {
-      return false;
-    }
-
-    return this.removeOptimisticInsertById(proxyId);
-  }
-
-  /**
-   * Remove an optimistic insert by proxy ID.
-   */
-  private removeOptimisticInsertById(proxyId: number): boolean {
-    const inserts = this._optimisticInserts;
-    if (inserts === undefined || inserts.size === 0) {
-      return false;
-    }
-
-    for (const existing of inserts) {
-      if (getProxyId(existing) === proxyId) {
-        inserts.delete(existing);
-        this.optimisticInsertsNotifier.notify();
-        this.onChanged();
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Check if a proxy ID exists in stream orphans.
-   */
-  hasOrphanWithId(proxyId: number): boolean {
-    const orphans = this._streamOrphans;
-    if (orphans === undefined) {
-      return false;
-    }
-
-    for (const orphan of orphans) {
-      if (getProxyId(orphan) === proxyId) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Reconcile orphans and optimistic inserts against the main response entity refs.
-   * Removes any that now exist in the main response.
-   */
-  reconcile(allRefIds: Set<number>): void {
-    // Check stream orphans for entities that now exist in main response
-    const orphans = this._streamOrphans;
-    if (orphans !== undefined && orphans.size > 0) {
-      let orphansChanged = false;
-
-      for (const orphan of orphans) {
-        const entityRefId = getProxyId(orphan);
-        if (entityRefId !== undefined && allRefIds.has(entityRefId)) {
-          orphans.delete(orphan);
-          orphansChanged = true;
-        }
-      }
-
-      if (orphansChanged) {
-        this.streamOrphansNotifier.notify();
-      }
-    }
-
-    // Check optimistic inserts for entities that now exist in main response or stream orphans
-    const inserts = this._optimisticInserts;
-    if (inserts !== undefined && inserts.size > 0) {
-      let insertsChanged = false;
-
-      for (const insert of inserts) {
-        const entityRefId = getProxyId(insert);
-        if (entityRefId !== undefined) {
-          // Remove if entity is now in main response
-          if (allRefIds.has(entityRefId)) {
-            inserts.delete(insert);
-            insertsChanged = true;
-          }
-          // Also remove if entity is now in stream orphans
-          else if (orphans !== undefined && orphans.has(insert)) {
-            inserts.delete(insert);
-            insertsChanged = true;
-          }
-        }
-      }
-
-      if (insertsChanged) {
-        this.optimisticInsertsNotifier.notify();
-      }
-    }
-  }
-
-  /**
-   * Clear all stream orphans and optimistic inserts.
-   * Called on refetch.
-   */
-  clear(): void {
-    let changed = false;
-
-    if (this._streamOrphans !== undefined && this._streamOrphans.size > 0) {
-      this._streamOrphans = undefined;
-      this.streamOrphansNotifier.notify();
-      changed = true;
-    }
-
-    if (this._optimisticInserts !== undefined && this._optimisticInserts.size > 0) {
-      this._optimisticInserts = undefined;
-      this.optimisticInsertsNotifier.notify();
-      changed = true;
-    }
-
-    if (changed) {
-      this.onChanged();
-    }
-  }
-
-  /**
-   * Load extra data from cached values.
-   */
-  loadFromCache(
-    cachedExtra: CachedQueryExtra,
-    queryClient: QueryClient,
-    streamShape: EntityDef | undefined,
-    optimisticInsertsShape: EntityDef | undefined,
-  ): void {
-    if (cachedExtra.streamOrphanRefs && cachedExtra.streamOrphanRefs.length > 0 && streamShape) {
-      const orphans = this.streamOrphans;
-      for (const refId of cachedExtra.streamOrphanRefs) {
-        const entityRecord = queryClient.hydrateEntity(refId, streamShape);
-        orphans.add(entityRecord.proxy);
-      }
-    }
-
-    if (cachedExtra.optimisticInsertRefs && cachedExtra.optimisticInsertRefs.length > 0 && optimisticInsertsShape) {
-      const inserts = this.optimisticInserts;
-      for (const refId of cachedExtra.optimisticInsertRefs) {
-        const entityRecord = queryClient.hydrateEntity(refId, optimisticInsertsShape);
-        inserts.add(entityRecord.proxy);
-      }
-    }
-  }
-
-  /**
-   * Get extra data for persistence (converts Sets to arrays of entity ref IDs).
-   */
-  getForPersistence(): CachedQueryExtra | undefined {
-    const orphans = this._streamOrphans;
-    const inserts = this._optimisticInserts;
-
-    if ((orphans === undefined || orphans.size === 0) && (inserts === undefined || inserts.size === 0)) {
-      return undefined;
-    }
-
-    const extra: CachedQueryExtra = {};
-
-    if (orphans !== undefined && orphans.size > 0) {
-      extra.streamOrphanRefs = [];
-      for (const orphan of orphans) {
-        const refId = getProxyId(orphan);
-        if (refId !== undefined) {
-          extra.streamOrphanRefs.push(refId);
-        }
-      }
-    }
-
-    if (inserts !== undefined && inserts.size > 0) {
-      extra.optimisticInsertRefs = [];
-      for (const insert of inserts) {
-        const refId = getProxyId(insert);
-        if (refId !== undefined) {
-          extra.optimisticInsertRefs.push(refId);
-        }
-      }
-    }
-
-    return extra;
-  }
-
-  /**
-   * Check if there's any extra data.
-   */
-  get hasData(): boolean {
-    return (
-      (this._streamOrphans !== undefined && this._streamOrphans.size > 0) ||
-      (this._optimisticInserts !== undefined && this._optimisticInserts.size > 0)
-    );
-  }
-}
+import { CachedQuery } from './QueryClient.js';
 
 // ======================================================
 // QueryResultImpl
@@ -328,7 +34,7 @@ class QueryResultExtra {
  * like refetch, while forwarding all the base relay properties.
  * This class combines the old QueryInstance and QueryResultImpl into a single entity.
  */
-export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> {
+export class QueryResultImpl<T> implements BaseQueryResult<T> {
   def: AnyQueryDefinition<any, any, any>;
   queryKey: number; // Instance key (includes Signal identity)
   storageKey: number = -1; // Storage key (extracted values only)
@@ -361,12 +67,6 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
     }
 
     return relayState;
-  }
-
-  private _extra: QueryResultExtra | undefined = undefined;
-
-  private get extraData(): QueryResultExtra {
-    return this._extra ?? (this._extra = new QueryResultExtra(() => this.persistExtraData()));
   }
 
   private _nextPageParams: QueryParams | undefined | null = undefined;
@@ -623,9 +323,6 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
           }
         }
 
-        // Reconcile extra data against the main response
-        this.extraData.reconcile(allRefIds);
-
         return allRefIds;
       });
     }
@@ -653,18 +350,6 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
 
         // Set the cached reference IDs
         this.refIds = cached.refIds;
-
-        // Load extra data (stream orphans and optimistic inserts) BEFORE setting state.value
-        // because setting state.value resolves the relay
-        if (cached.extra) {
-          const def = this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>;
-          this.extraData.loadFromCache(
-            cached.extra,
-            this.queryClient,
-            def.stream?.shape as EntityDef | undefined,
-            def.optimisticInserts?.shape as EntityDef | undefined,
-          );
-        }
 
         // Set the value last - this resolves the relay
         const shape = this.def.shape;
@@ -756,13 +441,9 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
         // Use storage key for cache operations
         this.queryClient.saveQueryData(this.def, this.storageKey, parsedData, this.updatedAt);
       } else {
-        const allRefIds = this.getAllEntityRefs();
-        const proxyId = getProxyId(parsedData);
-
-        // Add to orphans if not in main response
-        if (proxyId !== undefined && !allRefIds.has(proxyId)) {
-          this.extraData.addStreamOrphan(parsedData);
-        }
+        // For Query/InfiniteQuery with stream: we still parse/apply updates into the entity map
+        // (via parseObjectEntities above), but we no longer track "orphans" on the query result.
+        void getProxyId(parsedData);
       }
     });
   }
@@ -824,14 +505,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
 
         // Cache the data (synchronous, fire-and-forget)
         // Use storage key for cache operations
-        this.queryClient.saveQueryData(
-          this.def,
-          this.storageKey,
-          queryData,
-          updatedAt,
-          entityRefs,
-          this.getExtraForPersistence(),
-        );
+        this.queryClient.saveQueryData(this.def, this.storageKey, queryData, updatedAt, entityRefs);
 
         // Update the timestamp
         this.updatedAt = Date.now();
@@ -920,11 +594,6 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
       .then(result => {
         this.relayState.value = result;
 
-        // Clear stream orphans and optimistic inserts on refetch
-        if (this._extra !== undefined) {
-          this._extra.clear();
-        }
-
         return result;
       })
       .catch((error: unknown) => {
@@ -1003,91 +672,6 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
 
   get hasNextPage(): boolean {
     return this.nextPageParams !== null;
-  }
-
-  get extra(): QueryExtra<unknown, unknown> {
-    this.getAllEntityRefs();
-    return this.extraData.getExtra();
-  }
-
-  /**
-   * Persist the current extra data to the store
-   */
-  private persistExtraData(): void {
-    if (this.updatedAt === undefined) {
-      return; // Query not initialized yet
-    }
-
-    const extra = this._extra?.getForPersistence();
-    // Use storage key for cache operations
-    this.queryClient.saveQueryData(
-      this.def,
-      this.storageKey,
-      this.relayState.value,
-      this.updatedAt,
-      this.refIds,
-      extra,
-    );
-  }
-
-  /**
-   * Get extra data for persistence (converts Sets to arrays of entity ref IDs)
-   */
-  private getExtraForPersistence(): CachedQueryExtra | undefined {
-    return this._extra?.getForPersistence();
-  }
-
-  /**
-   * Add an optimistic insert to the query result.
-   * The insert will be automatically removed when:
-   * - The entity appears in a refetched response
-   * - The entity appears as a stream orphan
-   * - refetch() is called
-   */
-  addOptimisticInsert(insert: Record<string, unknown>): void {
-    // Check that the query has optimisticInserts configured
-    const def = this.def as QueryDefinition<any, any, any> | InfiniteQueryDefinition<any, any, any>;
-    const optimisticInsertsConfig = def.optimisticInserts;
-
-    if (optimisticInsertsConfig === undefined) {
-      throw new Error(
-        'Query does not have optimisticInserts configured. Add optimisticInserts: { type: YourEntity } to the query definition.',
-      );
-    }
-
-    let proxyId = getProxyId(insert);
-    let parsedInsert = insert;
-
-    // If not already a proxy, parse it through the optimisticInserts shape
-    if (proxyId === undefined) {
-      parsedInsert = parseObjectEntities(insert, optimisticInsertsConfig.shape as EntityDef, this.queryClient);
-      proxyId = getProxyId(parsedInsert);
-
-      if (proxyId === undefined) {
-        throw new Error('Optimistic insert must be or produce an entity proxy');
-      }
-    }
-
-    // Check if already in main response
-    const allRefIds = this.getAllEntityRefs();
-    if (allRefIds.has(proxyId)) {
-      return; // Already in response, no-op
-    }
-
-    // Check if already in stream orphans
-    if (this.extraData.hasOrphanWithId(proxyId)) {
-      return; // Already in stream orphans, no-op
-    }
-
-    this.extraData.addOptimisticInsert(parsedInsert);
-  }
-
-  /**
-   * Remove an optimistic insert from the query result.
-   * This is a no-op if the insert has already been removed.
-   */
-  removeOptimisticInsert(insert: Record<string, unknown>): void {
-    this.extraData.removeOptimisticInsert(insert);
   }
 
   get isStale(): boolean {
