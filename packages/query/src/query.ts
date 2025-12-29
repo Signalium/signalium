@@ -73,10 +73,6 @@ export const queryKeyForFn = (fn: Function, params: unknown): number => {
   return queryKeyFor(queryDef(), params);
 };
 
-interface OptimisticInsertOptions<OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]>> {
-  type: OptimisticInsertDef;
-}
-
 /**
  * BIG TODO:
  *
@@ -89,7 +85,6 @@ interface RESTQueryDefinition<
   SearchParams extends SearchParamsDefinition,
   ResponseDef extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
   StreamEntityDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
-  OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 > {
   path: Path;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -99,9 +94,6 @@ interface RESTQueryDefinition<
   cache?: QueryCacheOptions;
   stream?: StreamEntityDef extends EntityDef | UnionDef<EntityDef[]>
     ? StreamOptions<SearchParams, StreamEntityDef>
-    : undefined;
-  optimisticInserts?: OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]>
-    ? OptimisticInsertOptions<OptimisticInsertDef>
     : undefined;
   debounce?: number;
 }
@@ -111,7 +103,6 @@ interface InfiniteRESTQueryDefinition<
   SearchParams extends SearchParamsDefinition,
   ResponseDef extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
   StreamEntityDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
-  OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 > {
   path: Path;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -121,9 +112,6 @@ interface InfiniteRESTQueryDefinition<
   cache?: QueryCacheOptions;
   stream?: StreamEntityDef extends EntityDef | UnionDef<EntityDef[]>
     ? StreamOptions<SearchParams, StreamEntityDef>
-    : undefined;
-  optimisticInserts?: OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]>
-    ? OptimisticInsertOptions<OptimisticInsertDef>
     : undefined;
   pagination: {
     getNextPageParams?(
@@ -178,9 +166,8 @@ function buildQueryFn(
         cache,
         pagination,
         stream,
-        optimisticInserts,
         debounce,
-      } = queryDefinitionBuilder() as InfiniteRESTQueryDefinition<any, any, any, any, any>;
+      } = queryDefinitionBuilder() as InfiniteRESTQueryDefinition<any, any, any, any>;
 
       const id = `${method}:${path}`;
 
@@ -258,36 +245,6 @@ function buildQueryFn(
         };
       }
 
-      // Process optimistic inserts configuration if provided
-      let optimisticInsertsConfig: any = undefined;
-      if (optimisticInserts) {
-        let insertShape: TypeDef;
-        let insertShapeKey: number;
-
-        const insertDef = optimisticInserts.type;
-
-        if (typeof insertDef === 'object') {
-          if (insertDef instanceof ValidatorDef) {
-            insertShape = insertDef as TypeDef;
-            insertShapeKey = insertDef.shapeKey;
-          } else if (insertDef instanceof Set) {
-            insertShape = insertDef;
-            insertShapeKey = hashValue(insertDef);
-          } else {
-            insertShape = t.object(insertDef as Record<string, ObjectFieldTypeDef>);
-            insertShapeKey = insertShape.shapeKey;
-          }
-        } else {
-          insertShape = insertDef as Mask;
-          insertShapeKey = hashValue(insertShape);
-        }
-
-        optimisticInsertsConfig = {
-          shape: insertShape,
-          shapeKey: insertShapeKey,
-        };
-      }
-
       queryDefinition = {
         type: pagination ? QueryType.InfiniteQuery : QueryType.Query,
         id,
@@ -297,7 +254,6 @@ function buildQueryFn(
         pagination,
         cache,
         stream: streamConfig,
-        optimisticInserts: optimisticInsertsConfig,
         debounce,
       };
     }
@@ -306,7 +262,7 @@ function buildQueryFn(
   };
 
   const queryFn = reactive(
-    (params: QueryParams | undefined): QueryResult<unknown, unknown, unknown> => {
+    (params: QueryParams | undefined): QueryResult<unknown> => {
       const queryClient = getContext(QueryClientContext);
 
       if (queryClient === undefined) {
@@ -330,10 +286,9 @@ export function query<
   SearchParams extends SearchParamsDefinition,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
   EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
-  OptimisticUpdateDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 >(
-  queryDefinitionBuilder: () => RESTQueryDefinition<Path, SearchParams, Response, EventDef, OptimisticUpdateDef>,
-): QueryFn<ExtractQueryParams<Path, SearchParams>, Response, EventDef, OptimisticUpdateDef> {
+  queryDefinitionBuilder: () => RESTQueryDefinition<Path, SearchParams, Response, EventDef>,
+): QueryFn<ExtractQueryParams<Path, SearchParams>, Response, EventDef> {
   return buildQueryFn(queryDefinitionBuilder as any) as any;
 }
 
@@ -342,16 +297,9 @@ export function infiniteQuery<
   SearchParams extends SearchParamsDefinition,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
   EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
-  OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 >(
-  queryDefinitionBuilder: () => InfiniteRESTQueryDefinition<
-    Path,
-    SearchParams,
-    Response,
-    EventDef,
-    OptimisticInsertDef
-  >,
-): InfiniteQueryFn<ExtractQueryParams<Path, SearchParams>, Response, EventDef, OptimisticInsertDef> {
+  queryDefinitionBuilder: () => InfiniteRESTQueryDefinition<Path, SearchParams, Response, EventDef>,
+): InfiniteQueryFn<ExtractQueryParams<Path, SearchParams>, Response, EventDef> {
   return buildQueryFn(queryDefinitionBuilder as any) as any;
 }
 
@@ -387,8 +335,7 @@ export function streamQuery<
     }
     return streamDefinition;
   };
-
-  const streamFn = reactive((params: QueryParams | undefined): QueryResult<unknown, unknown, unknown> => {
+  const streamFn = reactive((params: QueryParams | undefined): QueryResult<unknown> => {
     const queryClient = getContext(QueryClientContext);
 
     if (queryClient === undefined) {

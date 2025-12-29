@@ -1,13 +1,6 @@
 import { EntityStore } from '../EntityMap.js';
-import { CachedQuery, CachedQueryExtra, QueryDefinition, QueryStore } from '../QueryClient.js';
-import {
-  optimisticInsertRefsKeyFor,
-  refCountKeyFor,
-  refIdsKeyFor,
-  streamOrphanRefsKeyFor,
-  updatedAtKeyFor,
-  valueKeyFor,
-} from './shared.js';
+import { CachedQuery, QueryDefinition, QueryStore } from '../QueryClient.js';
+import { refCountKeyFor, refIdsKeyFor, updatedAtKeyFor, valueKeyFor } from './shared.js';
 
 export interface SyncPersistentStore {
   has(key: string): boolean;
@@ -94,36 +87,12 @@ export class SyncQueryStore implements QueryStore {
       this.preloadEntities(entityIds, entityMap);
     }
 
-    // Load extra data (stream orphans and optimistic inserts)
-    const streamOrphanRefs = this.kv.getBuffer(streamOrphanRefsKeyFor(queryKey));
-    const optimisticInsertRefs = this.kv.getBuffer(optimisticInsertRefsKeyFor(queryKey));
-
-    // Preload entities for extra data
-    if (streamOrphanRefs !== undefined) {
-      this.preloadEntities(streamOrphanRefs, entityMap);
-    }
-    if (optimisticInsertRefs !== undefined) {
-      this.preloadEntities(optimisticInsertRefs, entityMap);
-    }
-
-    let extra: CachedQueryExtra | undefined;
-    if (streamOrphanRefs !== undefined || optimisticInsertRefs !== undefined) {
-      extra = {};
-      if (streamOrphanRefs !== undefined) {
-        extra.streamOrphanRefs = Array.from(streamOrphanRefs);
-      }
-      if (optimisticInsertRefs !== undefined) {
-        extra.optimisticInsertRefs = Array.from(optimisticInsertRefs);
-      }
-    }
-
     this.activateQuery(queryDef, queryKey);
 
     return {
       value: JSON.parse(valueStr) as Record<string, unknown>,
       refIds: entityIds === undefined ? undefined : new Set(entityIds ?? []),
       updatedAt,
-      extra,
     };
   }
 
@@ -154,23 +123,9 @@ export class SyncQueryStore implements QueryStore {
     value: unknown,
     updatedAt: number,
     refIds?: Set<number>,
-    extra?: CachedQueryExtra,
   ): void {
     this.setValue(queryKey, value, refIds);
     this.kv.setNumber(updatedAtKeyFor(queryKey), updatedAt);
-
-    // Save extra data
-    if (extra?.streamOrphanRefs !== undefined && extra.streamOrphanRefs.length > 0) {
-      this.kv.setBuffer(streamOrphanRefsKeyFor(queryKey), new Uint32Array(extra.streamOrphanRefs));
-    } else {
-      this.kv.delete(streamOrphanRefsKeyFor(queryKey));
-    }
-
-    if (extra?.optimisticInsertRefs !== undefined && extra.optimisticInsertRefs.length > 0) {
-      this.kv.setBuffer(optimisticInsertRefsKeyFor(queryKey), new Uint32Array(extra.optimisticInsertRefs));
-    } else {
-      this.kv.delete(optimisticInsertRefsKeyFor(queryKey));
-    }
 
     this.activateQuery(queryDef, queryKey);
   }
