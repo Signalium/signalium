@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { t, entity } from '../../typeDefs.js';
 import { parseEntities } from '../../parseEntities.js';
 import { hashValue } from 'signalium/utils';
+import { Entity } from '../../proxy.js';
 import { refIdsKeyFor, refCountKeyFor } from '../../stores/shared.js';
 import { setupParsingTests, getEntityKey, getDocument } from './test-utils.js';
 
@@ -17,6 +18,33 @@ import { setupParsingTests, getEntityKey, getDocument } from './test-utils.js';
 
 describe('Entity parsing', () => {
   const getContext = setupParsingTests();
+
+  it('entity proxies should use Entity as their prototype', async () => {
+    const { client } = getContext();
+
+    const User = entity(() => ({
+      __typename: t.typename('User'),
+      id: t.id,
+      name: t.string,
+    }));
+
+    const QueryResult = t.object({
+      data: User,
+    });
+
+    const result = {
+      data: {
+        __typename: 'User',
+        id: 1,
+        name: 'Chris',
+      },
+    };
+
+    await parseEntities(result, QueryResult, client, new Set<number>());
+
+    expect(result.data).toBeInstanceOf(Entity);
+    expect(Object.getPrototypeOf(result.data)).toBe(Entity.prototype);
+  });
 
   describe('nested entities', () => {
     it('should track refs for deeply nested entities (A->B->C)', async () => {
