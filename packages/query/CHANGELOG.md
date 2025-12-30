@@ -1,5 +1,12 @@
 # @signalium/query
 
+## 1.0.15
+
+### Patch Changes
+
+- a95ed74: Ensure entities have a unique prototype
+- aa50869: Fix Record parsing and reorganize/expand parsing tests
+
 ## 1.0.14
 
 ### Patch Changes
