@@ -24,6 +24,10 @@ const isArray = Array.isArray;
 
 const PROXY_ID = new WeakMap();
 
+// Placeholder class used as the prototype for entity proxies.
+// This prevents them from being treated as plain objects in utilities like `hashValue()`.
+export class Entity {}
+
 function parseUnionValue(
   valueType: number,
   value: Record<string, unknown> | unknown[],
@@ -322,6 +326,10 @@ export function createEntityProxy(
   let proxy: Record<string, unknown>;
 
   const handler: ProxyHandler<object> = {
+    getPrototypeOf() {
+      return Entity.prototype;
+    },
+
     get(target, prop) {
       // Handle toJSON for serialization
       if (prop === 'toJSON') {

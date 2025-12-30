@@ -11,3 +11,4 @@ export type { Draft } from './utils.js';
 export { NetworkManager, NoOpNetworkManager, defaultNetworkManager, NetworkManagerContext } from './NetworkManager.js';
 export { MemoryEvictionManager, NoOpMemoryEvictionManager } from './MemoryEvictionManager.js';
 export { RefetchManager, NoOpRefetchManager } from './RefetchManager.js';
+export { Entity } from './proxy.js';
