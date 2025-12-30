@@ -243,7 +243,7 @@ export function parseValue(
         return value;
       }
 
-      if ((valueType & Mask.UNION) !== 0) {
+      if ((propMask & Mask.UNION) !== 0) {
         return parseUnionValue(
           valueType,
           value as Record<string, unknown> | unknown[],

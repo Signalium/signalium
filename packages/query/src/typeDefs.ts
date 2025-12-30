@@ -405,7 +405,7 @@ function defineUnion<T extends readonly TypeDef[]>(...types: T): UnionDef<T> {
 
   // It was a single complex type, so return the clone with the new mask and values
   if (shape === undefined) {
-    return ValidatorDef.cloneWith(definition as ValidatorDef<any>, mask | Mask.UNION, values) as UnionDef<T>;
+    return ValidatorDef.cloneWith(definition as ValidatorDef<any>, mask, values) as UnionDef<T>;
   }
 
   return new ValidatorDef(ComplexTypeDefKind.UNION, mask | Mask.UNION, shape, values) as UnionDef;
