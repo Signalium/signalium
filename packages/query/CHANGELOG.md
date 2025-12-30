@@ -1,5 +1,11 @@
 # @signalium/query
 
+## 1.0.16
+
+### Patch Changes
+
+- 4a3bc06: Fix union parseValue check
+
 ## 1.0.15
 
 ### Patch Changes
