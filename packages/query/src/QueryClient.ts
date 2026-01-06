@@ -111,10 +111,6 @@ export interface QueryDefinition<Params extends QueryParams | undefined, Result,
     shapeKey: number;
     subscribeFn: StreamSubscribeFn<Params, StreamType>;
   };
-  optimisticInserts?: {
-    shape: TypeDef;
-    shapeKey: number;
-  };
 }
 
 export interface InfiniteQueryDefinition<Params extends QueryParams | undefined, Result, StreamType> {
@@ -130,10 +126,6 @@ export interface InfiniteQueryDefinition<Params extends QueryParams | undefined,
     shape: TypeDef;
     shapeKey: number;
     subscribeFn: StreamSubscribeFn<Params, StreamType>;
-  };
-  optimisticInserts?: {
-    shape: TypeDef;
-    shapeKey: number;
   };
 }
 
@@ -159,12 +151,6 @@ export interface CachedQuery {
   value: unknown;
   refIds: Set<number> | undefined;
   updatedAt: number;
-  extra?: CachedQueryExtra;
-}
-
-export interface CachedQueryExtra {
-  streamOrphanRefs?: number[];
-  optimisticInsertRefs?: number[];
 }
 
 export interface QueryStore {
@@ -188,7 +174,6 @@ export interface QueryStore {
     value: unknown,
     updatedAt: number,
     refIds?: Set<number>,
-    extra?: CachedQueryExtra,
   ): void;
 
   /**
@@ -287,12 +272,11 @@ export class QueryClient {
     data: unknown,
     updatedAt: number,
     entityRefs?: Set<number>,
-    extra?: CachedQueryExtra,
   ): void {
     // Clone entityRefs to avoid mutation in setValue
     const clonedRefs = entityRefs !== undefined ? new Set(entityRefs) : undefined;
     // QueryStore expects the base definition structure
-    this.store.saveQuery(queryDef as any, queryKey, data, updatedAt, clonedRefs, extra);
+    this.store.saveQuery(queryDef as any, queryKey, data, updatedAt, clonedRefs);
   }
 
   activateQuery(queryInstance: QueryResultImpl<unknown>): void {
@@ -320,10 +304,7 @@ export class QueryClient {
    * Loads a query from the document store and returns a QueryResult
    * that triggers fetches and prepopulates with cached data
    */
-  getQuery<T>(
-    queryDef: AnyQueryDefinition<any, any, any>,
-    params: QueryParams | undefined,
-  ): QueryResult<T, unknown, unknown> {
+  getQuery<T>(queryDef: AnyQueryDefinition<any, any, any>, params: QueryParams | undefined): QueryResult<T> {
     const queryKey = queryKeyFor(queryDef, params);
 
     let queryInstance = this.queryInstances.get(queryKey) as QueryResultImpl<T> | undefined;
@@ -336,7 +317,7 @@ export class QueryClient {
       this.queryInstances.set(queryKey, queryInstance as QueryResultImpl<unknown>);
     }
 
-    return queryInstance as unknown as QueryResult<T, unknown, unknown>;
+    return queryInstance as unknown as QueryResult<T>;
   }
 
   /**
@@ -416,28 +397,3 @@ export class QueryClient {
 }
 
 export const QueryClientContext: Context<QueryClient | undefined> = context<QueryClient | undefined>(undefined);
-
-/**
- * Add an optimistic insert to a query result.
- * The insert will be automatically removed when:
- * - The entity appears in a refetched response
- * - The entity appears as a stream orphan
- * - refetch() is called
- */
-export function addOptimisticInsert<T extends Record<string, unknown>>(
-  query: QueryResult<unknown, unknown, unknown>,
-  insert: T,
-): void {
-  (query as unknown as QueryResultImpl<unknown>).addOptimisticInsert(insert);
-}
-
-/**
- * Remove an optimistic insert from a query result.
- * This is a no-op if the insert has already been removed.
- */
-export function removeOptimisticInsert<T extends Record<string, unknown>>(
-  query: QueryResult<unknown, unknown, unknown>,
-  insert: T,
-): void {
-  (query as unknown as QueryResultImpl<unknown>).removeOptimisticInsert(insert);
-}
