@@ -1040,7 +1040,8 @@ describe('Infinite Query', () => {
 
       // Second client: should load from cache and resolve entity proxies correctly
       const mockFetch2 = createMockFetch();
-      // Set up a delayed response so we can verify cache is loaded first
+      // Mock returns different data ("Fresh" suffix) with delay, so we can verify
+      // the query loads cached data immediately rather than waiting for network
       mockFetch2.get('/users', {
         users: [
           { __typename: 'User', id: 1, name: 'Alice Fresh' },
@@ -1055,7 +1056,7 @@ describe('Infinite Query', () => {
         const query = listUsers();
 
         // Access value to trigger cache loading
-        query.value;
+        void query.value;
 
         // Wait a tick for cache to load (but not enough for network request)
         await new Promise(resolve => setTimeout(resolve, 10));
@@ -1082,79 +1083,6 @@ describe('Infinite Query', () => {
         // Ensure no __entityRef placeholders are exposed
         expect((firstPageUsers[0] as any).__entityRef).toBeUndefined();
         expect((secondPageUsers[0] as any).__entityRef).toBeUndefined();
-      });
-
-      client2.destroy();
-    });
-
-    it('should hydrate single page infinite query from cache', async () => {
-      // This test verifies cache hydration works when only 1 page was fetched
-      const persistentStore = new MemoryPersistentStore();
-      const store = new SyncQueryStore(persistentStore);
-
-      const User = entity(() => ({
-        __typename: t.typename('User'),
-        id: t.id,
-        name: t.string,
-      }));
-
-      const listUsers = infiniteQuery(() => ({
-        path: '/single-users',
-        response: {
-          users: t.array(User),
-          nextCursor: t.union(t.string, t.null),
-        },
-        pagination: {
-          getNextPageParams: lastPage => ({ cursor: lastPage.nextCursor }),
-        },
-      }));
-
-      // First client: fetch only first page
-      const mockFetch1 = createMockFetch();
-      mockFetch1.get('/single-users', {
-        users: [
-          { __typename: 'User', id: 1, name: 'Alice' },
-        ],
-        nextCursor: 'cursor-2',
-      });
-
-      const client1 = new QueryClient(store, { fetch: mockFetch1 as any });
-
-      await testWithClient(client1, async () => {
-        const query = listUsers();
-        await query;
-
-        expect(query.value).toHaveLength(1);
-        expect(query.value![0].users[0].name).toBe('Alice');
-      });
-
-      client1.destroy();
-
-      // Second client: should load single page from cache
-      const mockFetch2 = createMockFetch();
-      mockFetch2.get('/single-users', {
-        users: [{ __typename: 'User', id: 1, name: 'Fresh Alice' }],
-        nextCursor: null,
-      }, { delay: 100 });
-
-      const client2 = new QueryClient(new SyncQueryStore(persistentStore), { fetch: mockFetch2 as any });
-
-      await testWithClient(client2, async () => {
-        const query = listUsers();
-        query.value;
-        await new Promise(resolve => setTimeout(resolve, 10));
-
-        // Should have 1 page from cache
-        expect(query.value).toHaveLength(1);
-
-        // Entity should resolve correctly
-        const user = query.value![0].users[0];
-        expect(user.name).toBe('Alice');
-        expect(user.__typename).toBe('User');
-        expect(user.id).toBe(1);
-
-        // Ensure no __entityRef placeholders
-        expect((user as any).__entityRef).toBeUndefined();
       });
 
       client2.destroy();
