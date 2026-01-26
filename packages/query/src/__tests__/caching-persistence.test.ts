@@ -42,7 +42,9 @@ function setDocument(kv: any, key: number, value: unknown, refIds?: Set<number>)
     }
   } else {
     // Convert to array for storage
-    const newRefArray = new Uint32Array(refIds);
+    // NOTE: Using spread operator because Hermes (React Native) doesn't correctly
+    // handle new Uint32Array(Set) - it produces an empty array instead of converting
+    const newRefArray = new Uint32Array([...refIds]);
     kv.setBuffer(refIdsKeyFor(key), newRefArray);
 
     // Build sets for comparison
@@ -973,6 +975,73 @@ describe('Caching and Persistence', () => {
         expect(await kv.getNumber(refCountKeyFor(postKey))).toBeUndefined();
         expect(await kv.getBuffer(refIdsKeyFor(postKey))).toBeUndefined();
       });
+    });
+  });
+
+  describe('Uint32Array Set Conversion', () => {
+    /**
+     * These tests document the correct pattern for converting a Set<number> to Uint32Array.
+     * Some JavaScript engines (notably Hermes in React Native) don't correctly handle
+     * new Uint32Array(Set) - they produce an empty array instead of converting the Set values.
+     *
+     * The correct pattern is: new Uint32Array([...set])
+     */
+
+    it('should convert Set to Uint32Array using spread operator (correct pattern)', () => {
+      const refIds = new Set([1, 2, 3, 42, 100]);
+
+      // This is the correct pattern that works in all JS engines
+      const result = new Uint32Array([...refIds]);
+
+      expect(result.length).toBe(5);
+      expect(Array.from(result).sort((a, b) => a - b)).toEqual([1, 2, 3, 42, 100]);
+    });
+
+    it('should convert Set to Uint32Array directly (may fail in some engines like Hermes)', () => {
+      const refIds = new Set([1, 2, 3, 42, 100]);
+
+      // This pattern works in V8/Node but NOT in Hermes (React Native)
+      // In Hermes, this produces an empty Uint32Array
+      // We test it here to document the behavior in V8 and catch if it ever changes
+      const result = new Uint32Array(refIds as any);
+
+      // In V8/Node this works correctly
+      expect(result.length).toBe(5);
+      expect(Array.from(result).sort((a, b) => a - b)).toEqual([1, 2, 3, 42, 100]);
+    });
+
+    it('should produce identical results for spread and direct conversion in V8', () => {
+      const refIds = new Set([10, 20, 30]);
+
+      const spreadResult = new Uint32Array([...refIds]);
+      const directResult = new Uint32Array(refIds as any);
+
+      // Both should produce the same result in V8/Node
+      expect(spreadResult.length).toBe(directResult.length);
+      expect(Array.from(spreadResult).sort((a, b) => a - b)).toEqual(
+        Array.from(directResult).sort((a, b) => a - b),
+      );
+    });
+
+    it('should handle empty Set correctly with spread operator', () => {
+      const refIds = new Set<number>();
+
+      const result = new Uint32Array([...refIds]);
+
+      expect(result.length).toBe(0);
+    });
+
+    it('should handle large Sets correctly with spread operator', () => {
+      const refIds = new Set<number>();
+      for (let i = 0; i < 1000; i++) {
+        refIds.add(i);
+      }
+
+      const result = new Uint32Array([...refIds]);
+
+      expect(result.length).toBe(1000);
+      expect(result[0]).toBe(0);
+      expect(result[999]).toBe(999);
     });
   });
 });
