@@ -397,7 +397,9 @@ export class AsyncQueryStore implements QueryStore {
     } else {
       // Convert the set to a Uint32Array and capture all the refIds before we
       // delete previous ones from the set
-      const newRefIds = new Uint32Array(refIds);
+      // NOTE: Using spread operator because Hermes (React Native) doesn't correctly
+      // handle new Uint32Array(Set) - it produces an empty array instead of converting
+      const newRefIds = new Uint32Array([...refIds]);
 
       if (prevRefIds !== undefined) {
         // Process new refs: increment if not in old

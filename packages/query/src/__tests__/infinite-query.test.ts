@@ -977,4 +977,119 @@ describe('Infinite Query', () => {
       });
     });
   });
+
+  describe('Cache Hydration', () => {
+    it('should hydrate infinite query with entities from cache after restart', async () => {
+      // Shared persistent store (simulates persistent storage that survives app restart)
+      const persistentStore = new MemoryPersistentStore();
+      const store = new SyncQueryStore(persistentStore);
+
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+      }));
+
+      const listUsers = infiniteQuery(() => ({
+        path: '/users',
+        searchParams: {
+          cursor: t.union(t.string, t.undefined),
+        },
+        response: {
+          users: t.array(User),
+          nextCursor: t.union(t.string, t.null),
+        },
+        pagination: {
+          getNextPageParams: lastPage => ({ cursor: lastPage.nextCursor }),
+        },
+      }));
+
+      // First client: fetch data and populate cache
+      const mockFetch1 = createMockFetch();
+      mockFetch1.get('/users', {
+        users: [
+          { __typename: 'User', id: 1, name: 'Alice' },
+          { __typename: 'User', id: 2, name: 'Bob' },
+        ],
+        nextCursor: 'cursor-2',
+      });
+      mockFetch1.get('/users', {
+        users: [
+          { __typename: 'User', id: 3, name: 'Charlie' },
+          { __typename: 'User', id: 4, name: 'Diana' },
+        ],
+        nextCursor: null,
+      });
+
+      const client1 = new QueryClient(store, { fetch: mockFetch1 as any });
+
+      await testWithClient(client1, async () => {
+        const query = listUsers();
+        await query;
+
+        // Fetch second page
+        await query.fetchNextPage();
+
+        expect(query.value).toHaveLength(2);
+        expect(query.value![0].users[0].name).toBe('Alice');
+        expect(query.value![1].users[0].name).toBe('Charlie');
+      });
+
+      // Destroy first client (simulates app restart)
+      client1.destroy();
+
+      // Second client: should load from cache and resolve entity proxies correctly
+      const mockFetch2 = createMockFetch();
+      // Mock returns different data ("Fresh" suffix) with delay, so we can verify
+      // the query loads cached data immediately rather than waiting for network
+      mockFetch2.get(
+        '/users',
+        {
+          users: [
+            { __typename: 'User', id: 1, name: 'Alice Fresh' },
+            { __typename: 'User', id: 2, name: 'Bob Fresh' },
+          ],
+          nextCursor: 'cursor-2',
+        },
+        { delay: 100 },
+      );
+
+      const client2 = new QueryClient(new SyncQueryStore(persistentStore), { fetch: mockFetch2 as any });
+
+      await testWithClient(client2, async () => {
+        const query = listUsers();
+
+        // Access value to trigger cache loading
+        void query.value;
+
+        // Wait a tick for cache to load (but not enough for network request)
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Should have loaded cached data with both pages
+        expect(query.value).toHaveLength(2);
+
+        // Entity proxies should resolve correctly (not be __entityRef placeholders)
+        const firstPageUsers = query.value![0].users;
+        const secondPageUsers = query.value![1].users;
+
+        // Verify first page entities resolve
+        expect(firstPageUsers[0].name).toBe('Alice');
+        expect(firstPageUsers[0].__typename).toBe('User');
+        expect(firstPageUsers[0].id).toBe(1);
+        expect(firstPageUsers[1].name).toBe('Bob');
+
+        // Verify second page entities resolve
+        expect(secondPageUsers[0].name).toBe('Charlie');
+        expect(secondPageUsers[0].__typename).toBe('User');
+        expect(secondPageUsers[0].id).toBe(3);
+        expect(secondPageUsers[1].name).toBe('Diana');
+
+        // Ensure no __entityRef placeholders are exposed
+        expect((firstPageUsers[0] as any).__entityRef).toBeUndefined();
+        expect((secondPageUsers[0] as any).__entityRef).toBeUndefined();
+      });
+
+      client2.destroy();
+    });
+  });
 });

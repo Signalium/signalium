@@ -42,7 +42,7 @@ function setDocument(kv: any, key: number, value: unknown, refIds?: Set<number>)
     }
   } else {
     // Convert to array for storage
-    const newRefArray = new Uint32Array(refIds);
+    const newRefArray = new Uint32Array([...refIds]);
     kv.setBuffer(refIdsKeyFor(key), newRefArray);
 
     // Build sets for comparison

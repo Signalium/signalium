@@ -668,10 +668,18 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
 
         // Set the value last - this resolves the relay
         const shape = this.def.shape;
-        state.value =
-          shape instanceof ValidatorDef
-            ? parseEntities(cached.value, shape as ComplexTypeDef, this.queryClient, new Set())
-            : parseValue(cached.value, shape, this.def.id);
+        if (shape instanceof ValidatorDef) {
+          // For infinite queries, cached.value is an array of pages - parse each page separately
+          if (this.def.type === QueryType.InfiniteQuery && Array.isArray(cached.value)) {
+            state.value = cached.value.map(page =>
+              parseEntities(page, shape as ComplexTypeDef, this.queryClient, new Set()),
+            );
+          } else {
+            state.value = parseEntities(cached.value, shape as ComplexTypeDef, this.queryClient, new Set());
+          }
+        } else {
+          state.value = parseValue(cached.value, shape, this.def.id);
+        }
       }
     } catch (error) {
       this.queryClient.deleteCachedQuery(this.storageKey);
