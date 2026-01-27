@@ -1042,13 +1042,17 @@ describe('Infinite Query', () => {
       const mockFetch2 = createMockFetch();
       // Mock returns different data ("Fresh" suffix) with delay, so we can verify
       // the query loads cached data immediately rather than waiting for network
-      mockFetch2.get('/users', {
-        users: [
-          { __typename: 'User', id: 1, name: 'Alice Fresh' },
-          { __typename: 'User', id: 2, name: 'Bob Fresh' },
-        ],
-        nextCursor: 'cursor-2',
-      }, { delay: 100 });
+      mockFetch2.get(
+        '/users',
+        {
+          users: [
+            { __typename: 'User', id: 1, name: 'Alice Fresh' },
+            { __typename: 'User', id: 2, name: 'Bob Fresh' },
+          ],
+          nextCursor: 'cursor-2',
+        },
+        { delay: 100 },
+      );
 
       const client2 = new QueryClient(new SyncQueryStore(persistentStore), { fetch: mockFetch2 as any });
 

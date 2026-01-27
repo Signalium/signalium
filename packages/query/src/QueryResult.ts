@@ -671,7 +671,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
         if (shape instanceof ValidatorDef) {
           // For infinite queries, cached.value is an array of pages - parse each page separately
           if (this.def.type === QueryType.InfiniteQuery && Array.isArray(cached.value)) {
-            state.value = cached.value.map((page) =>
+            state.value = cached.value.map(page =>
               parseEntities(page, shape as ComplexTypeDef, this.queryClient, new Set()),
             );
           } else {
