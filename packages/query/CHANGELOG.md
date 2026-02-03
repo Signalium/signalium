@@ -1,5 +1,11 @@
 # @signalium/query
 
+## 1.0.18
+
+### Patch Changes
+
+- 395730a: Fix entity cache keys to include shapeKey, preventing stale entity validation errors after schema changes
+
 ## 1.0.17
 
 ### Patch Changes
