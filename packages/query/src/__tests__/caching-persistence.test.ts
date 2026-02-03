@@ -277,7 +277,7 @@ describe('Caching and Persistence', () => {
         await relay;
 
         // Verify entity is persisted
-        const userKey = hashValue('User:1');
+        const userKey = hashValue(['User:1', User.shapeKey]);
         const entityData = getDocument(kv, userKey);
 
         expect(entityData).toBeDefined();
@@ -302,7 +302,7 @@ describe('Caching and Persistence', () => {
       }));
 
       // Pre-populate entity
-      const userKey = hashValue('User:1');
+      const userKey = hashValue(['User:1', User.shapeKey]);
       const userData = {
         __typename: 'User',
         id: 1,
@@ -389,7 +389,7 @@ describe('Caching and Persistence', () => {
         await relay;
 
         // Check reference count
-        const postKey = hashValue('Post:1');
+        const postKey = hashValue(['Post:1', Post.shapeKey]);
         const refCount = await kv.getNumber(refCountKeyFor(postKey));
 
         expect(refCount).toBe(1);
@@ -428,7 +428,7 @@ describe('Caching and Persistence', () => {
         await relay2;
 
         // Entity should have references from queries
-        const userKey = hashValue('User:1');
+        const userKey = hashValue(['User:1', User.shapeKey]);
         const refCount = await kv.getNumber(refCountKeyFor(userKey));
 
         expect(refCount).toBe(2);
@@ -459,7 +459,7 @@ describe('Caching and Persistence', () => {
 
         // Check that query and entity are stored
         const queryKey = queryKeyForFn(getUser, { id: '1' });
-        const userKey = hashValue('User:1');
+        const userKey = hashValue(['User:1', User.shapeKey]);
 
         const queryValue = getDocument(kv, queryKey);
         expect(queryValue).toBeDefined();
@@ -514,8 +514,8 @@ describe('Caching and Persistence', () => {
         const relay = getUser({ id: '1' });
         await relay;
 
-        const userKey = hashValue('User:1');
-        const postKey = hashValue('Post:42');
+        const userKey = hashValue(['User:1', User.shapeKey]);
+        const postKey = hashValue(['Post:42', Post.shapeKey]);
 
         // User should reference Post
         const userRefs = await kv.getBuffer(refIdsKeyFor(userKey));
@@ -559,9 +559,9 @@ describe('Caching and Persistence', () => {
         const query2Key = queryKeyForFn(getUser, { id: '2' });
         const query3Key = queryKeyForFn(getUser, { id: '3' });
 
-        const user1Key = hashValue('User:1');
-        const user2Key = hashValue('User:2');
-        const user3Key = hashValue('User:3');
+        const user1Key = hashValue(['User:1', User.shapeKey]);
+        const user2Key = hashValue(['User:2', User.shapeKey]);
+        const user3Key = hashValue(['User:3', User.shapeKey]);
 
         // Query 1 and 2 should exist
         expect(getDocument(kv, query1Key)).toBeDefined();
@@ -620,7 +620,7 @@ describe('Caching and Persistence', () => {
         const relay2 = getDetails({ id: '1' });
         await relay2;
 
-        const userKey = hashValue('User:1');
+        const userKey = hashValue(['User:1', User.shapeKey]);
 
         // User should have ref count of 2
         expect(await kv.getNumber(refCountKeyFor(userKey))).toBe(2);
@@ -688,9 +688,9 @@ describe('Caching and Persistence', () => {
         const relay1 = getUser({ id: '1' });
         await relay1;
 
-        const userKey = hashValue('User:1');
-        const postKey = hashValue('Post:10');
-        const tagKey = hashValue('Tag:100');
+        const userKey = hashValue(['User:1', User.shapeKey]);
+        const postKey = hashValue(['Post:10', Post.shapeKey]);
+        const tagKey = hashValue(['Tag:100', Tag.shapeKey]);
 
         // All entities should exist
         expect(getDocument(kv, userKey)).toBeDefined();
@@ -765,7 +765,7 @@ describe('Caching and Persistence', () => {
         const relay = getUser({ id: '1' });
         await relay;
 
-        const post10Key = hashValue('Post:10');
+        const post10Key = hashValue(['Post:10', Post.shapeKey]);
 
         // Post 10 should have 1 reference
         expect(await kv.getNumber(refCountKeyFor(post10Key))).toBe(1);
@@ -786,7 +786,7 @@ describe('Caching and Persistence', () => {
 
         const result = await relay.refetch();
 
-        const post20Key = hashValue('Post:20');
+        const post20Key = hashValue(['Post:20', Post.shapeKey]);
 
         expect(result).toEqual({
           user: {
@@ -833,7 +833,7 @@ describe('Caching and Persistence', () => {
 
         expect(result.posts.length).toEqual(3);
 
-        const postKey = hashValue('Post:1');
+        const postKey = hashValue(['Post:1', Post.shapeKey]);
         const queryKey = queryKeyForFn(getPosts, undefined);
 
         // Query should reference post 1
@@ -942,8 +942,8 @@ describe('Caching and Persistence', () => {
         const relay1 = getUser({ id: '1' });
         await relay1;
 
-        const userKey = hashValue('User:1');
-        const postKey = hashValue('Post:10');
+        const userKey = hashValue(['User:1', User.shapeKey]);
+        const postKey = hashValue(['Post:10', Post.shapeKey]);
 
         // Verify all keys exist for entities
         expect(await kv.getString(valueKeyFor(userKey))).toBeDefined();
@@ -973,6 +973,106 @@ describe('Caching and Persistence', () => {
         expect(await kv.getNumber(refCountKeyFor(postKey))).toBeUndefined();
         expect(await kv.getBuffer(refIdsKeyFor(postKey))).toBeUndefined();
       });
+    });
+  });
+
+  describe('Schema Evolution', () => {
+    it('should handle schema changes without validation errors', async () => {
+      // This test verifies the fix for the bug where entity cache keys didn't include shapeKey,
+      // causing stale entity validation errors after schema changes.
+
+      // First schema version - Position without predictionOutcome
+      const PositionV1 = entity(() => ({
+        __typename: t.typename('Position'),
+        id: t.id,
+        size: t.number,
+      }));
+
+      mockFetch.get('/positions/[id]', {
+        position: { __typename: 'Position', id: 123, size: 100 },
+      });
+
+      await testWithClient(client, async () => {
+        const getPositionV1 = query(() => ({
+          path: '/positions/[id]',
+          response: { position: PositionV1 },
+        }));
+
+        // Fetch with V1 schema
+        const relay1 = getPositionV1({ id: '123' });
+        const result1 = await relay1;
+
+        expect(result1.position.size).toBe(100);
+      });
+
+      // Second schema version - Position WITH predictionOutcome (new required field)
+      const Outcome = entity(() => ({
+        __typename: t.typename('Outcome'),
+        id: t.id,
+        value: t.string,
+      }));
+
+      const PositionV2 = entity(() => ({
+        __typename: t.typename('Position'),
+        id: t.id,
+        size: t.number,
+        predictionOutcome: Outcome,
+      }));
+
+      // Update mock to return data with the new field
+      mockFetch.get('/positions/[id]', {
+        position: {
+          __typename: 'Position',
+          id: 123,
+          size: 200,
+          predictionOutcome: { __typename: 'Outcome', id: 1, value: 'win' },
+        },
+      });
+
+      // Create a new client to simulate a fresh session (but same persistent store)
+      const client2 = new QueryClient(store, { fetch: mockFetch as any });
+
+      await testWithClient(client2, async () => {
+        const getPositionV2 = query(() => ({
+          path: '/positions/[id]',
+          response: { position: PositionV2 },
+        }));
+
+        // Fetch with V2 schema - this should NOT throw a validation error
+        // because the entity key now includes shapeKey, so V1 and V2 entities
+        // are stored separately
+        const relay2 = getPositionV2({ id: '123' });
+        const result2 = await relay2;
+
+        // Should have the new data with predictionOutcome
+        expect(result2.position.size).toBe(200);
+        expect(result2.position.predictionOutcome.value).toBe('win');
+      });
+
+      client2.destroy();
+    });
+
+    it('should store entities with different shapes separately', async () => {
+      // Define two versions of the same entity with different shapes
+      const UserV1 = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+      }));
+
+      const UserV2 = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+        email: t.string, // New field in V2
+      }));
+
+      // The keys should be different because shapeKey is included
+      const keyV1 = hashValue(['User:1', UserV1.shapeKey]);
+      const keyV2 = hashValue(['User:1', UserV2.shapeKey]);
+
+      expect(keyV1).not.toBe(keyV2);
+      expect(UserV1.shapeKey).not.toBe(UserV2.shapeKey);
     });
   });
 });

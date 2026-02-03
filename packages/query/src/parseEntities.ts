@@ -167,7 +167,7 @@ export function parseObjectEntities(
     }
 
     const desc = `${typename}:${id}`;
-    const key = hashValue(desc);
+    const key = hashValue([desc, entityDef.shapeKey]);
 
     // Add this entity's key to the parent's entityRefs (if provided)
     if (entityRefs !== undefined) {

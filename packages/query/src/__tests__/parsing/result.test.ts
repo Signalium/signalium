@@ -573,7 +573,7 @@ describe('t.result', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Config', 1);
+        const key = getEntityKey('Config', 1, Config.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();

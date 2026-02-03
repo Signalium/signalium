@@ -64,7 +64,7 @@ describe('Entity System', () => {
 
         // Verify entity is in the entity map
         const entityMap = getClientEntityMap(client);
-        const userKey = hashValue('User:1');
+        const userKey = hashValue(['User:1', User.shapeKey]);
         const entityRecord = entityMap.getEntity(userKey);
 
         expect(entityRecord).toBeDefined();
@@ -106,7 +106,7 @@ describe('Entity System', () => {
 
         // Verify caching by checking the entity's cache
         const entityMap = getClientEntityMap(client);
-        const userKey = hashValue('User:1');
+        const userKey = hashValue(['User:1', User.shapeKey]);
         const entityRecord = entityMap.getEntity(userKey);
 
         expect(entityRecord!.cache.has('name')).toBe(true);
@@ -378,7 +378,7 @@ describe('Entity System', () => {
       expect(entityRefs.size).toBe(1);
 
       // Result should be a proxy
-      const userKey = hashValue('User:1');
+      const userKey = hashValue(['User:1', User.shapeKey]);
       expect(entityRefs.has(userKey)).toBe(true);
     });
 

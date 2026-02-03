@@ -248,7 +248,7 @@ describe('t.boolean', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1);
+        const key = getEntityKey('User', 1, User.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -282,7 +282,7 @@ describe('t.boolean', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1);
+        const key = getEntityKey('User', 1, User.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -314,7 +314,7 @@ describe('t.boolean', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Survey', 1);
+        const key = getEntityKey('Survey', 1, Survey.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -345,7 +345,7 @@ describe('t.boolean', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Role', 1);
+        const key = getEntityKey('Role', 1, Role.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -376,7 +376,7 @@ describe('t.boolean', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Flag', 1);
+        const key = getEntityKey('Flag', 1, Flag.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();

@@ -221,7 +221,7 @@ describe('t.enum', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1);
+        const key = getEntityKey('User', 1, User.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -252,7 +252,7 @@ describe('t.enum', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Task', 1);
+        const key = getEntityKey('Task', 1, Task.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();

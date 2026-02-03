@@ -177,7 +177,7 @@ describe('t.format', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Event', 1);
+        const key = getEntityKey('Event', 1, Event.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -301,7 +301,7 @@ describe('t.format', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1);
+        const key = getEntityKey('User', 1, User.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -390,7 +390,7 @@ describe('t.format', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Task', 1);
+        const key = getEntityKey('Task', 1, Task.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -687,7 +687,7 @@ describe('t.format', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Product', 1);
+        const key = getEntityKey('Product', 1, Product.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -721,7 +721,7 @@ describe('t.format', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Sale', 1);
+        const key = getEntityKey('Sale', 1, Sale.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -749,9 +749,9 @@ describe('t.format', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key1 = getEntityKey('Item', 1);
-        const key2 = getEntityKey('Item', 2);
-        const key3 = getEntityKey('Item', 3);
+        const key1 = getEntityKey('Item', 1, Item.shapeKey);
+        const key2 = getEntityKey('Item', 2, Item.shapeKey);
+        const key3 = getEntityKey('Item', 3, Item.shapeKey);
 
         expect(await getDocument(kv, key1)).toBeDefined();
         expect(await getDocument(kv, key2)).toBeDefined();

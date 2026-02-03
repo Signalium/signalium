@@ -299,7 +299,7 @@ describe('t.array', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Post', 1);
+        const key = getEntityKey('Post', 1, Post.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -333,9 +333,9 @@ describe('t.array', () => {
         // Array pushes entity refs up
         expect(entityRefs.size).toBe(3);
 
-        const key1 = getEntityKey('Item', 1);
-        const key2 = getEntityKey('Item', 2);
-        const key3 = getEntityKey('Item', 3);
+        const key1 = getEntityKey('Item', 1, Item.shapeKey);
+        const key2 = getEntityKey('Item', 2, Item.shapeKey);
+        const key3 = getEntityKey('Item', 3, Item.shapeKey);
 
         expect(await getDocument(kv, key1)).toBeDefined();
         expect(await getDocument(kv, key2)).toBeDefined();
@@ -382,10 +382,10 @@ describe('t.array', () => {
 
         expect(entityRefs.size).toBe(2); // Parent entities
 
-        const keyP1 = getEntityKey('Parent', 1);
-        const keyP2 = getEntityKey('Parent', 2);
-        const keyC10 = getEntityKey('Child', 10);
-        const keyC20 = getEntityKey('Child', 20);
+        const keyP1 = getEntityKey('Parent', 1, Parent.shapeKey);
+        const keyP2 = getEntityKey('Parent', 2, Parent.shapeKey);
+        const keyC10 = getEntityKey('Child', 10, Child.shapeKey);
+        const keyC20 = getEntityKey('Child', 20, Child.shapeKey);
 
         // Parents should reference their children
         const refsP1 = await getEntityRefs(kv, keyP1);
@@ -423,7 +423,7 @@ describe('t.array', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1);
+        const key = getEntityKey('User', 1, User.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -454,7 +454,7 @@ describe('t.array', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Config', 1);
+        const key = getEntityKey('Config', 1, Config.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -485,7 +485,7 @@ describe('t.array', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Container', 1);
+        const key = getEntityKey('Container', 1, Container.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();

@@ -323,7 +323,7 @@ describe('t.number', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1);
+        const key = getEntityKey('User', 1, User.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -357,7 +357,7 @@ describe('t.number', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Product', 1);
+        const key = getEntityKey('Product', 1, Product.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -389,7 +389,7 @@ describe('t.number', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Stats', 1);
+        const key = getEntityKey('Stats', 1, Stats.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -420,7 +420,7 @@ describe('t.number', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Metrics', 1);
+        const key = getEntityKey('Metrics', 1, Metrics.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -451,7 +451,7 @@ describe('t.number', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Item', 1);
+        const key = getEntityKey('Item', 1, Item.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();

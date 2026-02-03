@@ -246,8 +246,8 @@ describe('GC Time', () => {
         await relay;
       });
 
-      const userKey = hashValue('User:1');
-      const postKey = hashValue('Post:10');
+      const userKey = hashValue(['User:1', User.shapeKey]);
+      const postKey = hashValue(['Post:10', Post.shapeKey]);
 
       // Entities should exist in store
       expect(kv.getString(valueKeyFor(userKey))).toBeDefined();
