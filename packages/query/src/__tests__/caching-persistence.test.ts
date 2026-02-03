@@ -1067,12 +1067,52 @@ describe('Caching and Persistence', () => {
         email: t.string, // New field in V2
       }));
 
-      // The keys should be different because shapeKey is included
+      // Fetch user with V1 schema
+      mockFetch.get('/users/v1', {
+        user: { __typename: 'User', id: 1, name: 'Alice' },
+      });
+
+      await testWithClient(client, async () => {
+        const getUserV1 = query(() => ({
+          path: '/users/v1',
+          response: { user: UserV1 },
+        }));
+
+        const relay1 = getUserV1();
+        await relay1;
+      });
+
+      // Fetch same user with V2 schema (different endpoint to avoid query cache)
+      mockFetch.get('/users/v2', {
+        user: { __typename: 'User', id: 1, name: 'Alice', email: 'alice@example.com' },
+      });
+
+      await testWithClient(client, async () => {
+        const getUserV2 = query(() => ({
+          path: '/users/v2',
+          response: { user: UserV2 },
+        }));
+
+        const relay2 = getUserV2();
+        await relay2;
+      });
+
+      // Both entities should exist in the store with different keys
       const keyV1 = hashValue(['User:1', UserV1.shapeKey]);
       const keyV2 = hashValue(['User:1', UserV2.shapeKey]);
 
       expect(keyV1).not.toBe(keyV2);
-      expect(UserV1.shapeKey).not.toBe(UserV2.shapeKey);
+
+      const entityV1 = getDocument(kv, keyV1);
+      const entityV2 = getDocument(kv, keyV2);
+
+      expect(entityV1).toBeDefined();
+      expect(entityV2).toBeDefined();
+      expect((entityV1 as any).name).toBe('Alice');
+      expect((entityV2 as any).name).toBe('Alice');
+      expect((entityV2 as any).email).toBe('alice@example.com');
+      // V1 entity should not have email field
+      expect((entityV1 as any).email).toBeUndefined();
     });
   });
 });
