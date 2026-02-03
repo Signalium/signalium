@@ -17,10 +17,11 @@ export async function getDocument(kv: MemoryPersistentStore, key: number): Promi
 }
 
 /**
- * Helper to get the entity key from typename and id
+ * Helper to get the entity key from typename, id, and shapeKey.
+ * The shapeKey can be obtained from an entity definition (e.g., User.shapeKey).
  */
-export function getEntityKey(typename: string, id: string | number): number {
-  return hashValue(`${typename}:${id}`);
+export function getEntityKey(typename: string, id: string | number, shapeKey: number): number {
+  return hashValue([`${typename}:${id}`, shapeKey]);
 }
 
 /**

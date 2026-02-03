@@ -316,10 +316,10 @@ describe('t.union', () => {
 
         expect(entityRefs.size).toBe(3);
 
-        const dogDoc1 = await getDocument(kv, getEntityKey('Dog', 1));
+        const dogDoc1 = await getDocument(kv, getEntityKey('Dog', 1, Dog.shapeKey));
         expect((dogDoc1 as any).breed).toBe('Lab');
 
-        const catDoc = await getDocument(kv, getEntityKey('Cat', 2));
+        const catDoc = await getDocument(kv, getEntityKey('Cat', 2, Cat.shapeKey));
         expect((catDoc as any).color).toBe('Orange');
       });
     });
@@ -373,7 +373,7 @@ describe('t.union', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const parentDoc = await getDocument(kv, getEntityKey('Parent', 1));
+        const parentDoc = await getDocument(kv, getEntityKey('Parent', 1, Parent.shapeKey));
         expect((parentDoc as any).child).toBeNull();
       });
     });
@@ -562,7 +562,7 @@ describe('t.union', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Item', 1);
+        const key = getEntityKey('Item', 1, Item.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -596,7 +596,7 @@ describe('t.union', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Dog', 1);
+        const key = getEntityKey('Dog', 1, Dog.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -634,11 +634,11 @@ describe('t.union', () => {
 
         expect(entityRefs.size).toBe(2);
 
-        const dogDoc = await getDocument(kv, getEntityKey('Dog', 1));
+        const dogDoc = await getDocument(kv, getEntityKey('Dog', 1, Dog.shapeKey));
         expect(dogDoc).toBeDefined();
         expect((dogDoc as any).__typename).toBe('Dog');
 
-        const catDoc = await getDocument(kv, getEntityKey('Cat', 2));
+        const catDoc = await getDocument(kv, getEntityKey('Cat', 2, Cat.shapeKey));
         expect(catDoc).toBeDefined();
         expect((catDoc as any).__typename).toBe('Cat');
       });
@@ -669,7 +669,7 @@ describe('t.union', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Config', 1);
+        const key = getEntityKey('Config', 1, Config.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -700,7 +700,7 @@ describe('t.union', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Container', 1);
+        const key = getEntityKey('Container', 1, Container.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -731,7 +731,7 @@ describe('t.union', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Settings', 1);
+        const key = getEntityKey('Settings', 1, Settings.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -775,8 +775,8 @@ describe('t.union', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const parentKey = getEntityKey('ParentA', 1);
-        const childKey = getEntityKey('Child', 10);
+        const parentKey = getEntityKey('ParentA', 1, ParentA.shapeKey);
+        const childKey = getEntityKey('Child', 10, Child.shapeKey);
 
         const parentRefs = await getEntityRefs(kv, parentKey);
         expect(parentRefs).toBeDefined();

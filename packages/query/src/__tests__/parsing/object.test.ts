@@ -339,7 +339,7 @@ describe('t.object', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1);
+        const key = getEntityKey('User', 1, User.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -379,8 +379,8 @@ describe('t.object', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const userKey = getEntityKey('User', 1);
-        const addressKey = getEntityKey('Address', 100);
+        const userKey = getEntityKey('User', 1, User.shapeKey);
+        const addressKey = getEntityKey('Address', 100, Address.shapeKey);
 
         const userRefs = await getEntityRefs(kv, userKey);
         expect(userRefs).toBeDefined();
@@ -427,9 +427,9 @@ describe('t.object', () => {
 
         expect(entityRefs.size).toBe(1);
 
-        const keyA = getEntityKey('EntityA', 1);
-        const keyB = getEntityKey('EntityB', 2);
-        const keyC = getEntityKey('EntityC', 3);
+        const keyA = getEntityKey('EntityA', 1, EntityA.shapeKey);
+        const keyB = getEntityKey('EntityB', 2, EntityB.shapeKey);
+        const keyC = getEntityKey('EntityC', 3, EntityC.shapeKey);
 
         // EntityA should reference both B and C
         const refsA = await getEntityRefs(kv, keyA);
@@ -471,7 +471,7 @@ describe('t.object', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Post', 1);
+        const key = getEntityKey('Post', 1, Post.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -511,7 +511,7 @@ describe('t.object', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Config', 1);
+        const key = getEntityKey('Config', 1, Config.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();

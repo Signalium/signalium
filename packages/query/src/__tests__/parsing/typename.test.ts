@@ -40,7 +40,7 @@ describe('t.typename', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1);
+        const key = getEntityKey('User', 1, User.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -66,7 +66,7 @@ describe('t.typename', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1);
+        const key = getEntityKey('User', 1, User.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -100,7 +100,7 @@ describe('t.typename', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Dog', 1);
+        const key = getEntityKey('Dog', 1, Dog.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -133,7 +133,7 @@ describe('t.typename', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Cat', 2);
+        const key = getEntityKey('Cat', 2, Cat.shapeKey);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -201,13 +201,13 @@ describe('t.typename', () => {
 
         expect(entityRefs.size).toBe(3);
 
-        const dog1 = await getDocument(kv, getEntityKey('Dog', 1));
+        const dog1 = await getDocument(kv, getEntityKey('Dog', 1, Dog.shapeKey));
         expect((dog1 as any).__typename).toBe('Dog');
 
-        const cat = await getDocument(kv, getEntityKey('Cat', 2));
+        const cat = await getDocument(kv, getEntityKey('Cat', 2, Cat.shapeKey));
         expect((cat as any).__typename).toBe('Cat');
 
-        const dog3 = await getDocument(kv, getEntityKey('Dog', 3));
+        const dog3 = await getDocument(kv, getEntityKey('Dog', 3, Dog.shapeKey));
         expect((dog3 as any).__typename).toBe('Dog');
       });
     });
@@ -243,10 +243,10 @@ describe('t.typename', () => {
 
         expect(entityRefs.size).toBe(2);
 
-        const dog = await getDocument(kv, getEntityKey('Dog', 1));
+        const dog = await getDocument(kv, getEntityKey('Dog', 1, Dog.shapeKey));
         expect((dog as any).__typename).toBe('Dog');
 
-        const cat = await getDocument(kv, getEntityKey('Cat', 2));
+        const cat = await getDocument(kv, getEntityKey('Cat', 2, Cat.shapeKey));
         expect((cat as any).__typename).toBe('Cat');
       });
     });
@@ -282,8 +282,8 @@ describe('t.typename', () => {
         const entityRefs = new Set<number>();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const userKey = getEntityKey('User', 1);
-        const addressKey = getEntityKey('Address', 100);
+        const userKey = getEntityKey('User', 1, User.shapeKey);
+        const addressKey = getEntityKey('Address', 100, Address.shapeKey);
 
         // User should reference Address
         const userRefs = await getEntityRefs(kv, userKey);

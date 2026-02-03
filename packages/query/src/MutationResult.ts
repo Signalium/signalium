@@ -238,7 +238,7 @@ export class MutationResultImpl<Request, Response> implements BaseMutationResult
 
       if (entityId !== undefined) {
         const typename = entityDef.typenameValue;
-        const entityKey = hashValue(`${typename}:${entityId}`);
+        const entityKey = hashValue([`${typename}:${entityId}`, entityDef.shapeKey]);
 
         // Register the optimistic update
         this.queryClient.registerOptimisticUpdate(entityKey, obj);

@@ -253,6 +253,7 @@ export class EntityStore {
     }
 
     const warn = this.queryClient.getContext().log?.warn;
-    return createEntityProxy(record.key, record, shape, entityRelay, this.queryClient, warn);
+    const desc = `${shape.typenameValue}:${id}`;
+    return createEntityProxy(record.key, record, shape, entityRelay, this.queryClient, warn, desc);
   }
 }
