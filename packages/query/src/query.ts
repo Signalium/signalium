@@ -141,7 +141,7 @@ interface InfiniteRESTQueryDefinition<
   debounce?: number;
 }
 
-// Original param extraction (preserved for backward compatibility)
+// Extracts all query parameters from path, search params, and body definition
 type ExtractQueryParams<
   Path extends string,
   SearchParams extends SearchParamsDefinition,
