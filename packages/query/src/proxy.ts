@@ -369,6 +369,58 @@ export function createEntityProxy(
         return value;
       }
 
+      // Handle __entityRef for nested entities loaded from cache
+      if (value && typeof value === 'object') {
+        // Handle single entity reference
+        if (typeof (value as { __entityRef?: number }).__entityRef === 'number') {
+          const nestedRecord = (scopeOwner as { hydrateEntity?: Function })?.hydrateEntity?.(
+            (value as { __entityRef: number }).__entityRef,
+            propDef,
+          );
+          if (nestedRecord && nestedRecord.proxy) {
+            cache.set(prop, nestedRecord.proxy);
+            return nestedRecord.proxy;
+          }
+        }
+
+        // Handle arrays that may contain __entityRef objects
+        if (Array.isArray(value) && value.length > 0) {
+          const firstItem = value[0];
+          if (
+            firstItem &&
+            typeof firstItem === 'object' &&
+            typeof (firstItem as { __entityRef?: number }).__entityRef === 'number'
+          ) {
+            // This is an array of entity references from cache
+            // For ArrayDef, the shape property is the item type definition directly
+            const arrayTypeDef = propDef as { mask?: number; shape?: TypeDef };
+            const isArrayType = typeof arrayTypeDef.mask === 'number' && (arrayTypeDef.mask & Mask.ARRAY) !== 0;
+            const itemDef = isArrayType ? arrayTypeDef.shape : undefined;
+
+            if (itemDef) {
+              const hydratedArray = value.map(item => {
+                if (
+                  item &&
+                  typeof item === 'object' &&
+                  typeof (item as { __entityRef?: number }).__entityRef === 'number'
+                ) {
+                  const nestedRecord = (scopeOwner as { hydrateEntity?: Function })?.hydrateEntity?.(
+                    (item as { __entityRef: number }).__entityRef,
+                    itemDef,
+                  );
+                  if (nestedRecord && nestedRecord.proxy) {
+                    return nestedRecord.proxy;
+                  }
+                }
+                return item;
+              });
+              cache.set(prop, hydratedArray);
+              return hydratedArray;
+            }
+          }
+        }
+      }
+
       const parsed = parseValue(value, propDef, `[[${desc}]].${prop as string}`, false, warn);
 
       cache.set(prop, parsed);

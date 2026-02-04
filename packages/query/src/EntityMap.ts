@@ -131,6 +131,11 @@ export class EntityStore {
       record.data = mergeValues(record.data, obj);
       record.notifier.notify();
       record.cache.clear();
+
+      // Create proxy if it doesn't exist (for preloaded entities from cache)
+      if (record.proxy === undefined) {
+        record.proxy = this.createEntityProxy(record, shape);
+      }
     }
 
     record.entityRefs = entityRefs;

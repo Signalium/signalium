@@ -351,6 +351,324 @@ describe('Caching and Persistence', () => {
     });
   });
 
+  describe('Cache-loaded Entity Proxy Resolution', () => {
+    it('should create proxy when setEntity merges into a preloaded entity record', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+      }));
+
+      const getUser = query(() => ({
+        path: '/users/[id]',
+        response: { user: User },
+      }));
+
+      // Pre-populate the entity in cache (simulating MMKV preload)
+      const userKey = hashValue('User:1');
+      const preloadedUserData = {
+        __typename: 'User',
+        id: 1,
+        name: 'Preloaded User',
+      };
+      setDocument(kv, userKey, preloadedUserData);
+
+      // Set up query result that references the preloaded entity
+      const queryResult = {
+        user: { __entityRef: userKey },
+      };
+      setQuery(kv, getUser, { id: '1' }, queryResult, new Set([userKey]));
+
+      // Mock fetch returns updated data
+      mockFetch.get(
+        '/users/[id]',
+        {
+          user: { __typename: 'User', id: 1, name: 'Fresh User' },
+        },
+        { delay: 100 },
+      );
+
+      await testWithClient(client, async () => {
+        const relay = getUser({ id: '1' });
+        // Force a pull to load from cache
+        relay.value;
+        await sleep();
+
+        // Access the user - this should work because setEntity creates a proxy
+        // when merging into the preloaded entity record
+        const result = relay.value;
+        expect(result).toBeDefined();
+        expect(result?.user).toBeDefined();
+
+        // The proxy should resolve properly
+        expect(result?.user.__typename).toBe('User');
+        expect(result?.user.id).toBe(1);
+        expect(result?.user.name).toBe('Preloaded User');
+      });
+    });
+
+    it('should resolve __entityRef values when accessing nested entity properties via proxy', async () => {
+      const Outcome = entity(() => ({
+        __typename: t.typename('Outcome'),
+        id: t.id,
+        name: t.string,
+      }));
+
+      const Position = entity(() => ({
+        __typename: t.typename('Position'),
+        id: t.id,
+        title: t.string,
+        outcome: Outcome,
+      }));
+
+      const getPosition = query(() => ({
+        path: '/positions/[id]',
+        response: { position: Position },
+      }));
+
+      // Pre-populate nested entity (Outcome) in cache
+      const outcomeKey = hashValue('Outcome:100');
+      const outcomeData = {
+        __typename: 'Outcome',
+        id: 100,
+        name: 'Cached Outcome',
+      };
+      setDocument(kv, outcomeKey, outcomeData);
+
+      // Pre-populate parent entity (Position) with __entityRef to nested entity
+      const positionKey = hashValue('Position:1');
+      const positionData = {
+        __typename: 'Position',
+        id: 1,
+        title: 'Test Position',
+        outcome: { __entityRef: outcomeKey }, // This is how nested entities are stored in cache
+      };
+      setDocument(kv, positionKey, positionData, new Set([outcomeKey]));
+
+      // Set up query result
+      const queryResult = {
+        position: { __entityRef: positionKey },
+      };
+      setQuery(kv, getPosition, { id: '1' }, queryResult, new Set([positionKey]));
+
+      // Mock fetch returns data with delay so we can test cache-loaded data first
+      mockFetch.get(
+        '/positions/[id]',
+        {
+          position: {
+            __typename: 'Position',
+            id: 1,
+            title: 'Fresh Position',
+            outcome: {
+              __typename: 'Outcome',
+              id: 100,
+              name: 'Fresh Outcome',
+            },
+          },
+        },
+        { delay: 100 },
+      );
+
+      await testWithClient(client, async () => {
+        const relay = getPosition({ id: '1' });
+        // Force a pull to load from cache
+        relay.value;
+        await sleep();
+
+        const result = relay.value;
+        expect(result).toBeDefined();
+        expect(result?.position).toBeDefined();
+
+        // Access the parent entity properties
+        expect(result?.position.__typename).toBe('Position');
+        expect(result?.position.id).toBe(1);
+        expect(result?.position.title).toBe('Test Position');
+
+        // Access nested entity via proxy - this should resolve the __entityRef
+        // and return the hydrated entity proxy, not the raw __entityRef object
+        const outcome = result?.position.outcome;
+        expect(outcome).toBeDefined();
+        expect(outcome!.__typename).toBe('Outcome');
+        expect(outcome!.id).toBe(100);
+        expect(outcome!.name).toBe('Cached Outcome');
+      });
+    });
+
+    it('should resolve deeply nested __entityRef values from cache', async () => {
+      const Tag = entity(() => ({
+        __typename: t.typename('Tag'),
+        id: t.id,
+        label: t.string,
+      }));
+
+      const Post = entity(() => ({
+        __typename: t.typename('Post'),
+        id: t.id,
+        content: t.string,
+        tag: Tag,
+      }));
+
+      const Author = entity(() => ({
+        __typename: t.typename('Author'),
+        id: t.id,
+        username: t.string,
+        latestPost: Post,
+      }));
+
+      const getAuthor = query(() => ({
+        path: '/authors/[id]',
+        response: { author: Author },
+      }));
+
+      // Pre-populate deeply nested entity (Tag) in cache
+      const tagKey = hashValue('Tag:999');
+      setDocument(kv, tagKey, {
+        __typename: 'Tag',
+        id: 999,
+        label: 'Cached Tag',
+      });
+
+      // Pre-populate middle entity (Post) with __entityRef to Tag
+      const postKey = hashValue('Post:50');
+      setDocument(
+        kv,
+        postKey,
+        {
+          __typename: 'Post',
+          id: 50,
+          content: 'Cached Post Content',
+          tag: { __entityRef: tagKey },
+        },
+        new Set([tagKey]),
+      );
+
+      // Pre-populate parent entity (Author) with __entityRef to Post
+      const authorKey = hashValue('Author:10');
+      setDocument(
+        kv,
+        authorKey,
+        {
+          __typename: 'Author',
+          id: 10,
+          username: 'cached_author',
+          latestPost: { __entityRef: postKey },
+        },
+        new Set([postKey]),
+      );
+
+      // Set up query result
+      setQuery(kv, getAuthor, { id: '10' }, { author: { __entityRef: authorKey } }, new Set([authorKey]));
+
+      // Mock fetch with delay
+      mockFetch.get(
+        '/authors/[id]',
+        {
+          author: {
+            __typename: 'Author',
+            id: 10,
+            username: 'fresh_author',
+            latestPost: {
+              __typename: 'Post',
+              id: 50,
+              content: 'Fresh Post',
+              tag: { __typename: 'Tag', id: 999, label: 'Fresh Tag' },
+            },
+          },
+        },
+        { delay: 100 },
+      );
+
+      await testWithClient(client, async () => {
+        const relay = getAuthor({ id: '10' });
+        relay.value;
+        await sleep();
+
+        const result = relay.value;
+        expect(result?.author).toBeDefined();
+
+        // Verify Author loaded from cache
+        expect(result?.author.username).toBe('cached_author');
+
+        // Verify nested Post loaded from cache with __entityRef resolution
+        const post = result?.author.latestPost;
+        expect(post).toBeDefined();
+        expect(post!.content).toBe('Cached Post Content');
+
+        // Verify deeply nested Tag loaded from cache with __entityRef resolution
+        const tag = post!.tag;
+        expect(tag).toBeDefined();
+        expect(tag!.label).toBe('Cached Tag');
+      });
+    });
+
+    it('should handle array of entities with __entityRef from cache', async () => {
+      const Item = entity(() => ({
+        __typename: t.typename('Item'),
+        id: t.id,
+        value: t.string,
+      }));
+
+      const Container = entity(() => ({
+        __typename: t.typename('Container'),
+        id: t.id,
+        items: t.array(Item),
+      }));
+
+      const getContainer = query(() => ({
+        path: '/containers/[id]',
+        response: { container: Container },
+      }));
+
+      // Pre-populate array items in cache
+      const item1Key = hashValue('Item:1');
+      const item2Key = hashValue('Item:2');
+      const item3Key = hashValue('Item:3');
+
+      setDocument(kv, item1Key, { __typename: 'Item', id: 1, value: 'Cached Item 1' });
+      setDocument(kv, item2Key, { __typename: 'Item', id: 2, value: 'Cached Item 2' });
+      setDocument(kv, item3Key, { __typename: 'Item', id: 3, value: 'Cached Item 3' });
+
+      // Pre-populate container with array of __entityRef
+      const containerKey = hashValue('Container:100');
+      setDocument(
+        kv,
+        containerKey,
+        {
+          __typename: 'Container',
+          id: 100,
+          items: [{ __entityRef: item1Key }, { __entityRef: item2Key }, { __entityRef: item3Key }],
+        },
+        new Set([item1Key, item2Key, item3Key]),
+      );
+
+      // Set up query result
+      setQuery(
+        kv,
+        getContainer,
+        { id: '100' },
+        { container: { __entityRef: containerKey } },
+        new Set([containerKey]),
+      );
+
+      mockFetch.get('/containers/[id]', { container: { __typename: 'Container', id: 100, items: [] } }, { delay: 100 });
+
+      await testWithClient(client, async () => {
+        const relay = getContainer({ id: '100' });
+        relay.value;
+        await sleep();
+
+        const result = relay.value;
+        expect(result?.container).toBeDefined();
+        expect(result?.container.items).toHaveLength(3);
+
+        // Each item in the array should be properly resolved from __entityRef
+        expect(result?.container.items[0].value).toBe('Cached Item 1');
+        expect(result?.container.items[1].value).toBe('Cached Item 2');
+        expect(result?.container.items[2].value).toBe('Cached Item 3');
+      });
+    });
+  });
+
   describe('Reference Counting', () => {
     it('should increment ref count when entity is referenced', async () => {
       const Post = entity(() => ({
