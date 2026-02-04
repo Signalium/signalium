@@ -136,7 +136,6 @@ describe('REST Query API', () => {
         expect(mockFetch.calls[0].options.method).toBe('POST');
       });
     });
-
   });
 
   describe('Error Handling', () => {

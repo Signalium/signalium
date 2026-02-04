@@ -150,7 +150,7 @@ type ExtractQueryParams<
   ExtractTypesFromObjectOrEntity<SearchParams> &
   (BodyDef extends Record<string, ObjectFieldTypeDef>
     ? { [K in keyof BodyDef]: ExtractType<BodyDef[K]> }
-    : {});
+    : Record<string, never>);
 
 interface StreamQueryDefinitionBuilder<
   Params extends SearchParamsDefinition,
@@ -380,7 +380,7 @@ function buildQueryFn(
 
 export function query<
   Path extends string,
-  SearchParams extends SearchParamsDefinition = {},
+  SearchParams extends SearchParamsDefinition = Record<string, never>,
   BodyDef extends BodyDefinition | undefined = undefined,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef = Record<string, ObjectFieldTypeDef>,
   EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
@@ -400,7 +400,7 @@ export function query<
 
 export function infiniteQuery<
   Path extends string,
-  SearchParams extends SearchParamsDefinition = {},
+  SearchParams extends SearchParamsDefinition = Record<string, never>,
   BodyDef extends BodyDefinition | undefined = undefined,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef = Record<string, ObjectFieldTypeDef>,
   EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,

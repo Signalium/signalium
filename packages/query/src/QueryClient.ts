@@ -221,22 +221,14 @@ export type MaybePromise<T> = T | Promise<T>;
  * Arrays and plain objects are NOT Signals.
  */
 function isSignal(value: unknown): value is Signal<any> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    'value' in value &&
-    '_id' in value
-  );
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && 'value' in value && '_id' in value;
 }
 
 /**
  * Extracts actual values from params that may contain Signals.
  * Supports primitive values, arrays, and objects (for body params).
  */
-export function extractParamsForKey(
-  params: QueryParams | undefined,
-): Record<string, unknown> | undefined {
+export function extractParamsForKey(params: QueryParams | undefined): Record<string, unknown> | undefined {
   if (params === undefined) {
     return undefined;
   }
