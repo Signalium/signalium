@@ -221,16 +221,8 @@ function buildQueryFn(
         shapeKey = hashValue(shape);
       }
 
-      // Create optimized path interpolator (parses template once)
-      const interpolatePath = createPathInterpolator(path);
-
-      // Extract path param names from the path template (e.g., [id] -> 'id')
-      const pathParamNames = new Set<string>();
-      const pathParamRegex = /\[([^\]]+)\]/g;
-      let pathMatch: RegExpExecArray | null;
-      while ((pathMatch = pathParamRegex.exec(path)) !== null) {
-        pathParamNames.add(pathMatch[1]);
-      }
+      // Create optimized path interpolator (parses template once, also gives us path param names)
+      const { interpolate: interpolatePath, pathParamNames } = createPathInterpolator(path);
 
       // Extract body field names from body definition (done once at definition time)
       const bodyParamNames = new Set<string>();
