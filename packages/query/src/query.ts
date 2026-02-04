@@ -397,7 +397,8 @@ function buildQueryFn(
 
 export function query<
   Path extends string,
-  SearchParams extends SearchParamsDefinition = Record<string, never>,
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  SearchParams extends SearchParamsDefinition = {},
   BodyDef extends BodyDefinition | undefined = undefined,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef = Record<string, ObjectFieldTypeDef>,
   EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
@@ -417,7 +418,8 @@ export function query<
 
 export function infiniteQuery<
   Path extends string,
-  SearchParams extends SearchParamsDefinition = Record<string, never>,
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  SearchParams extends SearchParamsDefinition = {},
   BodyDef extends BodyDefinition | undefined = undefined,
   Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef = Record<string, ObjectFieldTypeDef>,
   EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
