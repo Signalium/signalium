@@ -364,7 +364,7 @@ describe('Caching and Persistence', () => {
         response: { user: User },
       }));
 
-      // Pre-populate the entity in cache (simulating MMKV preload)
+      // Pre-populate the entity in cache (simulating persistent storage preload)
       const userKey = hashValue('User:1');
       const preloadedUserData = {
         __typename: 'User',
@@ -408,61 +408,61 @@ describe('Caching and Persistence', () => {
     });
 
     it('should resolve __entityRef values when accessing nested entity properties via proxy', async () => {
-      const Outcome = entity(() => ({
-        __typename: t.typename('Outcome'),
+      const Category = entity(() => ({
+        __typename: t.typename('Category'),
         id: t.id,
         name: t.string,
       }));
 
-      const Position = entity(() => ({
-        __typename: t.typename('Position'),
+      const Article = entity(() => ({
+        __typename: t.typename('Article'),
         id: t.id,
         title: t.string,
-        outcome: Outcome,
+        category: Category,
       }));
 
-      const getPosition = query(() => ({
-        path: '/positions/[id]',
-        response: { position: Position },
+      const getArticle = query(() => ({
+        path: '/articles/[id]',
+        response: { article: Article },
       }));
 
-      // Pre-populate nested entity (Outcome) in cache
-      const outcomeKey = hashValue('Outcome:100');
-      const outcomeData = {
-        __typename: 'Outcome',
+      // Pre-populate nested entity (Category) in cache
+      const categoryKey = hashValue('Category:100');
+      const categoryData = {
+        __typename: 'Category',
         id: 100,
-        name: 'Cached Outcome',
+        name: 'Cached Category',
       };
-      setDocument(kv, outcomeKey, outcomeData);
+      setDocument(kv, categoryKey, categoryData);
 
-      // Pre-populate parent entity (Position) with __entityRef to nested entity
-      const positionKey = hashValue('Position:1');
-      const positionData = {
-        __typename: 'Position',
+      // Pre-populate parent entity (Article) with __entityRef to nested entity
+      const articleKey = hashValue('Article:1');
+      const articleData = {
+        __typename: 'Article',
         id: 1,
-        title: 'Test Position',
-        outcome: { __entityRef: outcomeKey }, // This is how nested entities are stored in cache
+        title: 'Test Article',
+        category: { __entityRef: categoryKey }, // This is how nested entities are stored in cache
       };
-      setDocument(kv, positionKey, positionData, new Set([outcomeKey]));
+      setDocument(kv, articleKey, articleData, new Set([categoryKey]));
 
       // Set up query result
       const queryResult = {
-        position: { __entityRef: positionKey },
+        article: { __entityRef: articleKey },
       };
-      setQuery(kv, getPosition, { id: '1' }, queryResult, new Set([positionKey]));
+      setQuery(kv, getArticle, { id: '1' }, queryResult, new Set([articleKey]));
 
       // Mock fetch returns data with delay so we can test cache-loaded data first
       mockFetch.get(
-        '/positions/[id]',
+        '/articles/[id]',
         {
-          position: {
-            __typename: 'Position',
+          article: {
+            __typename: 'Article',
             id: 1,
-            title: 'Fresh Position',
-            outcome: {
-              __typename: 'Outcome',
+            title: 'Fresh Article',
+            category: {
+              __typename: 'Category',
               id: 100,
-              name: 'Fresh Outcome',
+              name: 'Fresh Category',
             },
           },
         },
@@ -470,27 +470,27 @@ describe('Caching and Persistence', () => {
       );
 
       await testWithClient(client, async () => {
-        const relay = getPosition({ id: '1' });
+        const relay = getArticle({ id: '1' });
         // Force a pull to load from cache
         relay.value;
         await sleep();
 
         const result = relay.value;
         expect(result).toBeDefined();
-        expect(result?.position).toBeDefined();
+        expect(result?.article).toBeDefined();
 
         // Access the parent entity properties
-        expect(result?.position.__typename).toBe('Position');
-        expect(result?.position.id).toBe(1);
-        expect(result?.position.title).toBe('Test Position');
+        expect(result?.article.__typename).toBe('Article');
+        expect(result?.article.id).toBe(1);
+        expect(result?.article.title).toBe('Test Article');
 
         // Access nested entity via proxy - this should resolve the __entityRef
         // and return the hydrated entity proxy, not the raw __entityRef object
-        const outcome = result?.position.outcome;
-        expect(outcome).toBeDefined();
-        expect(outcome!.__typename).toBe('Outcome');
-        expect(outcome!.id).toBe(100);
-        expect(outcome!.name).toBe('Cached Outcome');
+        const category = result?.article.category;
+        expect(category).toBeDefined();
+        expect(category!.__typename).toBe('Category');
+        expect(category!.id).toBe(100);
+        expect(category!.name).toBe('Cached Category');
       });
     });
 
