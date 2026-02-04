@@ -642,13 +642,7 @@ describe('Caching and Persistence', () => {
       );
 
       // Set up query result
-      setQuery(
-        kv,
-        getContainer,
-        { id: '100' },
-        { container: { __entityRef: containerKey } },
-        new Set([containerKey]),
-      );
+      setQuery(kv, getContainer, { id: '100' }, { container: { __entityRef: containerKey } }, new Set([containerKey]));
 
       mockFetch.get('/containers/[id]', { container: { __typename: 'Container', id: 100, items: [] } }, { delay: 100 });
 

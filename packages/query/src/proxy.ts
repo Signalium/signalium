@@ -371,9 +371,14 @@ export function createEntityProxy(
 
       // Handle __entityRef for nested entities loaded from cache
       if (value && typeof value === 'object') {
+        type ScopeOwnerWithHydrate = {
+          hydrateEntity?: (ref: number, def: ObjectFieldTypeDef) => { proxy?: unknown } | undefined;
+        };
+        const ownerWithHydrate = scopeOwner as ScopeOwnerWithHydrate;
+
         // Handle single entity reference
         if (typeof (value as { __entityRef?: number }).__entityRef === 'number') {
-          const nestedRecord = (scopeOwner as { hydrateEntity?: Function })?.hydrateEntity?.(
+          const nestedRecord = ownerWithHydrate.hydrateEntity?.(
             (value as { __entityRef: number }).__entityRef,
             propDef,
           );
@@ -404,9 +409,9 @@ export function createEntityProxy(
                   typeof item === 'object' &&
                   typeof (item as { __entityRef?: number }).__entityRef === 'number'
                 ) {
-                  const nestedRecord = (scopeOwner as { hydrateEntity?: Function })?.hydrateEntity?.(
+                  const nestedRecord = ownerWithHydrate.hydrateEntity?.(
                     (item as { __entityRef: number }).__entityRef,
-                    itemDef,
+                    itemDef as ObjectFieldTypeDef,
                   );
                   if (nestedRecord && nestedRecord.proxy) {
                     return nestedRecord.proxy;
