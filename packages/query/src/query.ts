@@ -224,6 +224,14 @@ function buildQueryFn(
       // Create optimized path interpolator (parses template once)
       const interpolatePath = createPathInterpolator(path);
 
+      // Extract path param names from the path template (e.g., [id] -> 'id')
+      const pathParamNames = new Set<string>();
+      const pathParamRegex = /\[([^\]]+)\]/g;
+      let pathMatch: RegExpExecArray | null;
+      while ((pathMatch = pathParamRegex.exec(path)) !== null) {
+        pathParamNames.add(pathMatch[1]);
+      }
+
       // Extract body field names from body definition (done once at definition time)
       const bodyParamNames = new Set<string>();
       const hasBody =
@@ -231,6 +239,22 @@ function buildQueryFn(
       if (hasBody) {
         for (const key of Object.keys(body as Record<string, ObjectFieldTypeDef>)) {
           bodyParamNames.add(key);
+        }
+      }
+
+      // Check for conflicts between body field names and path param names
+      if (hasBody) {
+        const conflicts: string[] = [];
+        for (const bodyKey of bodyParamNames) {
+          if (pathParamNames.has(bodyKey)) {
+            conflicts.push(bodyKey);
+          }
+        }
+        if (conflicts.length > 0) {
+          throw new Error(
+            `Query definition error: Body field name(s) [${conflicts.join(', ')}] conflict with path parameter(s) in "${path}". ` +
+              `Body fields and path parameters cannot share the same name. Please rename the body field(s) to avoid this conflict.`,
+          );
         }
       }
 

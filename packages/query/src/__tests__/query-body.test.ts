@@ -592,5 +592,47 @@ describe('Query Body Support', () => {
         expect(body.items).toHaveLength(3);
       });
     });
+
+    it('should throw error when body field name conflicts with path param name', async () => {
+      const conflictingQuery = query(() => ({
+        path: '/users/[id]/update',
+        method: 'POST',
+        body: {
+          id: t.string, // Conflicts with path param [id]
+          name: t.string,
+        },
+        response: {
+          success: t.boolean,
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        expect(() => {
+          // The query function is lazy, so we need to invoke it to trigger the error
+          conflictingQuery({ id: '123', name: 'test' });
+        }).toThrow(/Body field name\(s\) \[id\] conflict with path parameter\(s\)/);
+      });
+    });
+
+    it('should throw error listing all conflicting param names', async () => {
+      const multiConflictQuery = query(() => ({
+        path: '/orgs/[orgId]/teams/[teamId]',
+        method: 'POST',
+        body: {
+          orgId: t.string, // Conflicts with path param [orgId]
+          teamId: t.string, // Conflicts with path param [teamId]
+          name: t.string,
+        },
+        response: {
+          success: t.boolean,
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        expect(() => {
+          multiConflictQuery({ orgId: 'org1', teamId: 'team1', name: 'test' });
+        }).toThrow(/Body field name\(s\) \[orgId, teamId\] conflict with path parameter\(s\)/);
+      });
+    });
   });
 });
