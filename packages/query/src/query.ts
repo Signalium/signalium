@@ -141,16 +141,17 @@ interface InfiniteRESTQueryDefinition<
   debounce?: number;
 }
 
+// Helper type to extract body params - uses unknown for false branch to simplify intersections
+type ExtractBodyParams<BodyDef> = BodyDef extends BodyDefinition
+  ? { [K in keyof BodyDef]: ExtractType<BodyDef[K]> }
+  : unknown;
+
 // Extracts all query parameters from path, search params, and body definition
 type ExtractQueryParams<
   Path extends string,
   SearchParams extends SearchParamsDefinition,
   BodyDef extends BodyDefinition | undefined = undefined,
-> = PathParams<Path> &
-  ExtractTypesFromObjectOrEntity<SearchParams> &
-  (BodyDef extends Record<string, ObjectFieldTypeDef>
-    ? { [K in keyof BodyDef]: ExtractType<BodyDef[K]> }
-    : Record<string, never>);
+> = PathParams<Path> & ExtractTypesFromObjectOrEntity<SearchParams> & ExtractBodyParams<BodyDef>;
 
 interface StreamQueryDefinitionBuilder<
   Params extends SearchParamsDefinition,

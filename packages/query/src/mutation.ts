@@ -160,16 +160,8 @@ function buildMutationFn<Request, Response>(
       const { shape: requestShape, shapeKey: requestShapeKey } = processTypeDef(request);
       const { shape: responseShape, shapeKey: responseShapeKey } = processTypeDef(response);
 
-      // Create optimized path interpolator (parses template once)
-      const interpolatePath = createPathInterpolator(path);
-
-      // Extract path parameter names from the path template
-      const pathParamNames = new Set<string>();
-      const paramRegex = /\[([^\]]+)\]/g;
-      let match: RegExpExecArray | null;
-      while ((match = paramRegex.exec(path)) !== null) {
-        pathParamNames.add(match[1]);
-      }
+      // Create optimized path interpolator (parses template once, also gives us path param names)
+      const { interpolate: interpolatePath, pathParamNames } = createPathInterpolator(path);
 
       const mutateFn = async (context: QueryContext, requestData: Request): Promise<Response> => {
         // Only pass path params to the interpolator, not the full request
