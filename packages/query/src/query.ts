@@ -103,11 +103,11 @@ interface RESTQueryDefinition<
   requestOptions?: QueryRequestOptions;
   cache?: QueryCacheOptions;
   stream?: StreamEntityDef extends EntityDef | UnionDef<EntityDef[]>
-    ? StreamOptions<SearchParams, StreamEntityDef>
-    : undefined;
+  ? StreamOptions<SearchParams, StreamEntityDef>
+  : undefined;
   optimisticInserts?: OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]>
-    ? OptimisticInsertOptions<OptimisticInsertDef>
-    : undefined;
+  ? OptimisticInsertOptions<OptimisticInsertDef>
+  : undefined;
   debounce?: number;
 }
 
@@ -127,11 +127,11 @@ interface InfiniteRESTQueryDefinition<
   requestOptions?: QueryRequestOptions;
   cache?: QueryCacheOptions;
   stream?: StreamEntityDef extends EntityDef | UnionDef<EntityDef[]>
-    ? StreamOptions<SearchParams, StreamEntityDef>
-    : undefined;
+  ? StreamOptions<SearchParams, StreamEntityDef>
+  : undefined;
   optimisticInserts?: OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]>
-    ? OptimisticInsertOptions<OptimisticInsertDef>
-    : undefined;
+  ? OptimisticInsertOptions<OptimisticInsertDef>
+  : undefined;
   pagination: {
     getNextPageParams?(
       lastPage: ExtractTypesFromObjectOrEntity<ResponseDef>,
@@ -170,19 +170,19 @@ interface StreamQueryDefinitionBuilder<
 function buildQueryFn(
   queryDefinitionBuilder: () =>
     | RESTQueryDefinition<
-        string,
-        SearchParamsDefinition,
-        BodyDefinition | undefined,
-        ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>,
-        EntityDef | UnionDef<EntityDef[]>
-      >
+      string,
+      SearchParamsDefinition,
+      BodyDefinition | undefined,
+      ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>,
+      EntityDef | UnionDef<EntityDef[]>
+    >
     | InfiniteRESTQueryDefinition<
-        string,
-        SearchParamsDefinition,
-        BodyDefinition | undefined,
-        ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>,
-        EntityDef | UnionDef<EntityDef[]>
-      >,
+      string,
+      SearchParamsDefinition,
+      BodyDefinition | undefined,
+      ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>,
+      EntityDef | UnionDef<EntityDef[]>
+    >,
 ): QueryDefinition<QueryParams, unknown, unknown> {
   let queryDefinition: any | undefined;
 
@@ -249,7 +249,7 @@ function buildQueryFn(
         if (conflicts.length > 0) {
           throw new Error(
             `Query definition error: ${sourceLabel} [${conflicts.join(', ')}] conflict with ${targetLabel}. ` +
-              `Please rename to avoid this conflict.`,
+            `Please rename to avoid this conflict.`,
           );
         }
       };
