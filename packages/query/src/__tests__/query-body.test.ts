@@ -610,7 +610,7 @@ describe('Query Body Support', () => {
         expect(() => {
           // The query function is lazy, so we need to invoke it to trigger the error
           conflictingQuery({ id: '123', name: 'test' });
-        }).toThrow(/Body field name\(s\) \[id\] conflict with path parameter\(s\)/);
+        }).toThrow(/Body field\(s\) \[id\] conflict with path parameter\(s\)/);
       });
     });
 
@@ -631,7 +631,69 @@ describe('Query Body Support', () => {
       await testWithClient(client, async () => {
         expect(() => {
           multiConflictQuery({ orgId: 'org1', teamId: 'team1', name: 'test' });
-        }).toThrow(/Body field name\(s\) \[orgId, teamId\] conflict with path parameter\(s\)/);
+        }).toThrow(/Body field\(s\) \[orgId, teamId\] conflict with path parameter\(s\)/);
+      });
+    });
+
+    it('should throw error when search param name conflicts with path param name', async () => {
+      const conflictingQuery = query(() => ({
+        path: '/users/[id]',
+        searchParams: {
+          id: t.string, // Conflicts with path param [id]
+          filter: t.string,
+        },
+        response: {
+          success: t.boolean,
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        expect(() => {
+          conflictingQuery({ id: '123', filter: 'active' });
+        }).toThrow(/Search param\(s\) \[id\] conflict with path parameter\(s\)/);
+      });
+    });
+
+    it('should throw error when body field name conflicts with search param name', async () => {
+      const conflictingQuery = query(() => ({
+        path: '/users',
+        method: 'POST',
+        searchParams: {
+          version: t.string,
+        },
+        body: {
+          version: t.string, // Conflicts with search param
+          name: t.string,
+        },
+        response: {
+          success: t.boolean,
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        expect(() => {
+          conflictingQuery({ version: '1.0', name: 'test' });
+        }).toThrow(/Body field\(s\) \[version\] conflict with search param\(s\)/);
+      });
+    });
+
+    it('should throw error listing all conflicting search param and path param names', async () => {
+      const multiConflictQuery = query(() => ({
+        path: '/orgs/[orgId]/teams/[teamId]',
+        searchParams: {
+          orgId: t.string, // Conflicts with path param [orgId]
+          teamId: t.string, // Conflicts with path param [teamId]
+          filter: t.string,
+        },
+        response: {
+          success: t.boolean,
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        expect(() => {
+          multiConflictQuery({ orgId: 'org1', teamId: 'team1', filter: 'active' });
+        }).toThrow(/Search param\(s\) \[orgId, teamId\] conflict with path parameter\(s\)/);
       });
     });
   });

@@ -191,6 +191,7 @@ function buildQueryFn(
       const {
         path,
         method = 'GET',
+        searchParams,
         body,
         response,
         requestOptions,
@@ -235,21 +236,27 @@ function buildQueryFn(
         }
       }
 
-      // Check for conflicts between body field names and path param names
-      if (hasBody) {
-        const conflicts: string[] = [];
-        for (const bodyKey of bodyParamNames) {
-          if (pathParamNames.has(bodyKey)) {
-            conflicts.push(bodyKey);
-          }
-        }
+      // Extract search param names from searchParams definition (done once at definition time)
+      const searchParamNames = new Set(
+        searchParams && typeof searchParams === 'object' && !(searchParams instanceof ValidatorDef) && !(searchParams instanceof Set)
+          ? Object.keys(searchParams)
+          : [],
+      );
+
+      // Check for naming conflicts between path params, search params, and body fields
+      const checkConflicts = (sourceNames: Set<string>, targetNames: Set<string>, sourceLabel: string, targetLabel: string) => {
+        const conflicts = [...sourceNames].filter(name => targetNames.has(name));
         if (conflicts.length > 0) {
           throw new Error(
-            `Query definition error: Body field name(s) [${conflicts.join(', ')}] conflict with path parameter(s) in "${path}". ` +
-              `Body fields and path parameters cannot share the same name. Please rename the body field(s) to avoid this conflict.`,
+            `Query definition error: ${sourceLabel} [${conflicts.join(', ')}] conflict with ${targetLabel}. ` +
+              `Please rename to avoid this conflict.`,
           );
         }
-      }
+      };
+
+      checkConflicts(searchParamNames, pathParamNames, 'Search param(s)', `path parameter(s) in "${path}"`);
+      checkConflicts(bodyParamNames, pathParamNames, 'Body field(s)', `path parameter(s) in "${path}"`);
+      checkConflicts(bodyParamNames, searchParamNames, 'Body field(s)', 'search param(s)');
 
       const fetchFn = async (context: QueryContext, params: QueryParams) => {
         // Separate body params from URL params (path + search params)
