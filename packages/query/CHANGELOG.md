@@ -1,5 +1,11 @@
 # @signalium/query
 
+## 1.1.1
+
+### Patch Changes
+
+- bb0a5a9: Fix entity proxies not being created for preloaded entities from cache, and `__entityRef` not being resolved in proxy get handler. This fixes validation errors when accessing nested entities loaded from persistent cache.
+
 ## 1.1.0
 
 ### Minor Changes
