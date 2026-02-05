@@ -10,6 +10,11 @@
 
 export type PathInterpolator = (params: Record<string, any>) => string;
 
+export interface PathInterpolatorResult {
+  interpolate: PathInterpolator;
+  pathParamNames: Set<string>;
+}
+
 /**
  * Creates an optimized path interpolation function from a URL template.
  *
@@ -18,16 +23,16 @@ export type PathInterpolator = (params: Record<string, any>) => string;
  * found in the path template are appended as query string parameters.
  *
  * @param pathTemplate - URL template with {paramName} placeholders
- * @returns Function that interpolates parameters into the path with search params
+ * @returns Object with interpolate function and set of path param names
  *
  * @example
  * ```ts
- * const interpolate = createPathInterpolator('/users/{userId}/posts/{postId}');
+ * const { interpolate } = createPathInterpolator('/users/{userId}/posts/{postId}');
  * const url = interpolate({ userId: '123', postId: '456', page: 2, limit: 10 });
  * // Returns: "/users/123/posts/456?page=2&limit=10"
  * ```
  */
-export function createPathInterpolator(pathTemplate: string): PathInterpolator {
+export function createPathInterpolator(pathTemplate: string): PathInterpolatorResult {
   // Pre-parse path into segments and param keys (parse once, concatenate many times)
   const segments: string[] = [];
   const paramKeys: string[] = [];
@@ -45,7 +50,7 @@ export function createPathInterpolator(pathTemplate: string): PathInterpolator {
   segments.push(pathTemplate.slice(lastIndex));
 
   // Return optimized interpolation function with pre-parsed segments
-  return (params: Record<string, any>): string => {
+  const interpolate = (params: Record<string, any>): string => {
     // Build the path with interpolated path parameters
     let result = segments[0];
     for (let i = 0; i < paramKeys.length; i++) {
@@ -71,4 +76,6 @@ export function createPathInterpolator(pathTemplate: string): PathInterpolator {
 
     return result;
   };
+
+  return { interpolate, pathParamNames: paramKeysSet };
 }

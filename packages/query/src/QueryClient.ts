@@ -83,7 +83,14 @@ export interface QueryPaginationOptions<Result> {
 
 export type QueryParams = Record<
   string,
-  string | number | boolean | undefined | null | Signal<string | number | boolean | undefined | null>
+  | string
+  | number
+  | boolean
+  | undefined
+  | null
+  | Signal<string | number | boolean | undefined | null>
+  | unknown[] // For body array params
+  | Record<string, unknown> // For body object params
 >;
 
 export const enum QueryType {
@@ -209,29 +216,30 @@ export interface QueryStore {
 export type MaybePromise<T> = T | Promise<T>;
 
 /**
- * Checks if a value is a Signal instance
+ * Checks if a value is a Signal instance.
+ * Signals are objects with a `value` property and internal `_id` property.
+ * Arrays and plain objects are NOT Signals.
  */
 function isSignal(value: unknown): value is Signal<any> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && 'value' in value && '_id' in value;
 }
 
 /**
  * Extracts actual values from params that may contain Signals.
+ * Supports primitive values, arrays, and objects (for body params).
  */
-export function extractParamsForKey(
-  params: QueryParams | undefined,
-): Record<string, string | number | boolean | undefined | null> | undefined {
+export function extractParamsForKey(params: QueryParams | undefined): Record<string, unknown> | undefined {
   if (params === undefined) {
     return undefined;
   }
 
-  const extracted: Record<string, string | number | boolean | undefined | null> = {};
+  const extracted: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(params)) {
     if (isSignal(value)) {
-      extracted[key] = value.value as string | number | boolean | undefined | null;
+      extracted[key] = value.value;
     } else {
-      extracted[key] = value as string | number | boolean | undefined | null;
+      extracted[key] = value;
     }
   }
 

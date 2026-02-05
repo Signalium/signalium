@@ -7,6 +7,7 @@ import {
   QueryFn,
   InfiniteQueryFn,
   ExtractTypesFromObjectOrEntity,
+  ExtractType,
   EntityDef,
   StreamQueryFn,
   TypeDef,
@@ -84,16 +85,20 @@ interface OptimisticInsertOptions<OptimisticInsertDef extends EntityDef | UnionD
  * out why we're getting so many infinite recursion errors with types first. When
  * we remove them, the types should work without the `any`s.
  */
+type BodyDefinition = Record<string, ObjectFieldTypeDef>;
+
 interface RESTQueryDefinition<
   Path extends string,
   SearchParams extends SearchParamsDefinition,
+  BodyDef extends BodyDefinition | undefined,
   ResponseDef extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
   StreamEntityDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
   OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 > {
   path: Path;
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  method?: 'GET' | 'POST';
   searchParams?: SearchParams;
+  body?: BodyDef;
   response: ResponseDef;
   requestOptions?: QueryRequestOptions;
   cache?: QueryCacheOptions;
@@ -109,13 +114,15 @@ interface RESTQueryDefinition<
 interface InfiniteRESTQueryDefinition<
   Path extends string,
   SearchParams extends SearchParamsDefinition,
+  BodyDef extends BodyDefinition | undefined,
   ResponseDef extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
   StreamEntityDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
   OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 > {
   path: Path;
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  method?: 'GET' | 'POST';
   searchParams?: SearchParams;
+  body?: BodyDef;
   response: ResponseDef;
   requestOptions?: QueryRequestOptions;
   cache?: QueryCacheOptions;
@@ -134,8 +141,17 @@ interface InfiniteRESTQueryDefinition<
   debounce?: number;
 }
 
-type ExtractQueryParams<Path extends string, SearchParams extends SearchParamsDefinition> = PathParams<Path> &
-  ExtractTypesFromObjectOrEntity<SearchParams>;
+// Helper type to extract body params - uses unknown for false branch to simplify intersections
+type ExtractBodyParams<BodyDef> = BodyDef extends BodyDefinition
+  ? { [K in keyof BodyDef]: ExtractType<BodyDef[K]> }
+  : unknown;
+
+// Extracts all query parameters from path, search params, and body definition
+type ExtractQueryParams<
+  Path extends string,
+  SearchParams extends SearchParamsDefinition,
+  BodyDef extends BodyDefinition | undefined = undefined,
+> = PathParams<Path> & ExtractTypesFromObjectOrEntity<SearchParams> & ExtractBodyParams<BodyDef>;
 
 interface StreamQueryDefinitionBuilder<
   Params extends SearchParamsDefinition,
@@ -156,12 +172,14 @@ function buildQueryFn(
     | RESTQueryDefinition<
         string,
         SearchParamsDefinition,
+        BodyDefinition | undefined,
         ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>,
         EntityDef | UnionDef<EntityDef[]>
       >
     | InfiniteRESTQueryDefinition<
         string,
         SearchParamsDefinition,
+        BodyDefinition | undefined,
         ObjectFieldTypeDef | Record<string, ObjectFieldTypeDef>,
         EntityDef | UnionDef<EntityDef[]>
       >,
@@ -173,6 +191,8 @@ function buildQueryFn(
       const {
         path,
         method = 'GET',
+        searchParams,
+        body,
         response,
         requestOptions,
         cache,
@@ -180,7 +200,7 @@ function buildQueryFn(
         stream,
         optimisticInserts,
         debounce,
-      } = queryDefinitionBuilder() as InfiniteRESTQueryDefinition<any, any, any, any, any>;
+      } = queryDefinitionBuilder() as InfiniteRESTQueryDefinition<any, any, any, any, any, any>;
 
       const id = `${method}:${path}`;
 
@@ -203,22 +223,87 @@ function buildQueryFn(
         shapeKey = hashValue(shape);
       }
 
-      // Create optimized path interpolator (parses template once)
-      const interpolatePath = createPathInterpolator(path);
+      // Create optimized path interpolator (parses template once, also gives us path param names)
+      const { interpolate: interpolatePath, pathParamNames } = createPathInterpolator(path);
+
+      // Extract body field names from body definition (done once at definition time)
+      const bodyParamNames = new Set<string>();
+      const hasBody =
+        body !== undefined && typeof body === 'object' && !(body instanceof ValidatorDef) && !(body instanceof Set);
+      if (hasBody) {
+        for (const key of Object.keys(body as Record<string, ObjectFieldTypeDef>)) {
+          bodyParamNames.add(key);
+        }
+      }
+
+      // Extract search param names from searchParams definition (done once at definition time)
+      const searchParamNames = new Set(
+        searchParams &&
+        typeof searchParams === 'object' &&
+        !(searchParams instanceof ValidatorDef) &&
+        !(searchParams instanceof Set)
+          ? Object.keys(searchParams)
+          : [],
+      );
+
+      // Check for naming conflicts between path params, search params, and body fields
+      const checkConflicts = (
+        sourceNames: Set<string>,
+        targetNames: Set<string>,
+        sourceLabel: string,
+        targetLabel: string,
+      ) => {
+        const conflicts = [...sourceNames].filter(name => targetNames.has(name));
+        if (conflicts.length > 0) {
+          throw new Error(
+            `Query definition error: ${sourceLabel} [${conflicts.join(', ')}] conflict with ${targetLabel}. ` +
+              `Please rename to avoid this conflict.`,
+          );
+        }
+      };
+
+      checkConflicts(searchParamNames, pathParamNames, 'Search param(s)', `path parameter(s) in "${path}"`);
+      checkConflicts(bodyParamNames, pathParamNames, 'Body field(s)', `path parameter(s) in "${path}"`);
+      checkConflicts(bodyParamNames, searchParamNames, 'Body field(s)', 'search param(s)');
 
       const fetchFn = async (context: QueryContext, params: QueryParams) => {
+        // Separate body params from URL params (path + search params)
+        let bodyData: Record<string, unknown> | undefined;
+        let urlParams: QueryParams | undefined = params;
+
+        if (hasBody) {
+          bodyData = {};
+          urlParams = params !== undefined ? {} : undefined;
+          if (params !== undefined) {
+            for (const key in params) {
+              if (bodyParamNames.has(key)) {
+                bodyData[key] = params[key];
+              } else {
+                (urlParams as Record<string, unknown>)[key] = params[key];
+              }
+            }
+          }
+        }
+
         // Interpolate path params and append search params automatically
-        const interpolatedPath = interpolatePath(params);
+        const interpolatedPath = interpolatePath(urlParams ?? {});
 
         // Resolve baseUrl: query-level requestOptions overrides context-level
         const baseUrl = resolveBaseUrl(requestOptions?.baseUrl) ?? resolveBaseUrl(context.baseUrl);
         const fullUrl = baseUrl ? `${baseUrl}${interpolatedPath}` : interpolatedPath;
 
         // Extract request init options (excluding baseUrl which is not a valid RequestInit property)
-        const { baseUrl: _baseUrl, ...fetchOptions } = requestOptions ?? {};
+        const { baseUrl: _baseUrl, headers: userHeaders, ...fetchOptions } = requestOptions ?? {};
+
+        // Merge headers, adding Content-Type for body requests
+        const headers: HeadersInit | undefined = bodyData
+          ? { 'Content-Type': 'application/json', ...userHeaders }
+          : userHeaders;
 
         const response = await context.fetch(fullUrl, {
           method,
+          headers,
+          body: bodyData ? JSON.stringify(bodyData) : undefined,
           ...fetchOptions,
         });
 
@@ -327,31 +412,43 @@ function buildQueryFn(
 
 export function query<
   Path extends string,
-  SearchParams extends SearchParamsDefinition,
-  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  SearchParams extends SearchParamsDefinition = {},
+  BodyDef extends BodyDefinition | undefined = undefined,
+  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef = Record<string, ObjectFieldTypeDef>,
   EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
   OptimisticUpdateDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 >(
-  queryDefinitionBuilder: () => RESTQueryDefinition<Path, SearchParams, Response, EventDef, OptimisticUpdateDef>,
-): QueryFn<ExtractQueryParams<Path, SearchParams>, Response, EventDef, OptimisticUpdateDef> {
+  queryDefinitionBuilder: () => RESTQueryDefinition<
+    Path,
+    SearchParams,
+    BodyDef,
+    Response,
+    EventDef,
+    OptimisticUpdateDef
+  >,
+): QueryFn<ExtractQueryParams<Path, SearchParams, BodyDef>, Response, EventDef, OptimisticUpdateDef> {
   return buildQueryFn(queryDefinitionBuilder as any) as any;
 }
 
 export function infiniteQuery<
   Path extends string,
-  SearchParams extends SearchParamsDefinition,
-  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef,
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  SearchParams extends SearchParamsDefinition = {},
+  BodyDef extends BodyDefinition | undefined = undefined,
+  Response extends Record<string, ObjectFieldTypeDef> | ObjectFieldTypeDef = Record<string, ObjectFieldTypeDef>,
   EventDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
   OptimisticInsertDef extends EntityDef | UnionDef<EntityDef[]> | undefined = undefined,
 >(
   queryDefinitionBuilder: () => InfiniteRESTQueryDefinition<
     Path,
     SearchParams,
+    BodyDef,
     Response,
     EventDef,
     OptimisticInsertDef
   >,
-): InfiniteQueryFn<ExtractQueryParams<Path, SearchParams>, Response, EventDef, OptimisticInsertDef> {
+): InfiniteQueryFn<ExtractQueryParams<Path, SearchParams, BodyDef>, Response, EventDef, OptimisticInsertDef> {
   return buildQueryFn(queryDefinitionBuilder as any) as any;
 }
 

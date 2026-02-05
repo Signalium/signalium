@@ -429,7 +429,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
       this._relayState = state;
 
       // Extract params (reading Signal values establishes tracking)
-      this.currentParams = extractParamsForKey(this.params);
+      this.currentParams = extractParamsForKey(this.params) as QueryParams | undefined;
       this.storageKey = queryKeyFor(this.def, this.currentParams);
 
       // Load from cache first, then fetch fresh data
