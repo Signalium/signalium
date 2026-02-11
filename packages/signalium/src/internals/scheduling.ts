@@ -48,12 +48,16 @@ export const scheduleAsyncPull = (signal: ReactiveSignal<any, any>) => {
   scheduleFlush(flushWatchers);
 };
 
-export const scheduleUnwatch = (unwatch: ReactiveSignal<any, any>) => {
+export const scheduleUnwatch = (unwatch: ReactiveSignal<any, any>, count = 1) => {
   const current = PENDING_UNWATCH.get(unwatch) ?? 0;
 
-  PENDING_UNWATCH.set(unwatch, current + 1);
+  PENDING_UNWATCH.set(unwatch, current + count);
 
   scheduleFlush(flushWatchers);
+};
+
+export const cancelUnwatch = (signal: ReactiveSignal<any, any>) => {
+  PENDING_UNWATCH.delete(signal);
 };
 
 export const scheduleListeners = (signal: ReactiveSignal<any, any> | StateSignal<any>) => {

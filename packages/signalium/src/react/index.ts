@@ -4,3 +4,4 @@ export { useContext } from './context.js';
 export { useSignal } from './use-signal.js';
 export { useReactive } from './use-reactive.js';
 export { SuspendSignalsProvider } from './suspend-signals-context.js';
+export { useSignalsSuspended } from './suspend-signals-context.js';

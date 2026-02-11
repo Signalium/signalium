@@ -108,6 +108,8 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   computedCount: number = 0;
 
   watchCount: number = 0;
+  suspendCount: number = 0;
+  pendingUnwatchCount: number = 0;
 
   key: SignalId | undefined;
   args: Args;

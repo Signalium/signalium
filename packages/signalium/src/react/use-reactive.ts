@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/rules-of-hooks */
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { ReactiveValue, Signal, ReactivePromise } from '../types.js';
 import { getReactiveFnAndDefinition } from '../internals/core-api.js';
 import { getCurrentConsumer } from '../internals/consumer.js';
@@ -9,6 +9,7 @@ import { StateSignal } from '../internals/signal.js';
 import { useScope } from './context.js';
 import { useSignalsSuspended } from './suspend-signals-context.js';
 import { getGlobalScope } from '../internals/contexts.js';
+import { resumeSignalWatch, suspendSignalWatch } from '../internals/watch.js';
 
 const useStateSignal = <T>(signal: Signal<T>): T => {
   const suspended = useSignalsSuspended();
@@ -26,13 +27,31 @@ const useStateSignal = <T>(signal: Signal<T>): T => {
 const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveSignal<R, Args>): ReactiveValue<R> => {
   const suspended = useSignalsSuspended();
   return useSyncExternalStore(
-    suspended ? () => () => {} : signal.addListenerLazy(),
+    useCallback(
+      onStoreChange => {
+        if (suspended) {
+          suspendSignalWatch(signal);
+          return () => {
+            resumeSignalWatch(signal);
+          };
+        }
+
+        return signal.addListenerLazy()(onStoreChange);
+      },
+      [signal, suspended],
+    ),
     () => signal.value,
     () => signal.value,
   );
 };
 
 const useReactivePromise = <R>(promise: ReactivePromiseImpl<R>): ReactivePromise<R> => {
+  const suspended = useSignalsSuspended();
+
+  useEffect(() => {
+    (promise as any).setSuspended?.(suspended);
+  }, [promise, suspended]);
+
   if (isRelay(promise)) {
     useReactiveFnSignal(promise['_signal'] as ReactiveSignal<any, unknown[]>);
   }

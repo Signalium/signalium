@@ -1,11 +1,14 @@
 import { ReactiveSignal, isRelay } from './reactive.js';
 import { checkSignal } from './get.js';
+import { cancelUnwatch, scheduleUnwatch } from './scheduling.js';
 
 export function watchSignal(signal: ReactiveSignal<any, any>): void {
   const { watchCount } = signal;
   const newWatchCount = watchCount + 1;
 
   signal.watchCount = newWatchCount;
+  signal.pendingUnwatchCount = 0;
+  cancelUnwatch(signal);
 
   // If > 0, already watching, return
   if (watchCount > 0) return;
@@ -33,6 +36,11 @@ export function unwatchSignal(signal: ReactiveSignal<any, any>, count = 1) {
     return;
   }
 
+  if (signal.suspendCount > 0) {
+    signal.pendingUnwatchCount += count;
+    return;
+  }
+
   for (const dep of signal.deps.keys()) {
     unwatchSignal(dep);
   }
@@ -45,5 +53,24 @@ export function unwatchSignal(signal: ReactiveSignal<any, any>, count = 1) {
   // If watchCount is now zero, mark the signal for GC
   if (newWatchCount === 0 && signal.scope) {
     signal.scope.markForGc(signal);
+  }
+}
+
+export function suspendSignalWatch(signal: ReactiveSignal<any, any>, count = 1): void {
+  signal.suspendCount += count;
+}
+
+export function resumeSignalWatch(signal: ReactiveSignal<any, any>, count = 1): void {
+  const suspendCount = Math.max(signal.suspendCount - count, 0);
+  signal.suspendCount = suspendCount;
+
+  if (suspendCount > 0) {
+    return;
+  }
+
+  if (signal.watchCount === 0 && signal.pendingUnwatchCount > 0) {
+    const pendingUnwatchCount = signal.pendingUnwatchCount;
+    signal.pendingUnwatchCount = 0;
+    scheduleUnwatch(signal, pendingUnwatchCount);
   }
 }
