@@ -9,7 +9,7 @@ import { StateSignal } from '../internals/signal.js';
 import { useScope } from './context.js';
 import { useSignalsSuspended } from './suspend-signals-context.js';
 import { getGlobalScope } from '../internals/contexts.js';
-import { resumeSignalWatch, suspendSignalWatch } from '../internals/watch.js';
+import { resumeSignalWatch, suspendSignalWatch, unwatchSignal, watchSignal } from '../internals/watch.js';
 
 const useStateSignal = <T>(signal: Signal<T>): T => {
   const suspended = useSignalsSuspended();
@@ -31,7 +31,9 @@ const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveSignal<R
       onStoreChange => {
         if (suspended) {
           suspendSignalWatch(signal);
+          watchSignal(signal);
           return () => {
+            unwatchSignal(signal);
             resumeSignalWatch(signal);
           };
         }

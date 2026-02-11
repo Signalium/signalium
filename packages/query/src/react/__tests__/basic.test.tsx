@@ -10,6 +10,7 @@ import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { createRenderCounter } from './utils.js';
 import { QueryResult, RefetchInterval } from '../../types.js';
 import { userEvent } from '@vitest/browser/context';
+import { useQuery as useQueryHook } from '../index.js';
 
 /**
  * React Tests for Query Package
@@ -927,7 +928,7 @@ describe('React Query Integration', () => {
   });
 
   describe('Query Polling Suspension', () => {
-    it('should not re-render when toggled to suspended during polling', async () => {
+    it('should continue polling when toggled to suspended during polling if not fully suspended', async () => {
       const User = entity(() => ({
         __typename: t.typename('User'),
         id: t.id,
@@ -995,14 +996,14 @@ describe('React Query Integration', () => {
       await expect.element(getByTestId('user-name')).toHaveTextContent('Alice 1');
       expect(fetchCount).toBeGreaterThanOrEqual(1);
 
-      // Suspend the query
+      // Suspend the query view
       await userEvent.click(getByText('Toggle Suspend'));
 
       const fetchCountBeforeSuspend = fetchCount;
 
       await sleep(50);
 
-      expect(fetchCount).toBe(fetchCountBeforeSuspend);
+      expect(fetchCount).toBeGreaterThan(fetchCountBeforeSuspend);
 
       pollingClient.destroy();
     });
@@ -1075,19 +1076,83 @@ describe('React Query Integration', () => {
       await expect.element(getByTestId('user-name')).toHaveTextContent('Alice 1');
       expect(fetchCount).toBeGreaterThanOrEqual(1);
 
-      // Suspend - relay deactivates, so polling should stop.
+      // Suspend - polling continues when the relay is not fully suspended.
       await userEvent.click(getByText('Toggle Suspend'));
       const fetchCountBeforeSuspend = fetchCount;
 
       await sleep(50);
 
-      expect(fetchCount).toBe(fetchCountBeforeSuspend);
+      expect(fetchCount).toBeGreaterThan(fetchCountBeforeSuspend);
 
       // Re-enable - relay reactivates and polling resumes.
       await userEvent.click(getByText('Toggle Suspend'));
       await sleep(50);
 
       expect(fetchCount).toBeGreaterThan(fetchCountBeforeSuspend);
+
+      pollingClient.destroy();
+    });
+
+    it('should stop polling when mounted fully suspended', async () => {
+      const User = entity(() => ({
+        __typename: t.typename('User'),
+        id: t.id,
+        name: t.string,
+      }));
+
+      let fetchCount = 0;
+
+      const mockFetch = vi.fn(async (_url: string) => {
+        fetchCount++;
+        return new Response(
+          JSON.stringify({
+            __typename: 'User',
+            id: '1',
+            name: `Alice ${fetchCount}`,
+          }),
+          { status: 200 },
+        );
+      });
+
+      const pollingClient = new QueryClient(new SyncQueryStore(new MemoryPersistentStore()), {
+        fetch: mockFetch as any,
+        refetchMultiplier: 0.05,
+      });
+
+      const getUser = query(() => ({
+        path: '/users/1',
+        response: User,
+        cache: {
+          refetchInterval: RefetchInterval.Every1Second,
+        },
+      }));
+
+      function QueryComponent(): React.ReactNode {
+        const user = useQueryHook(getUser);
+
+        if (user.isPending) {
+          return <div>Loading...</div>;
+        }
+
+        return <div data-testid="user-name">{user.value!.name}</div>;
+      }
+
+      const { getByText } = render(
+        <ContextProvider contexts={[[QueryClientContext, pollingClient]]}>
+          <SuspendSignalsProvider value={true}>
+            <QueryComponent />
+          </SuspendSignalsProvider>
+        </ContextProvider>,
+      );
+
+      // Initial fetch may occur during startup before suspension settles.
+      await expect.element(getByText('Loading...')).toBeInTheDocument();
+      await sleep(80);
+      const fetchCountAfterSettle = fetchCount;
+      await sleep(80);
+
+      // Once fully suspended, polling should stop.
+      expect(fetchCount).toBe(fetchCountAfterSettle);
 
       pollingClient.destroy();
     });

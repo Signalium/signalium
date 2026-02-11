@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useScope } from './context.js';
 import { useSignalsSuspended } from './suspend-signals-context.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { runSignal } from '../internals/get.js';
 import { hashValue } from '../internals/utils/hash.js';
-
-const noopStore = () => () => {};
+import { resumeSignalWatch, suspendSignalWatch, unwatchSignal, watchSignal } from '../internals/watch.js';
 
 export default function component<Props extends object>(
   fn: (props: Props) => React.ReactNode | React.ReactNode[] | null,
@@ -41,7 +40,22 @@ export default function component<Props extends object>(
     // whether or not the result changed. This is because the signal is lazy,
     // so it will not be updated until the next render.
     useSyncExternalStore(
-      suspended ? noopStore : signal.addListenerLazy(),
+      useCallback(
+        onStoreChange => {
+          if (suspended) {
+            suspendSignalWatch(signal);
+            watchSignal(signal);
+
+            return () => {
+              unwatchSignal(signal);
+              resumeSignalWatch(signal);
+            };
+          }
+
+          return signal.addListenerLazy()(onStoreChange);
+        },
+        [signal, suspended],
+      ),
       () => signal.updatedCount,
       () => signal.updatedCount,
     );

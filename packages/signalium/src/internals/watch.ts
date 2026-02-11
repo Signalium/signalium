@@ -2,6 +2,10 @@ import { ReactiveSignal, isRelay } from './reactive.js';
 import { checkSignal } from './get.js';
 import { cancelUnwatch, scheduleUnwatch } from './scheduling.js';
 
+const isFullySuspendedCount = (watchCount: number, suspendCount: number): boolean => {
+  return watchCount > 0 && suspendCount === watchCount;
+};
+
 const enterFullySuspended = (signal: ReactiveSignal<any, any>) => {
   if (signal.isFullySuspended) {
     return;
@@ -29,11 +33,16 @@ const exitFullySuspended = (signal: ReactiveSignal<any, any>) => {
   signal.isFullySuspended = false;
 
   for (const dep of signal.deps.keys()) {
+    if (signal.watchCount > 0) {
+      watchSignal(dep);
+    }
+
     resumeSignalWatch(dep);
   }
 };
 
 export function watchSignal(signal: ReactiveSignal<any, any>): void {
+  const wasFullySuspended = signal.isFullySuspended;
   const { watchCount } = signal;
   const newWatchCount = watchCount + 1;
 
@@ -41,10 +50,22 @@ export function watchSignal(signal: ReactiveSignal<any, any>): void {
   signal.pendingUnwatchCount = 0;
   cancelUnwatch(signal);
 
+  const isFullySuspended = isFullySuspendedCount(newWatchCount, signal.suspendCount);
+
+  if (!wasFullySuspended && isFullySuspended) {
+    enterFullySuspended(signal);
+  }
+
+  if (wasFullySuspended && !isFullySuspended) {
+    exitFullySuspended(signal);
+  }
+
+  if (isFullySuspended) {
+    return;
+  }
+
   // If > 0, already watching, return
   if (watchCount > 0) return;
-
-  exitFullySuspended(signal);
 
   // If signal is being watched again, remove from GC candidates and add back to scope
   signal.scope?.removeFromGc(signal);
@@ -60,10 +81,17 @@ export function watchSignal(signal: ReactiveSignal<any, any>): void {
 }
 
 export function unwatchSignal(signal: ReactiveSignal<any, any>, count = 1) {
+  const wasFullySuspended = signal.isFullySuspended;
   const { watchCount } = signal;
   const newWatchCount = Math.max(watchCount - count, 0);
 
   signal.watchCount = newWatchCount;
+
+  const isFullySuspended = isFullySuspendedCount(newWatchCount, signal.suspendCount);
+
+  if (!wasFullySuspended && isFullySuspended) {
+    enterFullySuspended(signal);
+  }
 
   if (newWatchCount > 0) {
     return;
@@ -91,20 +119,26 @@ export function unwatchSignal(signal: ReactiveSignal<any, any>, count = 1) {
 }
 
 export function suspendSignalWatch(signal: ReactiveSignal<any, any>, count = 1): void {
+  const wasFullySuspended = signal.isFullySuspended;
   const prevSuspendCount = signal.suspendCount;
-  signal.suspendCount += count;
+  const suspendCount = prevSuspendCount + count;
+  signal.suspendCount = suspendCount;
 
-  if (prevSuspendCount === 0 && signal.watchCount === 0) {
+  const isFullySuspended = isFullySuspendedCount(signal.watchCount, suspendCount);
+
+  if (!wasFullySuspended && isFullySuspended) {
     enterFullySuspended(signal);
   }
 }
 
 export function resumeSignalWatch(signal: ReactiveSignal<any, any>, count = 1): void {
-  const prevSuspendCount = signal.suspendCount;
+  const wasFullySuspended = signal.isFullySuspended;
   const suspendCount = Math.max(signal.suspendCount - count, 0);
   signal.suspendCount = suspendCount;
 
-  if (prevSuspendCount > 0 && suspendCount === 0) {
+  const isFullySuspended = isFullySuspendedCount(signal.watchCount, suspendCount);
+
+  if (wasFullySuspended && !isFullySuspended) {
     exitFullySuspended(signal);
   }
 
