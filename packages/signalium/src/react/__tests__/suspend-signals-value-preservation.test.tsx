@@ -206,4 +206,52 @@ describe('React > Suspend Signals > Value Preservation', () => {
     await expect.element(getByTestId('content')).toHaveTextContent('Hello, World');
     expect(valueLostCount).toBe(0);
   });
+
+  test('unmounting while suspended does not retain stale suspend state on remount', async () => {
+    const input = signal('Hello');
+
+    const derived = reactive(async () => {
+      const v = input.value;
+      await sleep(20);
+      return `${v}, World`;
+    });
+
+    function Inner(): React.ReactNode {
+      const d = useReactive(derived);
+      return <div data-testid="content">{d.isPending && !d.value ? 'Loading...' : d.value}</div>;
+    }
+
+    function Wrapper(): React.ReactNode {
+      const [suspended, setSuspended] = useState(false);
+      const [mounted, setMounted] = useState(true);
+
+      return (
+        <div>
+          <SuspendSignalsProvider value={suspended}>{mounted ? <Inner /> : null}</SuspendSignalsProvider>
+          <button data-testid="toggle-suspend" onClick={() => setSuspended(s => !s)}>
+            Toggle Suspend
+          </button>
+          <button data-testid="toggle-mounted" onClick={() => setMounted(s => !s)}>
+            Toggle Mounted
+          </button>
+        </div>
+      );
+    }
+
+    const { getByTestId } = render(<Wrapper />);
+
+    await expect.element(getByTestId('content')).toHaveTextContent('Loading...');
+    await expect.element(getByTestId('content')).toHaveTextContent('Hello, World');
+
+    // Suspend and unmount while suspended.
+    await userEvent.click(getByTestId('toggle-suspend'));
+    await userEvent.click(getByTestId('toggle-mounted'));
+    await sleep(20);
+
+    // Resume and remount. If suspend state leaked, this can stay stale/pending forever.
+    await userEvent.click(getByTestId('toggle-suspend'));
+    await userEvent.click(getByTestId('toggle-mounted'));
+
+    await expect.element(getByTestId('content')).toHaveTextContent('Hello, World');
+  });
 });
