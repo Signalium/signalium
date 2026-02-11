@@ -38,12 +38,12 @@ const getSuspendCount = (signal: TestReactiveSignal): number => signal.suspendCo
 const getIsFullySuspended = (signal: TestReactiveSignal): boolean => signal.isFullySuspended;
 const getPendingUnwatchCount = (signal: TestReactiveSignal): number => signal.pendingUnwatchCount;
 
-const suspendTestSignal = (signal: TestReactiveSignal, count = 1): void => {
-  suspendSignalWatch(signal as any, count);
+const suspendTestSignal = (signal: TestReactiveSignal): void => {
+  suspendSignalWatch(signal as any);
 };
 
-const resumeTestSignal = (signal: TestReactiveSignal, count = 1): void => {
-  resumeSignalWatch(signal as any, count);
+const resumeTestSignal = (signal: TestReactiveSignal): void => {
+  resumeSignalWatch(signal as any);
 };
 
 describe('Garbage Collection', () => {
@@ -216,22 +216,23 @@ describe('Garbage Collection', () => {
     const topSignal = asTestSignal(top);
     const midSignal = getFirstDependencySignal(topSignal);
 
-    suspendTestSignal(topSignal, 2);
+    suspendTestSignal(topSignal);
+    suspendTestSignal(topSignal);
     await nextTick();
 
     expect(getSuspendCount(topSignal)).toBe(2);
     expect(getPendingUnwatchCount(topSignal)).toBe(0);
-    expect(getWatchCount(midSignal)).toBeGreaterThan(0);
+    expect(getWatchCount(midSignal)).toBe(0);
 
     // First resume should not clear suspension state yet.
-    resumeTestSignal(topSignal, 1);
+    resumeTestSignal(topSignal);
     await nextTick();
     expect(getSuspendCount(topSignal)).toBe(1);
     expect(getPendingUnwatchCount(topSignal)).toBe(0);
-    expect(getWatchCount(midSignal)).toBeGreaterThan(0);
+    expect(getWatchCount(midSignal)).toBe(0);
 
     // Final resume clears suspension state.
-    resumeTestSignal(topSignal, 1);
+    resumeTestSignal(topSignal);
     await sleep(20);
 
     expect(getSuspendCount(topSignal)).toBe(0);

@@ -118,10 +118,9 @@ export function unwatchSignal(signal: ReactiveSignal<any, any>, count = 1) {
   }
 }
 
-export function suspendSignalWatch(signal: ReactiveSignal<any, any>, count = 1): void {
+export function suspendSignalWatch(signal: ReactiveSignal<any, any>): void {
   const wasFullySuspended = signal.isFullySuspended;
-  const prevSuspendCount = signal.suspendCount;
-  const suspendCount = prevSuspendCount + count;
+  const suspendCount = signal.suspendCount + 1;
   signal.suspendCount = suspendCount;
 
   const isFullySuspended = isFullySuspendedCount(signal.watchCount, suspendCount);
@@ -131,9 +130,9 @@ export function suspendSignalWatch(signal: ReactiveSignal<any, any>, count = 1):
   }
 }
 
-export function resumeSignalWatch(signal: ReactiveSignal<any, any>, count = 1): void {
+export function resumeSignalWatch(signal: ReactiveSignal<any, any>): void {
   const wasFullySuspended = signal.isFullySuspended;
-  const suspendCount = Math.max(signal.suspendCount - count, 0);
+  const suspendCount = Math.max(signal.suspendCount - 1, 0);
   signal.suspendCount = suspendCount;
 
   const isFullySuspended = isFullySuspendedCount(signal.watchCount, suspendCount);
