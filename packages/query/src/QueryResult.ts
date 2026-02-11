@@ -1113,7 +1113,7 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
   }
 
   get isPaused(): boolean {
-    // Streams handle network connection state separately.
+    // Streams handle their own connection state
     if (this.def.type === QueryType.Stream) {
       return false;
     }
