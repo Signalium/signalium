@@ -350,7 +350,6 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
   private relay: DiscriminatedReactivePromise<T>;
   private _relayState: RelayState<any> | undefined = undefined;
   private wasPaused: boolean = false;
-  private suspendedSignal: Signal<boolean> = signal(false);
   private currentParams: QueryParams | undefined = undefined;
   private debounceTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 
@@ -1114,10 +1113,6 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
   }
 
   get isPaused(): boolean {
-    if (this.suspendedSignal.value) {
-      return true;
-    }
-
     // Streams handle network connection state separately.
     if (this.def.type === QueryType.Stream) {
       return false;
@@ -1139,29 +1134,6 @@ export class QueryResultImpl<T> implements BaseQueryResult<T, unknown, unknown> 
         return !isOnline && this.updatedAt === undefined;
       default:
         return false;
-    }
-  }
-
-  setSuspended(suspended: boolean): void {
-    if (this.suspendedSignal.value === suspended) {
-      return;
-    }
-
-    this.suspendedSignal.value = suspended;
-
-    if (!suspended) {
-      return;
-    }
-
-    // Immediately stop side effects while suspended.
-    clearTimeout(this.debounceTimer);
-    this.debounceTimer = undefined;
-
-    this.unsubscribe?.();
-    this.unsubscribe = undefined;
-
-    if (this.def.type !== QueryType.Stream && this.def.cache?.refetchInterval) {
-      this.queryClient.refetchManager.removeQuery(this);
     }
   }
 

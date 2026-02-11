@@ -109,6 +109,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
   watchCount: number = 0;
   suspendCount: number = 0;
+  isFullySuspended: boolean = false;
   pendingUnwatchCount: number = 0;
 
   key: SignalId | undefined;

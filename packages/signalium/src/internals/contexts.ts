@@ -115,6 +115,10 @@ export class SignalScope {
   }
 
   markForGc(signal: ReactiveSignal<any, any>) {
+    if (signal.suspendCount > 0) {
+      return;
+    }
+
     if (!this.gcCandidates.has(signal)) {
       this.gcCandidates.add(signal);
       scheduleGcSweep(this);
@@ -140,7 +144,7 @@ export class SignalScope {
     const signals = this.signals;
 
     for (const signal of this.gcCandidates) {
-      if (signal.watchCount === 0) {
+      if (signal.watchCount === 0 && signal.suspendCount === 0) {
         signals.delete(signal.key!);
       }
     }

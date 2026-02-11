@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/rules-of-hooks */
-import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { ReactiveValue, Signal, ReactivePromise } from '../types.js';
 import { getReactiveFnAndDefinition } from '../internals/core-api.js';
 import { getCurrentConsumer } from '../internals/consumer.js';
@@ -46,12 +46,6 @@ const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveSignal<R
 };
 
 const useReactivePromise = <R>(promise: ReactivePromiseImpl<R>): ReactivePromise<R> => {
-  const suspended = useSignalsSuspended();
-
-  useEffect(() => {
-    (promise as any).setSuspended?.(suspended);
-  }, [promise, suspended]);
-
   if (isRelay(promise)) {
     useReactiveFnSignal(promise['_signal'] as ReactiveSignal<any, unknown[]>);
   }

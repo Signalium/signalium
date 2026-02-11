@@ -336,16 +336,16 @@ describe('React Stream Integration', () => {
       await expect.element(getByTestId('user-name')).toHaveTextContent('Alice 1');
       expect(subscribeCount).toBe(1);
 
-      // Suspend - relay disabled
+      // Suspend - relay deactivates and tears down stream subscription.
       await userEvent.click(getByText('Toggle Suspend'));
       await sleep(50);
       expect(unsubscribeCount).toBe(1);
 
-      // Re-enable - should show latest value without new subscription
+      // Re-enable - relay reactivates and subscribes again.
       await userEvent.click(getByText('Toggle Suspend'));
       await sleep(50);
 
-      // Should still have only one subscription (relay never deactivated)
+      // We should have a second subscription after resume.
       expect(subscribeCount).toBe(2);
 
       // Component should now re-render and show current value

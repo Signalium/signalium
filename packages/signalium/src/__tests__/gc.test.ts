@@ -17,6 +17,7 @@ type TestReactiveSignal = {
   deps: Map<any, any>;
   watchCount: number;
   suspendCount: number;
+  isFullySuspended: boolean;
   pendingUnwatchCount: number;
 };
 
@@ -34,6 +35,7 @@ const getFirstDependencySignal = (signal: TestReactiveSignal): TestReactiveSigna
 
 const getWatchCount = (signal: TestReactiveSignal): number => signal.watchCount;
 const getSuspendCount = (signal: TestReactiveSignal): number => signal.suspendCount;
+const getIsFullySuspended = (signal: TestReactiveSignal): boolean => signal.isFullySuspended;
 const getPendingUnwatchCount = (signal: TestReactiveSignal): number => signal.pendingUnwatchCount;
 
 const suspendTestSignal = (signal: TestReactiveSignal, count = 1): void => {
@@ -160,7 +162,7 @@ describe('Garbage Collection', () => {
     expect(getGCCandidates(getGlobalScope()).size).toBe(0);
   });
 
-  it('defers recursive unwatch while suspended and flushes on resume', async () => {
+  it('propagates suspension to dependencies and tears them down without GC', async () => {
     const source = signal(1);
     const mid = reactive(() => source.value + 1);
     const top = watcher(() => mid());
@@ -183,19 +185,21 @@ describe('Garbage Collection', () => {
     stop();
     await nextTick();
 
-    // Top is unwatched, but teardown is deferred while suspended.
+    // Top is unwatched and fully suspended; dependency teardown happens eagerly.
     expect(getWatchCount(topSignal)).toBe(0);
+    expect(getIsFullySuspended(topSignal)).toBe(true);
     expect(getPendingUnwatchCount(topSignal)).toBeGreaterThan(0);
-    expect(getWatchCount(midSignal)).toBeGreaterThan(0);
+    expect(getWatchCount(midSignal)).toBe(0);
 
     resumeTestSignal(topSignal);
     await sleep(20);
 
+    expect(getIsFullySuspended(topSignal)).toBe(false);
     expect(getPendingUnwatchCount(topSignal)).toBe(0);
     expect(getWatchCount(midSignal)).toBe(0);
   });
 
-  it('requires full suspend count release before deferred teardown flushes', async () => {
+  it('requires full suspend count release before suspension clears', async () => {
     const source = signal(1);
     const mid = reactive(() => source.value + 1);
     const top = watcher(() => mid());
@@ -213,27 +217,28 @@ describe('Garbage Collection', () => {
     const midSignal = getFirstDependencySignal(topSignal);
 
     suspendTestSignal(topSignal, 2);
-    stop();
     await nextTick();
 
     expect(getSuspendCount(topSignal)).toBe(2);
-    expect(getPendingUnwatchCount(topSignal)).toBeGreaterThan(0);
+    expect(getPendingUnwatchCount(topSignal)).toBe(0);
     expect(getWatchCount(midSignal)).toBeGreaterThan(0);
 
-    // First resume should not flush deferred teardown yet.
+    // First resume should not clear suspension state yet.
     resumeTestSignal(topSignal, 1);
     await nextTick();
     expect(getSuspendCount(topSignal)).toBe(1);
-    expect(getPendingUnwatchCount(topSignal)).toBeGreaterThan(0);
+    expect(getPendingUnwatchCount(topSignal)).toBe(0);
     expect(getWatchCount(midSignal)).toBeGreaterThan(0);
 
-    // Final resume flushes deferred teardown.
+    // Final resume clears suspension state.
     resumeTestSignal(topSignal, 1);
     await sleep(20);
 
     expect(getSuspendCount(topSignal)).toBe(0);
     expect(getPendingUnwatchCount(topSignal)).toBe(0);
-    expect(getWatchCount(midSignal)).toBe(0);
+    expect(getWatchCount(midSignal)).toBeGreaterThan(0);
+
+    stop();
   });
 
   it('cancels deferred unwatch when rewatched before resume', async () => {
@@ -304,6 +309,7 @@ describe('Garbage Collection', () => {
       await sleep(5);
 
       expect(getSuspendCount(topSignal)).toBe(0);
+      expect(getIsFullySuspended(topSignal)).toBe(false);
       expect(getPendingUnwatchCount(topSignal)).toBe(0);
       expect(getWatchCount(topSignal)).toBe(0);
     }
@@ -313,5 +319,77 @@ describe('Garbage Collection', () => {
 
     expect(getGCCandidates(globalScope).size).toBe(0);
     expect(getSignalsMap(globalScope).size).toBe(0);
+  });
+
+  it('accumulates suspend counts on shared dependencies from multiple suspended consumers', async () => {
+    const source = signal(1);
+    const shared = reactive(() => source.value + 1);
+    const topA = watcher(() => shared());
+    const topB = watcher(() => shared());
+
+    const stopA = topA.addListener(() => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      topA.value;
+    });
+    const stopB = topB.addListener(() => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      topB.value;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    topA.value;
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    topB.value;
+    await nextTick();
+
+    const topSignalA = asTestSignal(topA);
+    const topSignalB = asTestSignal(topB);
+    const sharedSignal = getFirstDependencySignal(topSignalA);
+
+    suspendTestSignal(topSignalA);
+    stopA();
+    await nextTick();
+    expect(getSuspendCount(sharedSignal)).toBe(1);
+    expect(getWatchCount(sharedSignal)).toBeGreaterThan(0);
+
+    suspendTestSignal(topSignalB);
+    stopB();
+    await nextTick();
+    expect(getSuspendCount(sharedSignal)).toBe(2);
+    expect(getWatchCount(sharedSignal)).toBe(0);
+
+    resumeTestSignal(topSignalA);
+    await nextTick();
+    expect(getSuspendCount(sharedSignal)).toBe(1);
+
+    resumeTestSignal(topSignalB);
+    await sleep(20);
+    expect(getSuspendCount(sharedSignal)).toBe(0);
+    expect(getWatchCount(sharedSignal)).toBe(0);
+  });
+
+  it('does not mark suspended signals for GC before resume', async () => {
+    const source = signal(1);
+    const mid = reactive(() => source.value + 1);
+    const top = watcher(() => mid());
+
+    const stop = top.addListener(() => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      top.value;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    top.value;
+    await nextTick();
+
+    const topSignal = asTestSignal(top);
+    const globalScope = getGlobalScope();
+
+    suspendTestSignal(topSignal);
+    stop();
+    await nextTick();
+
+    expect(getIsFullySuspended(topSignal)).toBe(true);
+    expect(getGCCandidates(globalScope).size).toBe(0);
   });
 });

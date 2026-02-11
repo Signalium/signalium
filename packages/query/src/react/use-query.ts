@@ -1,6 +1,5 @@
-import { useReactive, useSignalsSuspended } from 'signalium/react';
+import { useReactive } from 'signalium/react';
 import { reactive } from 'signalium';
-import { useEffect } from 'react';
 import { QueryResult, InfiniteQueryResult, StreamQueryResult } from '../types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -100,15 +99,10 @@ export function useQuery<R, StreamType, OptimisticUpdateType, Args extends reado
   | QueryResult<R, StreamType, OptimisticUpdateType>
   | InfiniteQueryResult<R, StreamType, OptimisticUpdateType>
   | StreamQueryResult<R> {
-  const suspended = useSignalsSuspended();
   const result = useReactive(riefiedQuery, fn, ...args) as
     | QueryResult<R, StreamType, OptimisticUpdateType>
     | InfiniteQueryResult<R, StreamType, OptimisticUpdateType>
     | StreamQueryResult<R>;
-
-  useEffect(() => {
-    (result as any).setSuspended?.(suspended);
-  }, [result, suspended]);
 
   useReactive(() => result.value);
 

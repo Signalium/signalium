@@ -1075,8 +1075,7 @@ describe('React Query Integration', () => {
       await expect.element(getByTestId('user-name')).toHaveTextContent('Alice 1');
       expect(fetchCount).toBeGreaterThanOrEqual(1);
 
-      // Wait for polling to happen
-      // Suspend - polling continues but no re-renders
+      // Suspend - relay deactivates, so polling should stop.
       await userEvent.click(getByText('Toggle Suspend'));
       const fetchCountBeforeSuspend = fetchCount;
 
@@ -1084,7 +1083,7 @@ describe('React Query Integration', () => {
 
       expect(fetchCount).toBe(fetchCountBeforeSuspend);
 
-      // Re-enable - should show latest value from polling
+      // Re-enable - relay reactivates and polling resumes.
       await userEvent.click(getByText('Toggle Suspend'));
       await sleep(50);
 
