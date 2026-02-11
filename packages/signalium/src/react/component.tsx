@@ -4,6 +4,8 @@ import { useSignalsSuspended } from './suspend-signals-context.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { runSignal } from '../internals/get.js';
 import { hashValue } from '../internals/utils/hash.js';
+import { releaseSignal, retainSignal } from '../internals/watch.js';
+import { scheduleDeferredUnwatch } from '../internals/scheduling.js';
 
 const noopStore = () => () => {};
 
@@ -36,6 +38,19 @@ export default function component<Props extends object>(
 
       signal._isLazy = true;
     }
+
+    useEffect(() => {
+      if (!suspended) {
+        return;
+      }
+
+      retainSignal(signal);
+
+      return () => {
+        releaseSignal(signal);
+        scheduleDeferredUnwatch(signal);
+      };
+    }, [signal, suspended]);
 
     // We always want to re-render when the signal is updated, regardless of
     // whether or not the result changed. This is because the signal is lazy,

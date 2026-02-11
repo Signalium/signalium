@@ -1002,7 +1002,7 @@ describe('React Query Integration', () => {
 
       await sleep(50);
 
-      expect(fetchCount).toBe(fetchCountBeforeSuspend);
+      expect(fetchCount).toBeGreaterThan(fetchCountBeforeSuspend);
 
       pollingClient.destroy();
     });
@@ -1082,7 +1082,7 @@ describe('React Query Integration', () => {
 
       await sleep(50);
 
-      expect(fetchCount).toBe(fetchCountBeforeSuspend);
+      expect(fetchCount).toBeGreaterThan(fetchCountBeforeSuspend);
 
       // Re-enable - should show latest value from polling
       await userEvent.click(getByText('Toggle Suspend'));

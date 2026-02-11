@@ -4,7 +4,7 @@ import { checkAndRunListeners, checkSignal } from './get.js';
 import { runListeners as runDerivedListeners } from './reactive.js';
 import { runListeners as runStateListeners } from './signal.js';
 import type { Tracer } from './trace.js';
-import { unwatchSignal } from './watch.js';
+import { flushDeferredUnwatch, unwatchSignal } from './watch.js';
 import { StateSignal } from './signal.js';
 import { SignalScope } from './contexts.js';
 
@@ -15,6 +15,7 @@ const scheduleIdleCallback =
 let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
 let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
 let PENDING_UNWATCH = new Map<ReactiveSignal<any, any>, number>();
+let PENDING_DEFERRED_UNWATCH = new Set<ReactiveSignal<any, any>>();
 let PENDING_LISTENERS: (ReactiveSignal<any, any> | StateSignal<any>)[] = [];
 let PENDING_TRACERS: Tracer[] | undefined = IS_DEV ? [] : undefined;
 let PENDING_GC = new Set<SignalScope>();
@@ -53,6 +54,11 @@ export const scheduleUnwatch = (unwatch: ReactiveSignal<any, any>) => {
 
   PENDING_UNWATCH.set(unwatch, current + 1);
 
+  scheduleFlush(flushWatchers);
+};
+
+export const scheduleDeferredUnwatch = (signal: ReactiveSignal<any, any>) => {
+  PENDING_DEFERRED_UNWATCH.add(signal);
   scheduleFlush(flushWatchers);
 };
 
@@ -120,6 +126,10 @@ const flushWatchers = async () => {
       unwatchSignal(signal, count);
     }
 
+    for (const signal of PENDING_DEFERRED_UNWATCH) {
+      flushDeferredUnwatch(signal);
+    }
+
     for (const signal of PENDING_LISTENERS) {
       if (signal instanceof ReactiveSignal) {
         runDerivedListeners(signal as any);
@@ -135,6 +145,7 @@ const flushWatchers = async () => {
       PENDING_TRACERS = [];
     }
 
+    PENDING_DEFERRED_UNWATCH.clear();
     PENDING_UNWATCH.clear();
     PENDING_LISTENERS = [];
   });

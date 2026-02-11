@@ -255,8 +255,8 @@ describe('React Stream Integration', () => {
       await userEvent.click(getByText('Toggle Suspend'));
       await sleep(50);
 
-      // Relay tears down when suspended
-      expect(unsubscribeCount).toBe(1);
+      // Relay remains connected while suspended under value-retention semantics
+      expect(unsubscribeCount).toBe(0);
 
       // Stream update should update the entity but not trigger re-render
       if (updateCallback) {
@@ -336,17 +336,17 @@ describe('React Stream Integration', () => {
       await expect.element(getByTestId('user-name')).toHaveTextContent('Alice 1');
       expect(subscribeCount).toBe(1);
 
-      // Suspend - relay disabled
+      // Suspend - relay stays connected while UI is suspended
       await userEvent.click(getByText('Toggle Suspend'));
       await sleep(50);
-      expect(unsubscribeCount).toBe(1);
+      expect(unsubscribeCount).toBe(0);
 
-      // Re-enable - should show latest value without new subscription
+      // Re-enable - should still be on same subscription
       await userEvent.click(getByText('Toggle Suspend'));
       await sleep(50);
 
       // Should still have only one subscription (relay never deactivated)
-      expect(subscribeCount).toBe(2);
+      expect(subscribeCount).toBe(1);
 
       // Component should now re-render and show current value
       await expect.element(getByTestId('user-name')).toHaveTextContent('Alice 1');
