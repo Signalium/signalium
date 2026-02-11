@@ -38,11 +38,7 @@ describe('React > Suspend Signals > Value Preservation', () => {
         valueLostAfterResolve = true;
       }
 
-      return (
-        <div data-testid="content">
-          {d.isPending && !d.value ? 'Loading...' : d.value}
-        </div>
-      );
+      return <div data-testid="content">{d.isPending && !d.value ? 'Loading...' : d.value}</div>;
     }
 
     function Wrapper(): React.ReactNode {
@@ -115,11 +111,7 @@ describe('React > Suspend Signals > Value Preservation', () => {
         valueLostAfterResolve = true;
       }
 
-      return (
-        <div data-testid="content">
-          {d.isPending && !d.value ? 'Loading...' : d.value}
-        </div>
-      );
+      return <div data-testid="content">{d.isPending && !d.value ? 'Loading...' : d.value}</div>;
     }
 
     function Wrapper(): React.ReactNode {
@@ -178,11 +170,7 @@ describe('React > Suspend Signals > Value Preservation', () => {
         valueLostCount++;
       }
 
-      return (
-        <div data-testid="content">
-          {d.isPending && !d.value ? 'Loading...' : d.value}
-        </div>
-      );
+      return <div data-testid="content">{d.isPending && !d.value ? 'Loading...' : d.value}</div>;
     }
 
     function Wrapper(): React.ReactNode {
