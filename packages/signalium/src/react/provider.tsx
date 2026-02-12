@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useContext, useRef } from 'react';
 import { ScopeContext } from './context.js';
 import { ContextImpl, ContextPair, getGlobalScope, SignalScope } from '../internals/contexts.js';
 
@@ -12,7 +12,13 @@ export function ContextProvider<C extends unknown[]>({
   inherit?: boolean;
 }) {
   const parentScope = useContext(ScopeContext) ?? getGlobalScope();
-  const scope = new SignalScope(contexts as [ContextImpl<unknown>, unknown][], inherit ? parentScope : undefined);
+  const scopeRef = useRef<SignalScope | null>(null);
+  if (scopeRef.current === null) {
+    scopeRef.current = new SignalScope(
+      contexts as [ContextImpl<unknown>, unknown][],
+      inherit ? parentScope : undefined,
+    );
+  }
 
-  return <ScopeContext.Provider value={scope}>{children}</ScopeContext.Provider>;
+  return <ScopeContext.Provider value={scopeRef.current}>{children}</ScopeContext.Provider>;
 }
