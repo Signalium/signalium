@@ -36,22 +36,22 @@ export function watchOnce<T>(fn: () => T): T {
 
   try {
     // Watch the signal to activate any relays
-    watchSignal(signal);
+    watchSignal(signal, false);
 
     // Get the value, which runs the function
     let result = getSignal(signal);
 
     if (isReactivePromise(result as object) || isPromise(result as object)) {
       result = (result as Promise<T>).finally(() => {
-        unwatchSignal(signal);
+        unwatchSignal(signal, false);
       }) as ReactiveValue<T>;
     } else {
-      unwatchSignal(signal);
+      unwatchSignal(signal, false);
     }
 
     return result as T;
   } catch (error) {
-    unwatchSignal(signal);
+    unwatchSignal(signal, false);
     throw error;
   }
 }

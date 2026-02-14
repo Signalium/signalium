@@ -402,11 +402,7 @@ export class QueryClient {
   }
 
   saveEntity(key: number, obj: Record<string, unknown>, shape: EntityDef, entityRefs?: Set<number>): EntityRecord {
-    // console.log('saveEntity', key, JSON.stringify(obj, null, 2), shape, entityRefs, new Error().stack);
-
     const record = this.entityMap.setEntity(key, obj, shape, entityRefs);
-
-    // console.log('saveEntity record', JSON.stringify(obj, null, 2), new Error().stack);
 
     this.store.saveEntity(key, obj, entityRefs);
 

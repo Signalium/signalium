@@ -662,7 +662,7 @@ describe('async computeds', () => {
       let dep2Count = 0;
       let outerCount = 0;
 
-      const useDep1 = signal(true);
+      const useDep2 = signal(true);
       const state1 = signal(1);
       const state2 = signal(2);
 
@@ -689,7 +689,7 @@ describe('async computeds', () => {
           const val1 = await dep1();
           await sleep(10);
           // Conditionally consume dep2 after the await
-          if (useDep1.value) {
+          if (useDep2.value) {
             const val2 = await dep2();
             return val1 + val2;
           }
@@ -706,8 +706,8 @@ describe('async computeds', () => {
       expect(dep2Count).toBe(1);
       expect(outerCount).toBe(1);
 
-      // Now change useDep1 to false - this dirties outer
-      useDep1.value = false;
+      // Now change useDep2 to false - this dirties outer
+      useDep2.value = false;
 
       const r2 = outer();
       expect(r2.isPending).toBe(true);
@@ -721,8 +721,8 @@ describe('async computeds', () => {
       // (it wasn't consumed this time and should have been disconnected)
       expect(dep2Count).toBe(1);
 
-      // Now change useDep1 to true again
-      useDep1.value = true;
+      // Now change useDep2 to true again
+      useDep2.value = true;
 
       const r3 = outer();
       expect(r3.isPending).toBe(true);

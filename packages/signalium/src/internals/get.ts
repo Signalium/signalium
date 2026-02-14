@@ -4,10 +4,10 @@ import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
 import { createEdge, Edge, EdgeType } from './edge.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
 import { isRelay, ReactiveFnState, ReactiveSignal } from './reactive.js';
-import { scheduleListeners, scheduleTracer, scheduleUnwatch } from './scheduling.js';
+import { scheduleListeners, scheduleTracer } from './scheduling.js';
 import { getTracerProxy, SignalType, TracerEventType } from './trace.js';
 import { isGeneratorResult, isPromise } from './utils/type-utils.js';
-import { watchSignal } from './watch.js';
+import { unwatchSignal, watchSignal } from './watch.js';
 
 export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, Args>): ReactiveValue<T> {
   const currentConsumer = getCurrentConsumer();
@@ -31,7 +31,7 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
         }
 
         if (currentConsumer.watchCount > 0) {
-          watchSignal(signal);
+          watchSignal(signal, currentConsumer._isSuspended);
         }
       }
 
@@ -206,11 +206,11 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
 }
 
 export function disconnectSignal(signal: ReactiveSignal<any, any>, computedCount: number = signal.computedCount) {
-  const { ref, deps } = signal;
+  const { ref, deps, _isSuspended: isSuspended } = signal;
 
   for (const [dep, edge] of deps) {
     if (edge.consumedAt !== computedCount) {
-      scheduleUnwatch(dep);
+      unwatchSignal(dep, isSuspended);
       dep.subs.delete(ref);
       deps.delete(dep);
     }

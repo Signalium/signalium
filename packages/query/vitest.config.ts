@@ -7,6 +7,7 @@ import { signaliumPreset } from 'signalium/transform';
 import tsconfigPaths from 'vite-tsconfig-paths';
 import module from 'module';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 const require = module.createRequire(import.meta.url);
 
@@ -24,6 +25,30 @@ export default defineConfig({
       // Use Node's module resolution to find React (respects npm workspaces)
       { find: 'react', replacement: reactPath },
       { find: 'react-dom', replacement: reactDomPath },
+      {
+        find: /^signalium$/,
+        replacement: fileURLToPath(new URL('../signalium/src/index.ts', import.meta.url)),
+      },
+      {
+        find: /^signalium\/utils$/,
+        replacement: fileURLToPath(new URL('../signalium/src/utils.ts', import.meta.url)),
+      },
+      {
+        find: /^signalium\/config$/,
+        replacement: fileURLToPath(new URL('../signalium/src/config.ts', import.meta.url)),
+      },
+      {
+        find: /^signalium\/debug$/,
+        replacement: fileURLToPath(new URL('../signalium/src/debug.ts', import.meta.url)),
+      },
+      {
+        find: /^signalium\/react$/,
+        replacement: fileURLToPath(new URL('../signalium/src/react/index.ts', import.meta.url)),
+      },
+      {
+        find: /^signalium\/transform$/,
+        replacement: fileURLToPath(new URL('../signalium/src/transform/index.ts', import.meta.url)),
+      },
     ],
     // Ensure React is deduplicated in monorepo
     dedupe: ['react', 'react-dom'],
@@ -35,7 +60,15 @@ export default defineConfig({
   ssr: {
     noExternal: ['react', 'react-dom'],
   },
-  plugins: [tsconfigPaths()],
+  plugins: [
+    tsconfigPaths(),
+    {
+      name: 'watch-signalium-src',
+      configureServer(server) {
+        server.watcher.add(path.resolve(__dirname, '../signalium/src'));
+      },
+    },
+  ],
   test: {
     pool: 'threads',
     projects: [
@@ -87,6 +120,7 @@ export default defineConfig({
             headless: true,
             instances: [{ browser: 'chromium' }],
           },
+          // testTimeout: 2000,
         },
       },
     ],

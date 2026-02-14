@@ -15,7 +15,7 @@ import {
   createReactiveSignal,
   ReactiveDefinition as ReactiveDefinition,
 } from './reactive.js';
-import { createRelay, createTask, ReactivePromise as ReactivePromiseClass } from './async.js';
+import { createRelay, createTask } from './async.js';
 import { Tracer } from './trace.js';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type

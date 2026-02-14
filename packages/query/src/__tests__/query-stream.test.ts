@@ -79,6 +79,8 @@ describe('Query Stream Option', () => {
         expect(relay.value?.posts.length).toBe(2);
       });
 
+      await sleep();
+
       // Should unsubscribe when relay is deactivated
       expect(unsubscribeCallCount).toBe(1);
     });
@@ -842,6 +844,8 @@ describe('Query Stream Option', () => {
         expect(unsubscribeCount).toBe(0);
       });
 
+      await sleep();
+
       // After exiting testWithClient scope, relay should be deactivated
       expect(unsubscribeCount).toBe(1);
     });
@@ -883,6 +887,8 @@ describe('Query Stream Option', () => {
         expect(subscribeCount).toBe(1);
       });
 
+      await sleep();
+
       expect(unsubscribeCount).toBe(1);
 
       // Second activation
@@ -891,6 +897,8 @@ describe('Query Stream Option', () => {
         await relay;
         expect(subscribeCount).toBe(2);
       });
+
+      await sleep();
 
       expect(unsubscribeCount).toBe(2);
     });

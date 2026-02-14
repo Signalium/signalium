@@ -26,6 +26,8 @@ export { ReactivePromise } from './internals/async.js';
 
 export { callback } from './internals/callback.js';
 
+export { settled } from './internals/scheduling.js';
+
 export {
   context,
   getContext,

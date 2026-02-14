@@ -718,7 +718,6 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
     // Reset the signal state, preparing it for next activation
     signal.subs = new Map();
     signal._state = ReactiveFnState.Dirty;
-    signal.watchCount = 0;
     active = false;
     currentSub = undefined;
   };

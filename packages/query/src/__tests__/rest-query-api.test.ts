@@ -3,7 +3,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { entity, t } from '../typeDefs.js';
 import { query } from '../query.js';
-import { createMockFetch, testWithClient, getEntityMapSize } from './utils.js';
+import { createMockFetch, testWithClient, getEntityMapSize, sleep } from './utils.js';
 
 /**
  * REST Query API Tests
@@ -557,6 +557,8 @@ describe('BaseUrl and RequestOptions', () => {
 
         expect(mockFetch.calls[0].url).toBe('https://api-v1.example.com/users');
       });
+
+      await sleep();
 
       // Update the signal and make another request
       baseUrlSignal.value = 'https://api-v2.example.com';

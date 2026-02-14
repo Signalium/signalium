@@ -4,7 +4,7 @@ import { checkAndRunListeners, checkSignal } from './get.js';
 import { runListeners as runDerivedListeners } from './reactive.js';
 import { runListeners as runStateListeners } from './signal.js';
 import type { Tracer } from './trace.js';
-import { unwatchSignal } from './watch.js';
+import { deactivateSignal } from './watch.js';
 import { StateSignal } from './signal.js';
 import { SignalScope } from './contexts.js';
 
@@ -14,7 +14,7 @@ const scheduleIdleCallback =
 
 let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
 let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
-let PENDING_UNWATCH = new Map<ReactiveSignal<any, any>, number>();
+let PENDING_DEACTIVE = new Set<ReactiveSignal<any, any>>();
 let PENDING_LISTENERS: (ReactiveSignal<any, any> | StateSignal<any>)[] = [];
 let PENDING_TRACERS: Tracer[] | undefined = IS_DEV ? [] : undefined;
 let PENDING_GC = new Set<SignalScope>();
@@ -48,12 +48,13 @@ export const scheduleAsyncPull = (signal: ReactiveSignal<any, any>) => {
   scheduleFlush(flushWatchers);
 };
 
-export const scheduleUnwatch = (unwatch: ReactiveSignal<any, any>) => {
-  const current = PENDING_UNWATCH.get(unwatch) ?? 0;
-
-  PENDING_UNWATCH.set(unwatch, current + 1);
-
+export const scheduleDeactivate = (signal: ReactiveSignal<any, any>) => {
+  PENDING_DEACTIVE.add(signal);
   scheduleFlush(flushWatchers);
+};
+
+export const cancelDeactivate = (signal: ReactiveSignal<any, any>) => {
+  PENDING_DEACTIVE.delete(signal);
 };
 
 export const scheduleListeners = (signal: ReactiveSignal<any, any> | StateSignal<any>) => {
@@ -116,9 +117,11 @@ const flushWatchers = async () => {
   currentFlush = null;
 
   runBatch(() => {
-    for (const [signal, count] of PENDING_UNWATCH) {
-      unwatchSignal(signal, count);
+    for (const signal of PENDING_DEACTIVE) {
+      deactivateSignal(signal);
     }
+
+    PENDING_DEACTIVE.clear();
 
     for (const signal of PENDING_LISTENERS) {
       if (signal instanceof ReactiveSignal) {
@@ -135,7 +138,6 @@ const flushWatchers = async () => {
       PENDING_TRACERS = [];
     }
 
-    PENDING_UNWATCH.clear();
     PENDING_LISTENERS = [];
   });
 
