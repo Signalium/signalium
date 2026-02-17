@@ -323,7 +323,9 @@ type ExtractPrimitiveTypeFromMask<T extends number> = T extends Mask.UNDEFINED
             : never;
 
 export type ExtractTypesFromShape<S extends Record<string, ObjectFieldTypeDef>> = {
-  [K in keyof S]: ExtractType<S[K]>;
+  [K in keyof S as undefined extends ExtractType<S[K]> ? never : K]: ExtractType<S[K]>;
+} & {
+  [K in keyof S as undefined extends ExtractType<S[K]> ? K : never]?: ExtractType<S[K]>;
 };
 
 export type ExtractType<T extends ObjectFieldTypeDef> =
