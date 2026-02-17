@@ -63,6 +63,7 @@ describe('GC Time', () => {
       });
 
       await sleep(200);
+      (global as any).gc();
 
       await testWithClient(client, async () => {
         const relay = getItem({ id: '1' });
