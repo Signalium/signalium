@@ -1,6 +1,5 @@
 import { ReactiveSignal, ReactiveDefinition, createReactiveSignal } from './reactive.js';
 import { hashReactiveFn, hashValue } from './utils/hash.js';
-import { scheduleGcSweep } from './scheduling.js';
 import { getCurrentConsumer } from './consumer.js';
 import { Context } from '../types.js';
 
@@ -67,7 +66,7 @@ export class SignalScope {
 
   private contexts: Record<symbol, unknown>;
   private children = new Map<number, SignalScope>();
-  private signals = new Map<number, ReactiveSignal<any, any>>();
+  private signals = new Map<number, WeakRef<ReactiveSignal<any, any>>>();
   private gcCandidates = new Set<ReactiveSignal<any, any>>();
 
   setContexts(contexts: [ContextImpl<unknown>, unknown][]) {
@@ -104,48 +103,14 @@ export class SignalScope {
   get<T, Args extends unknown[]>(def: ReactiveDefinition<T, Args>, args: Args): ReactiveSignal<T, Args> {
     const paramKey = def.paramKey?.(...args);
     const key = hashReactiveFn(def.compute, paramKey ? [paramKey] : args);
-    let signal = this.signals.get(key) as ReactiveSignal<T, Args> | undefined;
+    let signal = this.signals.get(key)?.deref() as ReactiveSignal<T, Args> | undefined;
 
     if (signal === undefined) {
       signal = createReactiveSignal(def, args, key, this);
-      this.signals.set(key, signal);
+      this.signals.set(key, new WeakRef(signal));
     }
 
     return signal;
-  }
-
-  markForGc(signal: ReactiveSignal<any, any>) {
-    if (!this.gcCandidates.has(signal)) {
-      this.gcCandidates.add(signal);
-      scheduleGcSweep(this);
-    }
-  }
-
-  removeFromGc(signal: ReactiveSignal<any, any>) {
-    this.gcCandidates.delete(signal);
-
-    const { key } = signal;
-
-    // if the signal has a key, add it back to the signals map so we can re-use it
-    if (key) {
-      this.signals.set(key, signal);
-    }
-  }
-
-  forceGc(signal: ReactiveSignal<any, any>) {
-    this.signals.delete(signal.key!);
-  }
-
-  sweepGc() {
-    const signals = this.signals;
-
-    for (const signal of this.gcCandidates) {
-      if (signal.watchCount === 0) {
-        signals.delete(signal.key!);
-      }
-    }
-
-    this.gcCandidates = new Set();
   }
 }
 
@@ -218,5 +183,5 @@ export const getScopeOwner = (obj: object): SignalScope => {
 
 export function forceGc(_signal: object) {
   const signal = _signal as ReactiveSignal<any, any>;
-  signal.scope?.forceGc(signal);
+  // signal.scope?.forceGc(signal);
 }

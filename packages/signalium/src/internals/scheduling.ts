@@ -68,19 +68,19 @@ export const scheduleTracer = (tracer: Tracer) => {
   }
 };
 
-export const scheduleGcSweep = (scope: SignalScope) => {
-  PENDING_GC.add(scope);
+// export const scheduleGcSweep = (scope: SignalScope) => {
+//   PENDING_GC.add(scope);
 
-  if (PENDING_GC.size > 1) return;
+//   if (PENDING_GC.size > 1) return;
 
-  scheduleIdleCallback(() => {
-    for (const scope of PENDING_GC) {
-      scope.sweepGc();
-    }
+//   scheduleIdleCallback(() => {
+//     for (const scope of PENDING_GC) {
+//       scope.sweepGc();
+//     }
 
-    PENDING_GC.clear();
-  });
-};
+//     PENDING_GC.clear();
+//   });
+// };
 
 const flushWatchers = async () => {
   const flush = currentFlush!;

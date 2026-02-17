@@ -88,10 +88,10 @@
     }
   },
   "scripts": {
-    "dev": "vitest dev",
-    "dev:unit": "vitest dev --project unit",
-    "dev:transform": "vitest dev --project transform",
-    "dev:react": "vitest dev --project react",
+    "dev": "node --expose-gc ./node_modules/vitest/vitest.mjs dev",
+    "dev:unit": "node --expose-gc ./node_modules/vitest/vitest.mjs dev --project unit",
+    "dev:transform": "node --expose-gc ./node_modules/vitest/vitest.mjs dev --project transform",
+    "dev:react": "node --expose-gc ./node_modules/vitest/vitest.mjs dev --project react",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:transform": "vitest run --project transform",

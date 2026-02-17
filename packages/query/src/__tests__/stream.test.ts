@@ -746,6 +746,7 @@ describe('Stream Query', () => {
         // Wait for memory eviction (gcTime + eviction interval buffer)
         // With evictionMultiplier of 0.01, the eviction interval is 600ms
         await new Promise(resolve => setTimeout(resolve, 700));
+        (global as any).gc();
 
         // Second subscription after gc - should NOT have cached data in memory
         await testWithClient(testClient, async () => {
