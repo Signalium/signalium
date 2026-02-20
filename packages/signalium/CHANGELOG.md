@@ -1,5 +1,12 @@
 # signalium
 
+## 2.1.7
+
+### Patch Changes
+
+- 82a87ba: Prevent inifinite loop due to double dirtying/pending
+- 2230c74: React ContextProvider: store SignalScope in a ref so the same scope instance is reused across re-renders instead of being recreated each time, avoiding orphaned signals and unnecessary memory usage.
+
 ## 2.1.6
 
 ### Patch Changes
