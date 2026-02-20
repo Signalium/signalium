@@ -82,6 +82,10 @@ export function dirtySignalConsumers(map: Map<WeakRef<ReactiveSignal<any, any>>,
             nextDirty = subEdge.nextDirty;
           }
 
+          if (IS_DEV && edge === nextDirty) {
+            throw new Error('Edge already inserted, this should not happen. Please open an issue on GitHub.');
+          }
+
           edge.nextDirty = nextDirty;
           subEdge!.nextDirty = edge;
         }
