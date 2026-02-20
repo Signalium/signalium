@@ -359,6 +359,10 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
   }
 
   _setPending() {
+    if ((this._flags & AsyncFlags.Pending) !== 0) {
+      return this._awaitSubs;
+    }
+
     this._setFlags(AsyncFlags.Pending);
 
     // We need to dirty the consumers of the promise so that we insert the promise edge

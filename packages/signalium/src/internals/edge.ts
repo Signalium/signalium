@@ -60,27 +60,6 @@ export function createEdge<T extends EdgeType, R extends T extends EdgeType.Sign
   return prevEdge as R;
 }
 
-export function insertDirty(node: ReactiveSignal<any, any>, edge: Edge) {
-  const ord = edge.ord;
-  let currentEdge = node.dirtyHead;
-
-  if (currentEdge === undefined || currentEdge.ord > ord) {
-    node.dirtyHead = edge;
-  } else {
-    let nextEdge = currentEdge.nextDirty;
-
-    while (nextEdge !== undefined && nextEdge.ord < ord) {
-      currentEdge = nextEdge;
-      nextEdge = currentEdge.nextDirty;
-    }
-
-    if (nextEdge === edge) {
-      throw new Error('Edge already inserted');
-    }
-    currentEdge.nextDirty = edge;
-  }
-}
-
 export function findAndRemoveDirty(
   sub: ReactiveSignal<any, any>,
   dep: ReactiveSignal<any, any> | ReactivePromiseImpl<any>,
