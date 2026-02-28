@@ -68,6 +68,15 @@ const riefiedQuery = reactive(
   },
 );
 
+const resultValue = reactive(
+  (
+    result:
+      | QueryResult<unknown, unknown, unknown>
+      | InfiniteQueryResult<unknown, unknown, unknown>
+      | StreamQueryResult<unknown>,
+  ) => result.value,
+);
+
 // Overload for standard query
 export function useQuery<R, StreamType, OptimisticUpdateType, Args extends readonly Narrowable[]>(
   fn: (...args: Args) => QueryResult<R, StreamType, OptimisticUpdateType>,
@@ -104,7 +113,7 @@ export function useQuery<R, StreamType, OptimisticUpdateType, Args extends reado
     | InfiniteQueryResult<R, StreamType, OptimisticUpdateType>
     | StreamQueryResult<R>;
 
-  useReactive(() => result.value);
+  useReactive(resultValue, result);
 
   return result;
 }

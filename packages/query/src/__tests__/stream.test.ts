@@ -141,6 +141,8 @@ describe('Stream Query', () => {
         expect(relay.value?.email).toBe('alice@example.com'); // Should remain unchanged
       });
 
+      await sleep();
+
       // Verify unsubscribe was called
       expect(unsubscribeCallCount).toBe(1);
     });

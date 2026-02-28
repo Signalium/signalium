@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useMemo, useRef, useSyncExternalStore } from 'react';
 import { useScope } from './context.js';
 import { useSignalsSuspended } from './suspend-signals-context.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { runSignal } from '../internals/get.js';
 import { hashValue } from '../internals/utils/hash.js';
-
-const noopStore = () => () => {};
 
 export default function component<Props extends object>(
   fn: (props: Props) => React.ReactNode | React.ReactNode[] | null,
@@ -21,7 +19,7 @@ export default function component<Props extends object>(
 
     let signal = fnSignalRef.current;
 
-    if (!signal) {
+    if (signal === undefined) {
       fnSignalRef.current = signal = createReactiveSignal(
         {
           compute: () => fn(propsRef.current),
@@ -37,11 +35,13 @@ export default function component<Props extends object>(
       signal._isLazy = true;
     }
 
+    signal.setSuspended(suspended);
+
     // We always want to re-render when the signal is updated, regardless of
     // whether or not the result changed. This is because the signal is lazy,
     // so it will not be updated until the next render.
     useSyncExternalStore(
-      suspended ? noopStore : signal.addListenerLazy(),
+      signal.addListenerLazy(),
       () => signal.updatedCount,
       () => signal.updatedCount,
     );

@@ -25,8 +25,11 @@ const useStateSignal = <T>(signal: Signal<T>): T => {
 
 const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveSignal<R, Args>): ReactiveValue<R> => {
   const suspended = useSignalsSuspended();
+
+  signal.setSuspended(suspended);
+
   return useSyncExternalStore(
-    suspended ? () => () => {} : signal.addListenerLazy(),
+    signal.addListenerLazy(),
     () => signal.value,
     () => signal.value,
   );

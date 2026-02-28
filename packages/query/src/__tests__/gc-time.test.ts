@@ -175,7 +175,7 @@ describe('GC Time', () => {
       const getItem = query(() => ({
         path: '/reactivate',
         response: { n: t.number },
-        cache: { gcTime: 1000 },
+        cache: { gcTime: 100 },
       }));
 
       mockFetch.get('/reactivate', { n: 1 });
@@ -195,15 +195,16 @@ describe('GC Time', () => {
       await testWithClient(client, async () => {
         const relay = getItem();
         relay.value; // Access it
-        await sleep(60);
+        await sleep(40);
 
         // Should still be in memory
         expect(client.queryInstances.has(queryKey)).toBe(true);
-      });
 
-      // Even after original GC time, should not be evicted due to reactivation
-      await sleep(40);
-      expect(client.queryInstances.has(queryKey)).toBe(true);
+        // Even after original GC time, should not be evicted due to reactivation
+        await sleep(100);
+
+        expect(client.queryInstances.has(queryKey)).toBe(true);
+      });
     });
   });
 

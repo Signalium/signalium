@@ -227,7 +227,6 @@ export class EntityStore {
     const id = record.data[idField];
 
     if (typeof id !== 'string' && typeof id !== 'number') {
-      console.log(record.data);
       throw new Error(`Entity id must be string or number: ${shape.typenameValue}`);
     }
 

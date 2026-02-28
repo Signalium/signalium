@@ -3,6 +3,7 @@ import { hashReactiveFn, hashValue } from './utils/hash.js';
 import { scheduleGcSweep } from './scheduling.js';
 import { getCurrentConsumer } from './consumer.js';
 import { Context } from '../types.js';
+import { dirtySignal } from './dirty.js';
 
 // ======= Contexts =======
 

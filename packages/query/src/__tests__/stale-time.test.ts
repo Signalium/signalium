@@ -187,6 +187,8 @@ describe('StaleTime', () => {
         expect(mockFetch.calls).toHaveLength(1);
       });
 
+      await sleep();
+
       // Access again immediately
       await testWithClient(client, async () => {
         mockFetch.get('/item', { value: 'second' }, { delay: 50 });
@@ -221,6 +223,8 @@ describe('StaleTime', () => {
         const relay1 = getItem();
         await relay1;
       });
+
+      await sleep();
 
       await testWithClient(client, async () => {
         mockFetch.get('/item', { n: 2 }, { delay: 50 });
@@ -281,7 +285,6 @@ describe('StaleTime', () => {
           const relay3 = getItem();
           relay3.value;
           await vi.advanceTimersByTimeAsync(100);
-
           // Should still use cached data (within 1 hour)
           expect(relay3.value).toEqual({ data: 'cached' });
           expect(mockFetch.calls).toHaveLength(0);
@@ -309,6 +312,7 @@ describe('StaleTime', () => {
           expect(mockFetch.calls).toHaveLength(1);
         });
       } finally {
+        vi.runAllTimers();
         vi.useRealTimers();
       }
     });
@@ -329,9 +333,10 @@ describe('StaleTime', () => {
         await sleep(100); // Make stale
       });
 
-      await testWithClient(client, async () => {
-        mockFetch.get('/item', { id: 2 }, { delay: 100 });
+      await sleep(100); // Make stale
+      mockFetch.get('/item', { id: 2 }, { delay: 100 });
 
+      await testWithClient(client, async () => {
         // Multiple concurrent accesses
         const relay2 = getItem();
         const relay3 = getItem();

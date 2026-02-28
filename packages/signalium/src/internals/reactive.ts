@@ -5,12 +5,13 @@ import { getUnknownSignalFnName } from './utils/debug-name.js';
 import { SignalScope } from './contexts.js';
 import { getSignal } from './get.js';
 import { Edge } from './edge.js';
-import { cancelPull, schedulePull, scheduleUnwatch } from './scheduling.js';
+import { cancelPull, schedulePull } from './scheduling.js';
 import { hashValue } from './utils/hash.js';
 import { stringifyValue } from './utils/stringify.js';
 import { Callback } from './callback.js';
-import { watchSignal } from './watch.js';
+import { resumeSignal, suspendSignal, unwatchSignal, watchSignal } from './watch.js';
 import { equalsFrom } from './utils/equals.js';
+import { dirtySignal } from './dirty.js';
 
 /**
  * This file contains computed signal base types and struct definitions.
@@ -40,7 +41,9 @@ export const enum ReactiveFnFlags {
   // Properties
   isRelay = 0b1000,
   isListener = 0b10000,
-  isLazy = 0b100000,
+  isSuspendedListener = 0b100000,
+  isActive = 0b1000000,
+  isLazy = 0b10000000,
 }
 
 let ID = 0;
@@ -108,6 +111,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   computedCount: number = 0;
 
   watchCount: number = 0;
+  suspendCount: number = 0;
 
   key: SignalId | undefined;
   args: Args;
@@ -150,11 +154,24 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     return (this.flags & ReactiveFnFlags.isListener) !== 0;
   }
 
-  set _isListener(isListener: boolean) {
-    if (isListener) {
-      this.flags |= ReactiveFnFlags.isListener;
+  get _isSuspendedListener() {
+    return (this.flags & ReactiveFnFlags.isSuspendedListener) !== 0;
+  }
+
+  get _isSuspended() {
+    const { watchCount, suspendCount } = this;
+    return watchCount > 0 && watchCount === suspendCount;
+  }
+
+  get _isActive() {
+    return (this.flags & ReactiveFnFlags.isActive) !== 0;
+  }
+
+  set _isActive(isActive: boolean) {
+    if (isActive) {
+      this.flags |= ReactiveFnFlags.isActive;
     } else {
-      this.flags &= ~ReactiveFnFlags.isListener;
+      this.flags &= ~ReactiveFnFlags.isActive;
     }
   }
 
@@ -190,7 +207,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
     if (!current.has(listener)) {
       if (!this._isListener) {
-        watchSignal(this);
+        watchSignal(this, this._isSuspended);
         this.flags |= ReactiveFnFlags.isListener;
       }
 
@@ -205,7 +222,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
         if (current.size === 0) {
           cancelPull(this);
-          scheduleUnwatch(this);
+          unwatchSignal(this, this._isSuspended);
           this.flags &= ~ReactiveFnFlags.isListener;
         }
       }
@@ -217,11 +234,42 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   // the listener as watched so that relays that are accessed will be activated.
   addListenerLazy() {
     if (!this._isListener) {
-      watchSignal(this);
+      watchSignal(this, this._isSuspended);
       this.flags |= ReactiveFnFlags.isListener;
     }
 
     return this.listeners.cachedBoundAdd;
+  }
+
+  setSuspended(suspended: boolean) {
+    const { flags } = this;
+    const isListener = (flags & ReactiveFnFlags.isListener) !== 0;
+    const isSuspendedListener = (flags & ReactiveFnFlags.isSuspendedListener) !== 0;
+
+    if (suspended && !isSuspendedListener) {
+      this.flags = flags | ReactiveFnFlags.isSuspendedListener;
+
+      if (isListener) {
+        suspendSignal(this);
+      }
+    } else if (!suspended && isSuspendedListener) {
+      this.flags = flags & ~ReactiveFnFlags.isSuspendedListener;
+
+      if (isListener) {
+        resumeSignal(this);
+      }
+    }
+  }
+
+  reset() {
+    this.flags = (this.def.isRelay ? ReactiveFnFlags.isRelay : 0) | ReactiveFnState.Dirty;
+    this.dirtyHead = undefined;
+    this.updatedCount = 0;
+    this.computedCount = 0;
+    this.deps = new Map();
+    this.subs = new Map();
+    this.watchCount = 0;
+    this.suspendCount = 0;
   }
 }
 

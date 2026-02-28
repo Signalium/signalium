@@ -12,6 +12,7 @@ export type ReactiveFn<T, Args extends unknown[]> = (...args: Args) => ReactiveV
 export interface Watcher<T> {
   readonly value: ReactiveValue<T>;
   addListener(listener: () => void): () => void;
+  setSuspended(suspended: boolean): void;
 }
 
 export interface Notifier {
