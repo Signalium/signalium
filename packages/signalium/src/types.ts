@@ -28,6 +28,7 @@ export type RelayHooks = {
 };
 
 export interface RelayState<T> {
+  readonly isPending: boolean;
   value: T | undefined;
   setPromise: (promise: Promise<T>) => void;
   setError: (error: unknown) => void;
@@ -39,6 +40,7 @@ export interface SignalOptions<T> {
   equals?: Equals<T> | false;
   id?: string;
   desc?: string;
+  throwIfRunning?: boolean;
 }
 
 export interface ReactiveOptions<T, Params extends unknown[]> extends SignalOptions<T> {

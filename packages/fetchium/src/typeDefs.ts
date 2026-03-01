@@ -1,0 +1,783 @@
+import {
+  APITypes,
+  ARRAY_KEY,
+  ComplexTypeDef,
+  EntityConfig,
+  EntityMethods,
+  ExtractType,
+  ExtractTypesFromShape,
+  InternalTypeDef,
+  InternalObjectShape,
+  Mask,
+  ObjectDef,
+  RECORD_KEY,
+  TypeDef,
+  UnionDef,
+  UnionTypeDefs,
+} from './types.js';
+import { Prettify } from './type-utils.js';
+import { hashValue } from 'signalium/utils';
+
+const entries = Object.entries;
+const isArray = Array.isArray;
+
+const enum ComplexTypeDefKind {
+  OBJECT = 0,
+  UNION = 1,
+  PRIMITIVE_UNION = 2,
+  ARRAY = 3,
+  RECORD = 4,
+  ENTITY = 5,
+  PARSE_RESULT = 6,
+}
+
+export class ValidatorDef<T> {
+  private kind: ComplexTypeDefKind;
+  public mask: Mask;
+  private _shapeKey: number | undefined = undefined;
+  private _shape:
+    | InternalTypeDef
+    | InternalObjectShape
+    | UnionTypeDefs
+    | (() => InternalObjectShape)
+    | ComplexTypeDef[]
+    | undefined;
+  public subEntityPaths: undefined | string | string[] = undefined;
+  public typenameField: string | undefined = undefined;
+  public typenameValue: string | undefined = undefined;
+  public idField: string | undefined = undefined;
+  public values: Set<string | boolean | number> | undefined = undefined;
+  /**
+   * Lazy factory function for creating entity methods.
+   * Evaluated once during reifyShape() and cached in _methods.
+   */
+  public _methodsFactory: (() => EntityMethods) | undefined = undefined;
+
+  /**
+   * Cached methods object from evaluating _methodsFactory.
+   * Populated during reifyShape() - the same methods object is shared across all proxies,
+   * but each proxy binds its own reactive method wrappers.
+   */
+  public _methods: EntityMethods | undefined = undefined;
+
+  /**
+   * Entity configuration including stream options.
+   */
+  public _entityConfig: EntityConfig<any> | undefined = undefined;
+
+  /**
+   * The original Entity class for this definition.
+   * Used by createEntityProxy to set the proxy prototype so `instanceof` works.
+   */
+  public _entityClass: (new () => any) | undefined = undefined;
+
+  constructor(
+    kind: ComplexTypeDefKind,
+    mask: Mask,
+    shape:
+      | InternalTypeDef
+      | InternalObjectShape
+      | UnionTypeDefs
+      | (() => InternalObjectShape)
+      | ComplexTypeDef[]
+      | undefined,
+    values: Set<string | boolean | number> | undefined = undefined,
+  ) {
+    this.kind = kind;
+    this.mask = mask;
+    this._shape = shape;
+    this.values = values;
+  }
+
+  static cloneWith(
+    def: ValidatorDef<any>,
+    mask: Mask,
+    values: Set<string | boolean | number> | undefined = undefined,
+  ): ValidatorDef<any> {
+    const newDef = new ValidatorDef(def.kind, mask | def.mask, def._shape, values);
+    newDef.subEntityPaths = def.subEntityPaths;
+    newDef.values = def.values;
+    newDef.typenameField = def.typenameField;
+    newDef.typenameValue = def.typenameValue;
+    newDef.idField = def.idField;
+    newDef._methodsFactory = def._methodsFactory;
+    newDef._methods = def._methods;
+    newDef._entityConfig = def._entityConfig;
+    newDef._entityClass = def._entityClass;
+    return newDef;
+  }
+
+  reifyShape() {
+    if (this._shapeKey === undefined) {
+      switch (this.kind) {
+        case ComplexTypeDefKind.ENTITY: {
+          const shape = (this._shape as () => InternalObjectShape)();
+          this._shape = reifyObjectShape(this, shape);
+          // Evaluate and cache the methods factory once during shape reification
+          if (this._methodsFactory && !this._methods) {
+            this._methods = this._methodsFactory();
+          }
+          break;
+        }
+        case ComplexTypeDefKind.OBJECT:
+          this._shape = reifyObjectShape(this, this._shape as InternalObjectShape);
+          break;
+        case ComplexTypeDefKind.UNION:
+          this._shape = reifyUnionShape(this, this._shape as ComplexTypeDef[]);
+          break;
+        case ComplexTypeDefKind.ARRAY:
+        case ComplexTypeDefKind.RECORD:
+        case ComplexTypeDefKind.PARSE_RESULT: {
+          const shape = this._shape;
+
+          let shapeKey;
+
+          if (shape instanceof ValidatorDef) {
+            shapeKey = shape.shapeKey;
+
+            if (shape.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
+              this.mask |= Mask.HAS_SUB_ENTITY;
+            }
+          } else if (shape instanceof CaseInsensitiveSet) {
+            shapeKey = hashValue(Array.from(shape));
+          } else {
+            shapeKey = hashValue(shape);
+          }
+
+          this._shapeKey = hashValue([this.kind, this.mask, this.values, shapeKey]);
+
+          break;
+        }
+      }
+    }
+  }
+
+  get shape(): InternalTypeDef | InternalObjectShape | UnionTypeDefs | undefined {
+    this.reifyShape();
+
+    return this._shape as InternalTypeDef | InternalObjectShape | UnionTypeDefs | undefined;
+  }
+
+  get methods(): EntityMethods | undefined {
+    this.reifyShape();
+
+    return this._methods;
+  }
+
+  get shapeKey(): number {
+    this.reifyShape();
+
+    return this._shapeKey!;
+  }
+
+  set shapeKey(key: number) {
+    this._shapeKey = key >>> 0;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Case-Insensitive Enum Set
+// -----------------------------------------------------------------------------
+
+/**
+ * A Set-like class for enum values that matches string values case-insensitively.
+ * Non-string values (numbers, booleans) are matched exactly.
+ * Returns the canonical (originally defined) casing when a match is found.
+ */
+export class CaseInsensitiveSet<T extends string | boolean | number> extends Set<T> {
+  private readonly lowercaseMap: Map<string, T>; // lowercase -> canonical (strings only)
+
+  constructor(values: readonly T[]) {
+    super(values);
+
+    this.lowercaseMap = new Map<string, T>();
+
+    for (const value of values) {
+      if (typeof value === 'string') {
+        const lowercase = value.toLowerCase();
+        const existing = this.lowercaseMap.get(lowercase);
+
+        if (existing !== undefined) {
+          throw new Error(
+            `Case-insensitive enum cannot have multiple values with the same lowercase form: '${existing}' and '${value}' both become '${lowercase}'`,
+          );
+        }
+
+        this.lowercaseMap.set(lowercase, value);
+      }
+    }
+  }
+
+  /**
+   * Check if a value exists in the set (case-insensitively for strings).
+   * Used for backwards compatibility with Set-based checks.
+   */
+  has(value: unknown): boolean {
+    return this.get(value) !== undefined;
+  }
+
+  /**
+   * Get the canonical value for a given input.
+   * For strings, performs case-insensitive lookup and returns the canonical casing.
+   * For numbers/booleans, performs exact match.
+   * Returns undefined if no match is found.
+   */
+  get(value: unknown): T | undefined {
+    if (typeof value === 'string') {
+      return this.lowercaseMap.get(value.toLowerCase());
+    }
+
+    if (super.has(value as T)) {
+      return value as T;
+    }
+
+    return undefined;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Complex Type Definitions
+// -----------------------------------------------------------------------------
+
+export function defineArray<T extends TypeDef>(shape: T): TypeDef<ExtractType<T>[]> {
+  return new ValidatorDef(
+    ComplexTypeDefKind.ARRAY,
+    Mask.ARRAY,
+    shape as unknown as InternalTypeDef,
+  ) as unknown as TypeDef<ExtractType<T>[]>;
+}
+
+export function defineRecord<T extends TypeDef>(shape: T): TypeDef<Record<string, ExtractType<T>>> {
+  return new ValidatorDef(
+    ComplexTypeDefKind.RECORD,
+    Mask.RECORD | Mask.OBJECT,
+    shape as unknown as InternalTypeDef,
+  ) as unknown as TypeDef<Record<string, ExtractType<T>>>;
+}
+
+export function defineParseResult<T extends TypeDef>(
+  innerType: T,
+): TypeDef<import('./types.js').ParseResult<ExtractType<T>>> {
+  return new ValidatorDef(
+    ComplexTypeDefKind.PARSE_RESULT,
+    Mask.PARSE_RESULT,
+    innerType as unknown as InternalTypeDef,
+  ) as unknown as TypeDef<import('./types.js').ParseResult<ExtractType<T>>>;
+}
+
+export function defineObject<T extends Record<string, TypeDef>>(shape: T): TypeDef<Prettify<ExtractTypesFromShape<T>>> {
+  return new ValidatorDef(
+    ComplexTypeDefKind.OBJECT,
+    Mask.OBJECT,
+    shape as unknown as InternalObjectShape,
+  ) as unknown as TypeDef<Prettify<ExtractTypesFromShape<T>>>;
+}
+
+function defineUnion<T extends readonly TypeDef[]>(...types: T): TypeDef<ExtractType<T[number]>> {
+  type R = TypeDef<ExtractType<T[number]>>;
+  const internalTypes = types as unknown as readonly InternalTypeDef[];
+
+  let mask = 0;
+  let definition: ComplexTypeDef | undefined;
+  let shape: ComplexTypeDef[] | undefined;
+  let values: Set<string | boolean | number> | undefined;
+
+  for (const type of internalTypes) {
+    if (typeof type === 'number') {
+      mask |= type;
+      continue;
+    }
+
+    if (type instanceof Set) {
+      if (values === undefined) {
+        values = new Set(type);
+      } else {
+        for (const val of type) {
+          values.add(val);
+        }
+      }
+
+      continue;
+    }
+
+    if (definition === undefined) {
+      definition = type;
+      continue;
+    }
+
+    if (shape === undefined) {
+      shape = [definition];
+    }
+
+    shape.push(type);
+  }
+
+  if (definition === undefined) {
+    if (values === undefined) {
+      return mask as unknown as R;
+    }
+
+    if (mask === 0) {
+      return values as unknown as R;
+    }
+
+    return new ValidatorDef(ComplexTypeDefKind.PRIMITIVE_UNION, mask | Mask.UNION, undefined, values) as unknown as R;
+  }
+
+  if (shape === undefined) {
+    return ValidatorDef.cloneWith(definition as ValidatorDef<any>, mask, values) as unknown as R;
+  }
+
+  return new ValidatorDef(ComplexTypeDefKind.UNION, mask | Mask.UNION, shape, values) as unknown as R;
+}
+
+const optionalCache = new WeakMap<ValidatorDef<any>, ValidatorDef<any>>();
+const nullableCache = new WeakMap<ValidatorDef<any>, ValidatorDef<any>>();
+const nullishCache = new WeakMap<ValidatorDef<any>, ValidatorDef<any>>();
+
+function defineNullish<T extends TypeDef>(type: T): TypeDef<ExtractType<T> | undefined | null> {
+  type R = TypeDef<ExtractType<T> | undefined | null>;
+  const t = type as unknown as InternalTypeDef;
+
+  if (typeof t === 'number') {
+    return (t | Mask.UNDEFINED | Mask.NULL) as unknown as R;
+  }
+
+  if (t instanceof Set) {
+    return defineUnion(
+      type,
+      Mask.UNDEFINED as unknown as TypeDef<undefined>,
+      Mask.NULL as unknown as TypeDef<null>,
+    ) as unknown as R;
+  }
+
+  let cached = nullishCache.get(t as ValidatorDef<any>);
+  if (cached === undefined) {
+    cached = ValidatorDef.cloneWith(t as ValidatorDef<any>, Mask.UNDEFINED | Mask.NULL);
+    nullishCache.set(t as ValidatorDef<any>, cached);
+  }
+  return cached as unknown as R;
+}
+
+function defineOptional<T extends TypeDef>(type: T): TypeDef<ExtractType<T> | undefined> {
+  type R = TypeDef<ExtractType<T> | undefined>;
+  const t = type as unknown as InternalTypeDef;
+
+  if (typeof t === 'number') {
+    return (t | Mask.UNDEFINED) as unknown as R;
+  }
+
+  if (t instanceof Set) {
+    return defineUnion(type, Mask.UNDEFINED as unknown as TypeDef<undefined>) as unknown as R;
+  }
+
+  let cached = optionalCache.get(t as ValidatorDef<any>);
+  if (cached === undefined) {
+    cached = ValidatorDef.cloneWith(t as ValidatorDef<any>, Mask.UNDEFINED);
+    optionalCache.set(t as ValidatorDef<any>, cached);
+  }
+  return cached as unknown as R;
+}
+
+function defineNullable<T extends TypeDef>(type: T): TypeDef<ExtractType<T> | null> {
+  type R = TypeDef<ExtractType<T> | null>;
+  const t = type as unknown as InternalTypeDef;
+
+  if (typeof t === 'number') {
+    return (t | Mask.NULL) as unknown as R;
+  }
+
+  if (t instanceof Set) {
+    return defineUnion(type, Mask.NULL as unknown as TypeDef<null>) as unknown as R;
+  }
+
+  let cached = nullableCache.get(t as ValidatorDef<any>);
+  if (cached === undefined) {
+    cached = ValidatorDef.cloneWith(t as ValidatorDef<any>, Mask.NULL);
+    nullableCache.set(t as ValidatorDef<any>, cached);
+  }
+  return cached as unknown as R;
+}
+
+// -----------------------------------------------------------------------------
+// Shape Reification
+// -----------------------------------------------------------------------------
+
+export function reifyObjectShape(def: ValidatorDef<any>, shape: InternalObjectShape): InternalObjectShape {
+  // create a hash of the shape, starting with the object mask as the base
+  let shapeKey = hashValue([def.mask, def.values]);
+
+  for (const [key, value] of entries(shape)) {
+    switch (typeof value) {
+      case 'number':
+        if ((value & Mask.ID) !== 0) {
+          if (def.idField !== undefined) {
+            throw new Error(`Duplicate id field: ${key}`);
+          }
+
+          def.idField = key;
+        }
+
+        // Add to shape key (order independent operation)
+        shapeKey += hashValue(key) ^ value;
+        break;
+      case 'string':
+        // This is a typename field (plain string value)
+        if (def.typenameField !== undefined && def.typenameField !== key) {
+          throw new Error(`Duplicate typename field: ${key}`);
+        }
+
+        def.typenameField = key;
+        def.typenameValue = value;
+
+        // Add to shape key (order independent operation)
+        shapeKey += hashValue(key) ^ hashValue(value);
+        break;
+      case 'object':
+        if (value instanceof CaseInsensitiveSet) {
+          shapeKey ^= hashValue(key) ^ hashValue(Array.from(value));
+          break;
+        }
+
+        if (value instanceof Set) {
+          shapeKey ^= hashValue(key) ^ hashValue(value);
+          break;
+        }
+
+        // Add to shape key (order independent operation)
+        shapeKey += hashValue(key) ^ value.shapeKey;
+
+        if (value.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
+          def.mask |= Mask.HAS_SUB_ENTITY;
+          if (def.subEntityPaths === undefined) {
+            def.subEntityPaths = key;
+          } else if (isArray(def.subEntityPaths)) {
+            def.subEntityPaths.push(key);
+          } else {
+            def.subEntityPaths = [def.subEntityPaths, key];
+          }
+        }
+        break;
+    }
+  }
+
+  // Convert to unsigned 32-bit integer
+  def.shapeKey = shapeKey >>> 0;
+
+  return shape;
+}
+
+function reifyUnionShape(def: ValidatorDef<any>, defs: ComplexTypeDef[]): UnionTypeDefs {
+  let mask = def.mask;
+
+  let shape: UnionTypeDefs = Object.create(null);
+  let unionTypenameField: string | undefined;
+
+  // Start with the union mask and any values as the base
+  let shapeKey = hashValue([mask, def.values]);
+
+  for (const nestedDef of defs) {
+    const nestedMask = nestedDef.mask;
+
+    mask |= nestedMask;
+
+    // load the shape key and also reify the shape if not yet reified
+    shapeKey += nestedDef.shapeKey;
+
+    if ((nestedMask & Mask.UNION) !== 0) {
+      // Merge nested union into parent union
+      const nestedUnion = nestedDef as UnionDef;
+
+      // Check typename field consistency
+      if (nestedUnion.typenameField !== undefined) {
+        if (unionTypenameField !== undefined && unionTypenameField !== nestedUnion.typenameField) {
+          throw new Error(
+            `Union typename field conflict: Cannot merge unions with different typename fields ('${unionTypenameField}' vs '${nestedUnion.typenameField}')`,
+          );
+        }
+        unionTypenameField = nestedUnion.typenameField;
+      }
+
+      const nestedShape = nestedUnion.shape;
+
+      // Merge nested union's shape into parent
+      if (nestedShape !== undefined) {
+        for (const key of [...Object.keys(nestedShape), ARRAY_KEY, RECORD_KEY] as const) {
+          // Check for conflicts
+          const value = nestedShape[key];
+
+          if (shape[key] !== undefined && shape[key] !== value) {
+            throw new Error(
+              `Union merge conflict: Duplicate typename value '${String(key)}' found when merging nested unions (${String(shape[key])} vs ${String(value)})`,
+            );
+          }
+
+          // coerce type because we know the value is the same type as the key
+          shape[key] = value as any;
+        }
+      }
+    } else if ((nestedMask & Mask.ARRAY) !== 0) {
+      if (shape[ARRAY_KEY] !== undefined) {
+        throw new Error('Array shape already defined');
+      }
+
+      shape[ARRAY_KEY] = nestedDef.shape as InternalTypeDef;
+    } else if ((nestedMask & Mask.RECORD) !== 0) {
+      if (shape[RECORD_KEY] !== undefined) {
+        throw new Error('Record shape already defined');
+      }
+
+      shape[RECORD_KEY] = nestedDef.shape as InternalTypeDef;
+    } else {
+      // definition is ObjectDef | EntityDef
+      const typenameField = (nestedDef as ObjectDef).typenameField;
+      const typename = (nestedDef as ObjectDef).typenameValue;
+
+      if (typename === undefined) {
+        throw new Error(
+          'Object definitions must have a typename to be in a union with other objects, records, or arrays',
+        );
+      }
+
+      if (unionTypenameField !== undefined && typenameField !== unionTypenameField) {
+        throw new Error('Object definitions must have the same typename field to be in the same union');
+      }
+
+      unionTypenameField = typenameField;
+      shape[typename] = nestedDef as ObjectDef;
+    }
+  }
+
+  def.typenameField = unionTypenameField;
+  def.shapeKey = shapeKey >>> 0;
+  def.mask = mask;
+
+  return shape;
+}
+
+// -----------------------------------------------------------------------------
+// Marker Functions
+// -----------------------------------------------------------------------------
+
+function defineTypename<T extends string>(value: T): TypeDef<T> {
+  return value as unknown as TypeDef<T>;
+}
+
+function defineConst<T extends string | boolean | number>(value: T): TypeDef<T> {
+  return new Set([value]) as unknown as TypeDef<T>;
+}
+
+const defineEnum = (<T extends readonly (string | boolean | number)[]>(...values: T): TypeDef<T[number]> => {
+  return new Set(values as unknown as T[number][]) as unknown as TypeDef<T[number]>;
+}) as unknown as APITypes['enum'];
+
+(defineEnum as any).caseInsensitive = <T extends readonly (string | boolean | number)[]>(
+  ...values: T
+): TypeDef<T[number]> => {
+  return new CaseInsensitiveSet(values as unknown as T[number][]) as unknown as TypeDef<T[number]>;
+};
+
+// -----------------------------------------------------------------------------
+// Formatted Values
+// -----------------------------------------------------------------------------
+
+const FORMAT_MASK_SHIFT = 16;
+
+let nextFormatId = 0;
+const FORMAT_PARSERS: ((value: unknown) => unknown)[] = [];
+const FORMAT_SERIALIZERS: ((value: unknown) => unknown)[] = [];
+const FORMAT_MAP = new Map<string, number>();
+const FORMAT_ID_TO_NAME = new Map<number, string>();
+
+function defineFormatted<K extends keyof SignaliumQuery.FormatRegistry>(
+  format: K,
+): TypeDef<SignaliumQuery.FormatRegistry[K]> {
+  const mask = FORMAT_MAP.get(format);
+
+  if (mask === undefined) {
+    throw new Error(`Format ${format} not registered`);
+  }
+
+  return mask as unknown as TypeDef<SignaliumQuery.FormatRegistry[K]>;
+}
+
+export function getFormat(mask: number): (value: unknown) => unknown {
+  const formatId = mask >> FORMAT_MASK_SHIFT;
+
+  return FORMAT_PARSERS[formatId];
+}
+
+export function getFormatSerializer(mask: number): ((value: unknown) => unknown) | undefined {
+  const formatId = mask >> FORMAT_MASK_SHIFT;
+  return FORMAT_SERIALIZERS[formatId];
+}
+
+export function getFormatName(mask: number): string | undefined {
+  const formatId = mask >> FORMAT_MASK_SHIFT;
+  return FORMAT_ID_TO_NAME.get(formatId);
+}
+
+export function registerFormat<Input extends Mask.STRING | Mask.NUMBER, T>(
+  name: string,
+  type: Input,
+  parse: (value: Input extends Mask.STRING ? string : number) => T,
+  serialize: (value: T) => Input extends Mask.STRING ? string : number,
+) {
+  const maskId = nextFormatId++;
+  FORMAT_PARSERS[maskId] = parse as (value: unknown) => unknown;
+  FORMAT_SERIALIZERS[maskId] = serialize as (value: unknown) => unknown;
+  FORMAT_ID_TO_NAME.set(maskId, name);
+
+  const shiftedId = maskId << FORMAT_MASK_SHIFT;
+  const formatMask = type === Mask.STRING ? Mask.HAS_STRING_FORMAT : Mask.HAS_NUMBER_FORMAT;
+  const mask = shiftedId | type | formatMask;
+
+  FORMAT_MAP.set(name, mask);
+}
+
+// -----------------------------------------------------------------------------
+// Built-in Formats
+// -----------------------------------------------------------------------------
+
+// Register 'date' format: ISO date string (YYYY-MM-DD) ↔ Date
+registerFormat(
+  'date',
+  Mask.STRING,
+  value => {
+    // Parse YYYY-MM-DD as UTC date to avoid timezone issues
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+      throw new Error(`Invalid date string: ${value}. Expected YYYY-MM-DD format.`);
+    }
+    const [, year, month, day] = match;
+    const date = new Date(Date.UTC(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10)));
+    if (isNaN(date.getTime())) {
+      throw new Error(`Invalid date string: ${value}`);
+    }
+    return date;
+  },
+  value => {
+    // Format as YYYY-MM-DD using UTC to avoid timezone issues
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(value.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  },
+);
+
+// Register 'date-time' format: ISO datetime string (ISO 8601) ↔ Date
+registerFormat(
+  'date-time',
+  Mask.STRING,
+  value => {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) {
+      throw new Error(`Invalid date-time string: ${value}`);
+    }
+    return date;
+  },
+  value => {
+    // Format as ISO 8601 string
+    return value.toISOString();
+  },
+);
+
+// -----------------------------------------------------------------------------
+// Entity Definitions
+// -----------------------------------------------------------------------------
+
+import { Entity } from './proxy.js';
+
+const entityDefCache = new WeakMap<new () => Entity, ValidatorDef<any>>();
+
+/**
+ * Gets or creates a ValidatorDef for an Entity class. Instantiates the class once,
+ * extracts field values as the shape and prototype methods, then caches the result.
+ */
+export function getEntityDef(cls: new () => Entity): ValidatorDef<any> {
+  let def = entityDefCache.get(cls);
+
+  if (def === undefined) {
+    const instance = new cls();
+
+    const shape: InternalObjectShape = {};
+    for (const [key, value] of entries(instance as Record<string, unknown>)) {
+      shape[key] = value as any;
+    }
+
+    // Throw when subclass redefines a field that exists on a parent Entity.
+    // Only throw when the subclass provides a different value for a parent key (shadowing), not for inherited keys.
+    const parentProto = Object.getPrototypeOf(cls.prototype);
+    if (parentProto != null) {
+      const ParentClass = parentProto.constructor as new () => Entity;
+      if (ParentClass !== Entity && typeof ParentClass === 'function') {
+        const parentDef = getEntityDef(ParentClass);
+        const parentShape = parentDef.shape as InternalObjectShape;
+        for (const key of Object.keys(parentShape)) {
+          if (key in shape && shape[key] !== parentShape[key]) {
+            throw new Error(`Cannot extend: field '${key}' already exists in type definition`);
+          }
+        }
+      }
+    }
+
+    const methods: EntityMethods = {};
+    const proto = cls.prototype;
+    for (const key of Object.getOwnPropertyNames(proto)) {
+      if (key !== 'constructor' && typeof proto[key] === 'function') {
+        methods[key] = proto[key];
+      }
+    }
+
+    def = new ValidatorDef(ComplexTypeDefKind.ENTITY, Mask.ENTITY | Mask.OBJECT, () => shape);
+
+    def._entityClass = cls;
+
+    if (Object.keys(methods).length > 0) {
+      def._methodsFactory = () => methods;
+    }
+
+    const staticCls = cls as typeof Entity;
+    if (staticCls.stream) {
+      def._entityConfig = { stream: staticCls.stream } as any;
+    }
+
+    entityDefCache.set(cls, def);
+  }
+
+  return def;
+}
+
+function defineEntityType(cls: new () => Entity): TypeDef<any> {
+  return getEntityDef(cls) as unknown as TypeDef<any>;
+}
+
+export const t: APITypes = {
+  format: defineFormatted,
+  typename: defineTypename,
+  const: defineConst,
+  enum: defineEnum,
+  id: (Mask.ID | Mask.STRING | Mask.NUMBER) as unknown as TypeDef<string | number>,
+  string: Mask.STRING as unknown as TypeDef<string>,
+  number: Mask.NUMBER as unknown as TypeDef<number>,
+  boolean: Mask.BOOLEAN as unknown as TypeDef<boolean>,
+  null: Mask.NULL as unknown as TypeDef<null>,
+  undefined: Mask.UNDEFINED as unknown as TypeDef<undefined>,
+  array: defineArray,
+  object: defineObject,
+  record: defineRecord,
+  union: defineUnion,
+  nullish: defineNullish,
+  optional: defineOptional,
+  nullable: defineNullable,
+  result: defineParseResult,
+  entity: defineEntityType,
+};
+
+/**
+ * Extract the internal shape key from a TypeDef. Used in tests and
+ * internal tooling to access the ValidatorDef's lazy shape key.
+ */
+export function getShapeKey(def: TypeDef): number {
+  return (def as unknown as ValidatorDef<any>).shapeKey;
+}

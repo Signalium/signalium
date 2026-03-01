@@ -324,4 +324,62 @@ describe('async tasks', () => {
     // expect(result2.error).toBeInstanceOf(Error);
     // expect((result2.error as Error).message).toBe('Test error');
   });
+
+  test('throwIfRunning option prevents re-running while pending', async () => {
+    let resolveTask: ((value: number) => void) | undefined;
+
+    const t = task(
+      async () => {
+        return new Promise<number>(resolve => {
+          resolveTask = resolve;
+        });
+      },
+      { throwIfRunning: true },
+    );
+
+    expect(t.isPending).toBe(false);
+
+    // First run should work fine
+    t.run();
+    expect(t.isPending).toBe(true);
+
+    // Second run while pending should throw synchronously
+    expect(() => t.run()).toThrow('Task is already running');
+
+    // Resolve the first run
+    resolveTask!(42);
+    await nextTick();
+
+    expect(t.isPending).toBe(false);
+    expect(t.isResolved).toBe(true);
+    expect(t.value).toBe(42);
+
+    // After settling, run should work again
+    resolveTask = undefined;
+    t.run();
+    expect(t.isPending).toBe(true);
+
+    resolveTask!(99);
+    await nextTick();
+
+    expect(t.value).toBe(99);
+  });
+
+  test('throwIfRunning defaults to false (allows concurrent runs)', async () => {
+    let callCount = 0;
+
+    const t = task(async () => {
+      callCount++;
+      return callCount;
+    });
+
+    expect(t.isPending).toBe(false);
+
+    // First run
+    t.run();
+    expect(t.isPending).toBe(true);
+
+    // Second run while pending should NOT throw (default behavior)
+    expect(() => t.run()).not.toThrow();
+  });
 });
