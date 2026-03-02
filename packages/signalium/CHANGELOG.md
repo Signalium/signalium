@@ -1,5 +1,11 @@
 # signalium
 
+## 2.2.0
+
+### Minor Changes
+
+- 0b6b650: Add setSuspended API for more explicit suspension support
+
 ## 2.1.7
 
 ### Patch Changes

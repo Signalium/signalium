@@ -1,5 +1,11 @@
 # @signalium/query
 
+## 1.1.2
+
+### Patch Changes
+
+- 0b6b650: Add setSuspended API for more explicit suspension support
+
 ## 1.1.1
 
 ### Patch Changes
