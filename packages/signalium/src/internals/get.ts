@@ -70,7 +70,7 @@ export function checkSignal(signal: ReactiveSignal<any, any>): number {
 
         // If the dependency is pending, then we need to propagate the pending state to the
         // parent signal, and we halt the computation here.
-        if (dep.isPending) {
+        if (dep._getPending()) {
           const value = signal._value;
 
           // Add the signal to the awaitSubs map to be notified when the promise is resolved

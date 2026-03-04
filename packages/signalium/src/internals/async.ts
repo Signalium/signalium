@@ -10,7 +10,7 @@ import {
 import { createReactiveSignal, ReactiveSignal, ReactiveDefinition, ReactiveFnState } from './reactive.js';
 import { disconnectSignal, getSignal } from './get.js';
 import { dirtySignal, dirtySignalConsumers } from './dirty.js';
-import { scheduleAsyncPull } from './scheduling.js';
+import { scheduleAsyncPull, trackPendingStart, trackPendingEnd } from './scheduling.js';
 import { createEdge, EdgeType, findAndRemoveDirty, PromiseEdge } from './edge.js';
 import { SignalScope } from './contexts.js';
 import { signal } from './signal.js';
@@ -269,6 +269,10 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
       }
     }
 
+    if (baseFlags & AsyncFlags.Pending) {
+      trackPendingStart();
+    }
+
     this._flags = baseFlags;
   }
 
@@ -315,6 +319,17 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
 
     this._flags = nextFlags;
 
+    if (IS_LOCAL_DEV) {
+      const pendingChanged = allChanged & AsyncFlags.Pending;
+      if (pendingChanged) {
+        if (nextFlags & AsyncFlags.Pending) {
+          trackPendingStart();
+        } else {
+          trackPendingEnd();
+        }
+      }
+    }
+
     if (allChanged === 0) {
       return;
     }
@@ -358,8 +373,12 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
     }
   }
 
+  _getPending() {
+    return (this._flags & AsyncFlags.Pending) !== 0;
+  }
+
   _setPending() {
-    if ((this._flags & AsyncFlags.Pending) !== 0) {
+    if (this._getPending()) {
       return this._awaitSubs;
     }
 
@@ -375,7 +394,7 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
   }
 
   _clearPending() {
-    this._setFlags(0, AsyncFlags.Pending);
+    this._setValue(this._value!);
   }
 
   async _setPromise(promise: Promise<T>) {

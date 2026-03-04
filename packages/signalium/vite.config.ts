@@ -9,6 +9,7 @@ export default defineConfig({
   plugins: [react()],
   define: {
     IS_DEV: JSON.stringify(!isProduction),
+    IS_LOCAL_DEV: 'false',
   },
   build: {
     lib: {
