@@ -1,5 +1,11 @@
 # signalium
 
+## 2.2.1
+
+### Patch Changes
+
+- 5378406: Fix async and add chaos tests
+
 ## 2.2.0
 
 ### Minor Changes
