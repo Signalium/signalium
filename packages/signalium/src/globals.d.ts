@@ -4,3 +4,4 @@
  * In production builds, this is `false` and all code guarded by `if (IS_DEV)` is stripped.
  */
 declare const IS_DEV: boolean;
+declare const IS_LOCAL_DEV: boolean;

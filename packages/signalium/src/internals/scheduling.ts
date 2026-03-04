@@ -151,6 +151,53 @@ export const settled = async () => {
   }
 };
 
+let _pendingAsyncCount = 0;
+let _pendingAsyncResolvers: (() => void)[] = [];
+
+export const trackPendingStart = () => {
+  _pendingAsyncCount++;
+};
+
+export const trackPendingEnd = () => {
+  _pendingAsyncCount--;
+  if (_pendingAsyncCount === 0) {
+    const resolvers = _pendingAsyncResolvers;
+    _pendingAsyncResolvers = [];
+    for (const resolve of resolvers) resolve();
+  }
+};
+
+export const asyncSettled = async (timeout = 100) => {
+  const deadline = Date.now() + timeout;
+
+  while (true) {
+    await settled();
+    if (_pendingAsyncCount === 0) break;
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(
+        `asyncSettled timed out: ${_pendingAsyncCount} reactive promises still pending after ${timeout}ms`,
+      );
+    }
+
+    await Promise.race([
+      new Promise<void>(resolve => _pendingAsyncResolvers.push(resolve)),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                `asyncSettled timed out: ${_pendingAsyncCount} reactive promises still pending after ${timeout}ms`,
+              ),
+            ),
+          remaining,
+        ),
+      ),
+    ]);
+  }
+};
+
 export const batch = (fn: () => void) => {
   let resolve: () => void;
   const promise = new Promise<void>(r => (resolve = r));

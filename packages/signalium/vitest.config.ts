@@ -17,6 +17,7 @@ const reactDomPath = path.dirname(require.resolve('react-dom/package.json'));
 export default defineConfig({
   define: {
     IS_DEV: 'true',
+    IS_LOCAL_DEV: 'true',
   },
   resolve: {
     // custom resolves for vitest so we don't need to use the main entry point
