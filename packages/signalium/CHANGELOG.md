@@ -1,5 +1,11 @@
 # signalium
 
+## 2.2.2
+
+### Patch Changes
+
+- 5f0aafc: Add better tests for the hash function, fix some minor edge cases
+
 ## 2.2.1
 
 ### Patch Changes
