@@ -1,7 +1,6 @@
-import { ReactiveFnState, ReactiveSignal, isRelay } from './reactive.js';
+import { ReactiveSignal, isRelay } from './reactive.js';
 import { checkSignal } from './get.js';
 import { cancelDeactivate, scheduleDeactivate } from './scheduling.js';
-import { dirtySignal } from './dirty.js';
 
 export function watchSignal(signal: ReactiveSignal<any, any>, parentIsSuspended: boolean): void {
   if (parentIsSuspended) {
