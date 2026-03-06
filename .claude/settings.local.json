@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:unit)",
+      "Bash(npx vitest run --project unit)",
+      "Bash(npx vitest run *)",
+      "Bash(npx vitest run --project unit src/__tests__/caching-persistence.test.ts)",
+      "Bash(npx vitest run --project unit src/__tests__/debounce.test.ts)",
+      "Bash(npx vitest run --project unit src/__tests__/gc-time.test.ts)",
+      "Bash(npx vitest run --project unit src/__tests__/rest-query-api.test.ts)",
+      "Bash(npx vitest run --project unit src/__tests__/entity-system.test.ts)",
+      "Bash(npx vitest run --project unit src/__tests__/cache-error-handling.test.ts)",
+      "Bash(npx vitest run --project react)",
+      "Bash(npx vitest run)"
+    ]
+  }
+}
