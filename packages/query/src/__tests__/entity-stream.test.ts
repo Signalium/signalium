@@ -364,6 +364,87 @@ describe('Entity Streaming', () => {
       });
     });
 
+    it('stays aligned when reducer state derives hasPriceData without outer mutation', async () => {
+      let streamCallback: ((update: any) => void) | undefined;
+
+      const Price = entity(
+        () => ({
+          __typename: t.typename('Price'),
+          id: t.id,
+          price: t.optional(t.number),
+        }),
+        undefined,
+        {
+          stream: {
+            subscribe: (_context, _id, onUpdate) => {
+              streamCallback = onUpdate;
+              return () => {};
+            },
+          },
+        },
+      );
+
+      const getPrices = query(() => ({
+        path: '/prices',
+        response: {
+          prices: t.record(Price),
+        },
+      }));
+
+      mockFetch.get('/prices', {
+        prices: {
+          a: {
+            __typename: 'Price',
+            id: 'a',
+          },
+        },
+      });
+
+      await testWithClient(client, async () => {
+        const tokens = signal([{ id: 'a', embeddedPrice: undefined as number | undefined }]);
+
+        const getLocalPortfolioValue = reactive(async () => {
+          const { prices } = await getPrices();
+
+          return tokens.value.reduce(
+            (acc, token) => {
+              const tokenPrice = prices[token.id]?.price ?? token.embeddedPrice;
+
+              return {
+                hasPriceData: acc.hasPriceData || tokenPrice != null,
+                resolvedPriceCount: acc.resolvedPriceCount + (tokenPrice != null ? 1 : 0),
+              };
+            },
+            {
+              hasPriceData: false,
+              resolvedPriceCount: 0,
+            },
+          );
+        });
+
+        const initial = await getLocalPortfolioValue();
+        expect(initial).toEqual({
+          hasPriceData: false,
+          resolvedPriceCount: 0,
+        });
+
+        expect(streamCallback).toBeDefined();
+
+        await new Promise<void>(resolve => {
+          setTimeout(() => {
+            streamCallback?.({ price: 1 });
+            resolve();
+          }, 0);
+        });
+
+        const warm = await getLocalPortfolioValue();
+        expect(warm).toEqual({
+          hasPriceData: true,
+          resolvedPriceCount: 1,
+        });
+      });
+    });
+
     it('should merge stream updates correctly with existing entity data', async () => {
       let streamCallback: ((update: any) => void) | undefined;
 
