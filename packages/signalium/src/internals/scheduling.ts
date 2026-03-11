@@ -54,6 +54,7 @@ export const scheduleDeactivate = (signal: ReactiveSignal<any, any>) => {
 };
 
 export const cancelDeactivate = (signal: ReactiveSignal<any, any>) => {
+  signal.scope?.removeFromGc(signal);
   PENDING_DEACTIVE.delete(signal);
 };
 
