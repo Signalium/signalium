@@ -23,6 +23,7 @@ function watchActiveSignal(signal: ReactiveSignal<any, any>): void {
   const newWatchCount = watchCount + 1;
 
   signal.watchCount = newWatchCount;
+  cancelDeactivate(signal);
 
   if (signal._isActive) {
     return;
@@ -55,8 +56,6 @@ function watchSuspendedSignal(signal: ReactiveSignal<any, any>): void {
   signal.watchCount = newWatchCount;
   signal.suspendCount = newSuspendCount;
 
-  // If signal is being watched again, remove from GC candidates and add back to scope
-  signal.scope?.removeFromGc(signal);
   cancelDeactivate(signal);
 
   // If the original watch count was 0, we need to propagate the watch + suspend
@@ -91,6 +90,7 @@ export function resumeSignal(signal: ReactiveSignal<any, any>): void {
   const newSuspendCount = Math.max(suspendCount - 1, 0);
 
   signal.suspendCount = newSuspendCount;
+  cancelDeactivate(signal);
 
   if (watchCount > 0 && !signal._isActive) {
     for (const dep of signal.deps.keys()) {

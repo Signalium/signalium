@@ -1,10 +1,11 @@
 import { userEvent } from '@vitest/browser/context';
 import React, { useState } from 'react';
+import { flushSync } from 'react-dom';
 import { reactive } from 'signalium';
 import { render } from 'vitest-browser-react';
 import { describe, expect, test } from 'vitest';
 import { sleep } from '../../__tests__/utils/async.js';
-import { ContextProvider, useReactive } from '../index.js';
+import { ContextProvider, SuspendSignalsProvider, useReactive } from '../index.js';
 
 /**
  * Creates a deferred promise that can be resolved from the test body.
@@ -164,6 +165,66 @@ describe('React > sync wrapper over async signal', () => {
     chain.resolve('ready');
 
     await expect.element(getByTestId('wrapped-value')).toHaveTextContent('ready');
+  });
+
+  /**
+   * The React listener is on getChildValue (an intermediate signal), not on
+   * getWrappedValue directly. When the component is suspended then immediately
+   * resumed, resumeSignal does NOT cancel the pending deactivation because
+   * _isActive is still true. The deactivation cascades from getChildValue,
+   * fully resetting getWrappedValue and getAsyncValue (watchCount → 0).
+   * The _stateSubs dirty notification hits getWrappedValue but it's already
+   * Dirty (from reset) and its subs map is empty, so the dirty can't
+   * propagate back up to getChildValue. The signal stays stuck on "pending".
+   */
+  test('resolves after suspend → resume when consuming through an intermediate signal', async () => {
+    const chain = createWrappedChain();
+
+    function Consumer(): React.ReactNode {
+      return <div data-testid="value">{useReactive(chain.getChildValue)}</div>;
+    }
+
+    function App(): React.ReactNode {
+      const [suspended, setSuspended] = useState(false);
+
+      return (
+        <ContextProvider contexts={[]}>
+          <SuspendSignalsProvider value={suspended}>
+            <Consumer />
+          </SuspendSignalsProvider>
+          <button
+            data-testid="suspend-and-resume"
+            onClick={() => {
+              // flushSync forces the suspended=true render to complete
+              // synchronously, so suspendSignal runs and schedules
+              // deactivation. Then we immediately set suspended=false,
+              // triggering resumeSignal in the next synchronous render.
+              // No macrotask fires between them, so deactivation is
+              // still pending when resumeSignal runs.
+              flushSync(() => setSuspended(true));
+              setSuspended(false);
+            }}
+          >
+            Suspend and Resume
+          </button>
+        </ContextProvider>
+      );
+    }
+
+    // No StrictMode — avoids the double-mount cycle accidentally
+    // cancelling the pending deactivation.
+    const { getByTestId } = render(<App />);
+
+    await expect.element(getByTestId('value')).toHaveTextContent('pending');
+
+    // Suspend + resume in a single event — deactivation is scheduled
+    // but _isActive is still true when resumeSignal runs.
+    await userEvent.click(getByTestId('suspend-and-resume'));
+
+    // Resolve the async value
+    chain.resolve('ready');
+
+    await expect.element(getByTestId('value')).toHaveTextContent('ready');
   });
 
   test('direct async consumption still updates under the same StrictMode lifecycle', async () => {
