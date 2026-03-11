@@ -1,5 +1,12 @@
 # signalium
 
+## 2.2.2
+
+### Patch Changes
+
+- 0aedc29: Fix bugs with async reactive functions never resolving
+- 5f0aafc: Add better tests for the hash function, fix some minor edge cases
+
 ## 2.2.1
 
 ### Patch Changes
