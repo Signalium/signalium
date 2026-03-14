@@ -406,13 +406,13 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
     const flags = this._flags;
     let awaitSubs = this._awaitSubs;
 
-    // If we were not already pending, we need to propagate the dirty state to any
-    // consumers that were added since the promise was resolved last.
-    if ((flags & AsyncFlags.Pending) === 0) {
-      awaitSubs = this._setPending();
-    }
-
     try {
+      // If we were not already pending, we need to propagate the dirty state to any
+      // consumers that were added since the promise was resolved last.
+      if ((flags & AsyncFlags.Pending) === 0) {
+        awaitSubs = this._setPending();
+      }
+
       const nextValue = await promise;
 
       if (promise !== this._promise) {
@@ -742,6 +742,10 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
   };
 
   const state: RelayState<T> = {
+    get isPending() {
+      return (p['_flags'] & AsyncFlags.Pending) !== 0;
+    },
+
     get value() {
       return p['_value'] as T;
     },
@@ -801,7 +805,13 @@ export function createTask<T, Args extends unknown[]>(
   p['_equals'] = equalsFrom(opts?.equals);
   p['_initFlags'](AsyncFlags.isRunnable);
 
+  const throwIfRunning = opts?.throwIfRunning === true;
+
   p['run'] = ((...args: Args) => {
+    if (throwIfRunning && (p['_flags'] & AsyncFlags.Pending) !== 0) {
+      throw new Error('Task is already running');
+    }
+
     p._setPromise(fn(...args));
 
     return p;

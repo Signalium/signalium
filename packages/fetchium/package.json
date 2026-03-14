@@ -1,0 +1,125 @@
+{
+  "name": "fetchium",
+  "version": "0.0.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Signalium/signalium.git"
+  },
+  "description": "Chain-reactivity at critical mass",
+  "main": "./dist/cjs/production/index.js",
+  "module": "./dist/esm/production/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "development": {
+        "import": "./dist/esm/development/index.js",
+        "require": "./dist/cjs/development/index.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/index.js",
+        "require": "./dist/cjs/production/index.js"
+      },
+      "import": "./dist/esm/production/index.js",
+      "require": "./dist/cjs/production/index.js",
+      "default": "./dist/esm/production/index.js"
+    },
+    "./react": {
+      "types": "./dist/esm/react/index.d.ts",
+      "development": {
+        "import": "./dist/esm/development/react/index.js",
+        "require": "./dist/cjs/development/react/index.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/react/index.js",
+        "require": "./dist/cjs/production/react/index.js"
+      },
+      "import": "./dist/esm/production/react/index.js",
+      "require": "./dist/cjs/production/react/index.js",
+      "default": "./dist/esm/production/react/index.js"
+    },
+    "./stores/async": {
+      "types": "./dist/esm/stores/async.d.ts",
+      "development": {
+        "import": "./dist/esm/development/stores/async.js",
+        "require": "./dist/cjs/development/stores/async.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/stores/async.js",
+        "require": "./dist/cjs/production/stores/async.js"
+      },
+      "import": "./dist/esm/production/stores/async.js",
+      "require": "./dist/cjs/production/stores/async.js",
+      "default": "./dist/esm/production/stores/async.js"
+    },
+    "./stores/sync": {
+      "types": "./dist/esm/stores/sync.d.ts",
+      "development": {
+        "import": "./dist/esm/development/stores/sync.js",
+        "require": "./dist/cjs/development/stores/sync.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/stores/sync.js",
+        "require": "./dist/cjs/production/stores/sync.js"
+      },
+      "import": "./dist/esm/production/stores/sync.js",
+      "require": "./dist/cjs/production/stores/sync.js",
+      "default": "./dist/esm/production/stores/sync.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/esm/**",
+    "dist/cjs/**",
+    "stores/**",
+    "index.d.ts",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE*"
+  ],
+  "peerDependencies": {
+    "react": ">=18.3.1",
+    "signalium": ">=2.1.7"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "dev": "vitest dev",
+    "dev:unit": "vitest dev --project unit",
+    "dev:transform": "vitest dev --project transform",
+    "dev:react": "vitest dev --project react",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:transform": "vitest run --project transform",
+    "test:react": "vitest run --project react",
+    "check-types": "tsc --noEmit",
+    "build": "npm run build:clean && npm run build:types && npm run build:dev && npm run build:prod && node scripts/generate-legacy-entries.cjs",
+    "build:clean": "rm -rf dist",
+    "build:types": "tsc --emitDeclarationOnly --outDir dist/esm --project tsconfig.esm.json",
+    "build:dev": "BUILD_MODE=development vite build",
+    "build:prod": "BUILD_MODE=production vite build"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@babel/core": "^7.23.6",
+    "@babel/preset-react": "^7.23.3",
+    "@vitejs/plugin-react": "^5.0.0",
+    "@vitest/browser": "^3.0.6",
+    "playwright": "^1.50.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "rollup-plugin-const-enum": "^1.1.4",
+    "signalium": "2.2.2",
+    "vite": "^7.1.2",
+    "vite-plugin-babel": "^1.3.0",
+    "vite-plugin-dts": "^4.5.4",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.4",
+    "vitest-browser-react": "^1.0.1"
+  }
+}
