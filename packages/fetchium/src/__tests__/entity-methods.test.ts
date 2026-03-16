@@ -54,15 +54,11 @@ describe('Entity Methods', () => {
       expect(typeof User.prototype.greet).toBe('function');
       expect(typeof User.prototype.isAdult).toBe('function');
 
-      // Verify the internal definition has a methods factory
+      // Verify the internal definition has methods
       const def = t.entity(User) as any;
-      expect(def._methodsFactory).toBeDefined();
-      expect(typeof def._methodsFactory).toBe('function');
-
-      // Verify calling the factory returns methods
-      const methods = def._methodsFactory();
-      expect(methods.greet).toBeDefined();
-      expect(methods.isAdult).toBeDefined();
+      expect(def._methods).toBeDefined();
+      expect(def._methods.greet).toBeDefined();
+      expect(def._methods.isAdult).toBeDefined();
     });
 
     it('should call methods on entity proxies with correct this context', async () => {
