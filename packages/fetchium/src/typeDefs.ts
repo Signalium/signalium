@@ -34,29 +34,17 @@ const enum ComplexTypeDefKind {
 export class ValidatorDef<T> {
   private kind: ComplexTypeDefKind;
   public mask: Mask;
-  private _shapeKey: number | undefined = undefined;
-  private _shape:
-    | InternalTypeDef
-    | InternalObjectShape
-    | UnionTypeDefs
-    | (() => InternalObjectShape)
-    | ComplexTypeDef[]
-    | undefined;
+  public shapeKey: number = 0;
+  public shape: InternalTypeDef | InternalObjectShape | UnionTypeDefs | ComplexTypeDef[] | undefined;
   public subEntityPaths: undefined | string | string[] = undefined;
   public typenameField: string | undefined = undefined;
   public typenameValue: string | undefined = undefined;
   public idField: string | undefined = undefined;
   public values: Set<string | boolean | number> | undefined = undefined;
-  /**
-   * Lazy factory function for creating entity methods.
-   * Evaluated once during reifyShape() and cached in _methods.
-   */
-  public _methodsFactory: (() => EntityMethods) | undefined = undefined;
 
   /**
-   * Cached methods object from evaluating _methodsFactory.
-   * Populated during reifyShape() - the same methods object is shared across all proxies,
-   * but each proxy binds its own reactive method wrappers.
+   * Methods object for entity definitions.
+   * Shared across all proxies, but each proxy binds its own reactive method wrappers.
    */
   public _methods: EntityMethods | undefined = undefined;
 
@@ -74,104 +62,52 @@ export class ValidatorDef<T> {
   constructor(
     kind: ComplexTypeDefKind,
     mask: Mask,
-    shape:
-      | InternalTypeDef
-      | InternalObjectShape
-      | UnionTypeDefs
-      | (() => InternalObjectShape)
-      | ComplexTypeDef[]
-      | undefined,
+    shape: InternalTypeDef | InternalObjectShape | UnionTypeDefs | ComplexTypeDef[] | undefined,
     values: Set<string | boolean | number> | undefined = undefined,
   ) {
     this.kind = kind;
     this.mask = mask;
-    this._shape = shape;
+    this.shape = shape;
     this.values = values;
-  }
 
-  static cloneWith(
-    def: ValidatorDef<any>,
-    mask: Mask,
-    values: Set<string | boolean | number> | undefined = undefined,
-  ): ValidatorDef<any> {
-    const newDef = new ValidatorDef(def.kind, mask | def.mask, def._shape, values);
-    newDef.subEntityPaths = def.subEntityPaths;
-    newDef.values = def.values;
-    newDef.typenameField = def.typenameField;
-    newDef.typenameValue = def.typenameValue;
-    newDef.idField = def.idField;
-    newDef._methodsFactory = def._methodsFactory;
-    newDef._methods = def._methods;
-    newDef._entityConfig = def._entityConfig;
-    newDef._entityClass = def._entityClass;
-    return newDef;
-  }
+    switch (kind) {
+      case ComplexTypeDefKind.ENTITY:
+      case ComplexTypeDefKind.OBJECT:
+        this.shape = reifyObjectShape(this, shape as InternalObjectShape);
+        break;
+      case ComplexTypeDefKind.UNION:
+        this.shape = reifyUnionShape(this, shape as ComplexTypeDef[]);
+        break;
+      case ComplexTypeDefKind.ARRAY:
+      case ComplexTypeDefKind.RECORD:
+      case ComplexTypeDefKind.PARSE_RESULT: {
+        let shapeKey;
 
-  reifyShape() {
-    if (this._shapeKey === undefined) {
-      switch (this.kind) {
-        case ComplexTypeDefKind.ENTITY: {
-          const shape = (this._shape as () => InternalObjectShape)();
-          this._shape = reifyObjectShape(this, shape);
-          // Evaluate and cache the methods factory once during shape reification
-          if (this._methodsFactory && !this._methods) {
-            this._methods = this._methodsFactory();
+        if (shape instanceof ValidatorDef) {
+          shapeKey = shape.shapeKey;
+
+          if (shape.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
+            this.mask |= Mask.HAS_SUB_ENTITY;
           }
-          break;
+        } else if (shape instanceof CaseInsensitiveSet) {
+          shapeKey = hashValue(Array.from(shape));
+        } else {
+          shapeKey = hashValue(shape);
         }
-        case ComplexTypeDefKind.OBJECT:
-          this._shape = reifyObjectShape(this, this._shape as InternalObjectShape);
-          break;
-        case ComplexTypeDefKind.UNION:
-          this._shape = reifyUnionShape(this, this._shape as ComplexTypeDef[]);
-          break;
-        case ComplexTypeDefKind.ARRAY:
-        case ComplexTypeDefKind.RECORD:
-        case ComplexTypeDefKind.PARSE_RESULT: {
-          const shape = this._shape;
 
-          let shapeKey;
+        this.shapeKey = hashValue([kind, this.mask, values, shapeKey]) >>> 0;
 
-          if (shape instanceof ValidatorDef) {
-            shapeKey = shape.shapeKey;
-
-            if (shape.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
-              this.mask |= Mask.HAS_SUB_ENTITY;
-            }
-          } else if (shape instanceof CaseInsensitiveSet) {
-            shapeKey = hashValue(Array.from(shape));
-          } else {
-            shapeKey = hashValue(shape);
-          }
-
-          this._shapeKey = hashValue([this.kind, this.mask, this.values, shapeKey]);
-
-          break;
-        }
+        break;
       }
     }
   }
 
-  get shape(): InternalTypeDef | InternalObjectShape | UnionTypeDefs | undefined {
-    this.reifyShape();
-
-    return this._shape as InternalTypeDef | InternalObjectShape | UnionTypeDefs | undefined;
-  }
-
-  get methods(): EntityMethods | undefined {
-    this.reifyShape();
-
-    return this._methods;
-  }
-
-  get shapeKey(): number {
-    this.reifyShape();
-
-    return this._shapeKey!;
-  }
-
-  set shapeKey(key: number) {
-    this._shapeKey = key >>> 0;
+  static cloneWith(def: ValidatorDef<any>, mask: Mask): ValidatorDef<any> {
+    const newDef = new ValidatorDef(def.kind, mask | def.mask, def.shape, def.values);
+    newDef._methods = def._methods;
+    newDef._entityConfig = def._entityConfig;
+    newDef._entityClass = def._entityClass;
+    return newDef;
   }
 }
 
@@ -325,10 +261,29 @@ function defineUnion<T extends readonly TypeDef[]>(...types: T): TypeDef<Extract
   }
 
   if (shape === undefined) {
-    return ValidatorDef.cloneWith(definition as ValidatorDef<any>, mask, values) as unknown as R;
+    return ValidatorDef.cloneWith(definition as ValidatorDef<any>, mask) as unknown as R;
   }
 
   return new ValidatorDef(ComplexTypeDefKind.UNION, mask | Mask.UNION, shape, values) as unknown as R;
+}
+
+function defineWithMask(type: TypeDef, mask: Mask, cache: WeakMap<ValidatorDef<any>, ValidatorDef<any>>): TypeDef {
+  const t = type as unknown as InternalTypeDef;
+
+  if (typeof t === 'number') {
+    return (t | mask) as unknown as TypeDef;
+  }
+
+  if (t instanceof Set) {
+    return defineUnion(type, mask as unknown as TypeDef);
+  }
+
+  let cached = cache.get(t as ValidatorDef<any>);
+  if (cached === undefined) {
+    cached = ValidatorDef.cloneWith(t as ValidatorDef<any>, mask);
+    cache.set(t as ValidatorDef<any>, cached);
+  }
+  return cached as unknown as TypeDef;
 }
 
 const optionalCache = new WeakMap<ValidatorDef<any>, ValidatorDef<any>>();
@@ -336,74 +291,22 @@ const nullableCache = new WeakMap<ValidatorDef<any>, ValidatorDef<any>>();
 const nullishCache = new WeakMap<ValidatorDef<any>, ValidatorDef<any>>();
 
 function defineNullish<T extends TypeDef>(type: T): TypeDef<ExtractType<T> | undefined | null> {
-  type R = TypeDef<ExtractType<T> | undefined | null>;
-  const t = type as unknown as InternalTypeDef;
-
-  if (typeof t === 'number') {
-    return (t | Mask.UNDEFINED | Mask.NULL) as unknown as R;
-  }
-
-  if (t instanceof Set) {
-    return defineUnion(
-      type,
-      Mask.UNDEFINED as unknown as TypeDef<undefined>,
-      Mask.NULL as unknown as TypeDef<null>,
-    ) as unknown as R;
-  }
-
-  let cached = nullishCache.get(t as ValidatorDef<any>);
-  if (cached === undefined) {
-    cached = ValidatorDef.cloneWith(t as ValidatorDef<any>, Mask.UNDEFINED | Mask.NULL);
-    nullishCache.set(t as ValidatorDef<any>, cached);
-  }
-  return cached as unknown as R;
+  return defineWithMask(type, Mask.UNDEFINED | Mask.NULL, nullishCache) as TypeDef<ExtractType<T> | undefined | null>;
 }
 
 function defineOptional<T extends TypeDef>(type: T): TypeDef<ExtractType<T> | undefined> {
-  type R = TypeDef<ExtractType<T> | undefined>;
-  const t = type as unknown as InternalTypeDef;
-
-  if (typeof t === 'number') {
-    return (t | Mask.UNDEFINED) as unknown as R;
-  }
-
-  if (t instanceof Set) {
-    return defineUnion(type, Mask.UNDEFINED as unknown as TypeDef<undefined>) as unknown as R;
-  }
-
-  let cached = optionalCache.get(t as ValidatorDef<any>);
-  if (cached === undefined) {
-    cached = ValidatorDef.cloneWith(t as ValidatorDef<any>, Mask.UNDEFINED);
-    optionalCache.set(t as ValidatorDef<any>, cached);
-  }
-  return cached as unknown as R;
+  return defineWithMask(type, Mask.UNDEFINED, optionalCache) as TypeDef<ExtractType<T> | undefined>;
 }
 
 function defineNullable<T extends TypeDef>(type: T): TypeDef<ExtractType<T> | null> {
-  type R = TypeDef<ExtractType<T> | null>;
-  const t = type as unknown as InternalTypeDef;
-
-  if (typeof t === 'number') {
-    return (t | Mask.NULL) as unknown as R;
-  }
-
-  if (t instanceof Set) {
-    return defineUnion(type, Mask.NULL as unknown as TypeDef<null>) as unknown as R;
-  }
-
-  let cached = nullableCache.get(t as ValidatorDef<any>);
-  if (cached === undefined) {
-    cached = ValidatorDef.cloneWith(t as ValidatorDef<any>, Mask.NULL);
-    nullableCache.set(t as ValidatorDef<any>, cached);
-  }
-  return cached as unknown as R;
+  return defineWithMask(type, Mask.NULL, nullableCache) as TypeDef<ExtractType<T> | null>;
 }
 
 // -----------------------------------------------------------------------------
-// Shape Reification
+// Shape Processing
 // -----------------------------------------------------------------------------
 
-export function reifyObjectShape(def: ValidatorDef<any>, shape: InternalObjectShape): InternalObjectShape {
+function reifyObjectShape(def: ValidatorDef<any>, shape: InternalObjectShape): InternalObjectShape {
   // create a hash of the shape, starting with the object mask as the base
   let shapeKey = hashValue([def.mask, def.values]);
 
@@ -729,12 +632,12 @@ export function getEntityDef(cls: new () => Entity): ValidatorDef<any> {
       }
     }
 
-    def = new ValidatorDef(ComplexTypeDefKind.ENTITY, Mask.ENTITY | Mask.OBJECT, () => shape);
+    def = new ValidatorDef(ComplexTypeDefKind.ENTITY, Mask.ENTITY | Mask.OBJECT, shape as InternalObjectShape);
 
     def._entityClass = cls;
 
     if (Object.keys(methods).length > 0) {
-      def._methodsFactory = () => methods;
+      def._methods = methods;
     }
 
     const staticCls = cls as typeof Entity;
@@ -776,7 +679,7 @@ export const t: APITypes = {
 
 /**
  * Extract the internal shape key from a TypeDef. Used in tests and
- * internal tooling to access the ValidatorDef's lazy shape key.
+ * internal tooling to access the ValidatorDef's shape key.
  */
 export function getShapeKey(def: TypeDef): number {
   return (def as unknown as ValidatorDef<any>).shapeKey;

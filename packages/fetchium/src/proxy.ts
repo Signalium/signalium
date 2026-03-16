@@ -314,8 +314,7 @@ export function createEntityProxy(
   // Cache for nested proxies - each proxy gets its own cache
   const shape = def.shape;
 
-  // Get cached methods from the definition (evaluated once during reifyShape)
-  const methods = (def as ValidatorDef<unknown>).methods;
+  const methods = (def as ValidatorDef<unknown>)._methods;
 
   // Use the specific entity class prototype if available (enables `proxy instanceof UserClass`)
   const entityClass = (def as ValidatorDef<unknown>)._entityClass;
