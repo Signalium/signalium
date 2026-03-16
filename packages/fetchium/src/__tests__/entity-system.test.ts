@@ -4,7 +4,7 @@ import { QueryClient } from '../QueryClient.js';
 import { t, getShapeKey } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
 import { Query, getQuery } from '../query.js';
-import { parseObjectEntities, parseArrayEntities, parseEntities } from '../parseEntities.js';
+import { parseObjectEntities, parseArrayEntities, parseEntities, parseEntity } from '../parseEntities.js';
 import { createMockFetch, getClientEntityMap, getEntityMapSize, testWithClient } from './utils.js';
 import { hashValue } from 'signalium/utils';
 import type { ExtractType } from '../types.js';
@@ -697,7 +697,7 @@ describe('Entity System', () => {
         name: 'Test',
       };
 
-      const result = await parseObjectEntities(data, t.entity(User) as any, client, entityRefs);
+      const result = await parseEntity(data, t.entity(User) as any, client, entityRefs);
 
       // Should return proxy
       expect(getEntityMapSize(client)).toBe(1);

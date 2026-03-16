@@ -687,6 +687,220 @@ describe('Caching and Persistence', () => {
         expect((result?.container.items as any)[2].value).toBe('Cached Item 3');
       });
     });
+
+    it('should resolve array of entities with nested entities from cache', async () => {
+      class Author extends Entity {
+        __typename = t.typename('Author');
+        id = t.id;
+        name = t.string;
+      }
+
+      class Post extends Entity {
+        __typename = t.typename('Post');
+        id = t.id;
+        title = t.string;
+        author = t.entity(Author);
+      }
+
+      class Blog extends Entity {
+        __typename = t.typename('Blog');
+        id = t.id;
+        posts = t.array(t.entity(Post));
+      }
+
+      class GetBlog extends Query {
+        path = '/blogs/[id]';
+        response = { blog: t.entity(Blog) };
+      }
+
+      // Pre-populate authors
+      const author1Key = hashValue('Author:1');
+      const author2Key = hashValue('Author:2');
+      setDocument(kv, author1Key, { __typename: 'Author', id: 1, name: 'Alice' });
+      setDocument(kv, author2Key, { __typename: 'Author', id: 2, name: 'Bob' });
+
+      // Pre-populate posts with nested author __entityRef
+      const post1Key = hashValue('Post:10');
+      const post2Key = hashValue('Post:20');
+      setDocument(
+        kv,
+        post1Key,
+        { __typename: 'Post', id: 10, title: 'First Post', author: { __entityRef: author1Key } },
+        new Set([author1Key]),
+      );
+      setDocument(
+        kv,
+        post2Key,
+        { __typename: 'Post', id: 20, title: 'Second Post', author: { __entityRef: author2Key } },
+        new Set([author2Key]),
+      );
+
+      // Pre-populate blog with array of post __entityRef
+      const blogKey = hashValue('Blog:1');
+      setDocument(
+        kv,
+        blogKey,
+        {
+          __typename: 'Blog',
+          id: 1,
+          posts: [{ __entityRef: post1Key }, { __entityRef: post2Key }],
+        },
+        new Set([post1Key, post2Key]),
+      );
+
+      // Set up query result
+      setQuery(kv, GetBlog, { id: '1' }, { blog: { __entityRef: blogKey } }, new Set([blogKey]));
+
+      mockFetch.get('/blogs/[id]', { blog: { __typename: 'Blog', id: 1, posts: [] } }, { delay: 100 });
+
+      await testWithClient(client, async () => {
+        const relay = getQuery(GetBlog, { id: '1' });
+        relay.value;
+        await sleep();
+
+        const result = relay.value;
+        expect(result?.blog).toBeDefined();
+        expect(result?.blog.posts).toHaveLength(2);
+
+        // Each post should be resolved and have its nested author resolved
+        const posts = result?.blog.posts as any[];
+        expect(posts[0].title).toBe('First Post');
+        expect(posts[0].author.name).toBe('Alice');
+        expect(posts[1].title).toBe('Second Post');
+        expect(posts[1].author.name).toBe('Bob');
+      });
+    });
+
+    it('should resolve deeply nested entities through multiple array levels from cache', async () => {
+      class Tag extends Entity {
+        __typename = t.typename('Tag');
+        id = t.id;
+        label = t.string;
+      }
+
+      class Comment extends Entity {
+        __typename = t.typename('Comment');
+        id = t.id;
+        text = t.string;
+        tag = t.entity(Tag);
+      }
+
+      class Thread extends Entity {
+        __typename = t.typename('Thread');
+        id = t.id;
+        title = t.string;
+        comments = t.array(t.entity(Comment));
+      }
+
+      class Forum extends Entity {
+        __typename = t.typename('Forum');
+        id = t.id;
+        threads = t.array(t.entity(Thread));
+      }
+
+      class GetForum extends Query {
+        path = '/forums/[id]';
+        response = { forum: t.entity(Forum) };
+      }
+
+      // Pre-populate tags
+      const tag1Key = hashValue('Tag:1');
+      const tag2Key = hashValue('Tag:2');
+      setDocument(kv, tag1Key, { __typename: 'Tag', id: 1, label: 'question' });
+      setDocument(kv, tag2Key, { __typename: 'Tag', id: 2, label: 'answer' });
+
+      // Pre-populate comments with nested tag __entityRef
+      const comment1Key = hashValue('Comment:100');
+      const comment2Key = hashValue('Comment:200');
+      const comment3Key = hashValue('Comment:300');
+      setDocument(
+        kv,
+        comment1Key,
+        { __typename: 'Comment', id: 100, text: 'First comment', tag: { __entityRef: tag1Key } },
+        new Set([tag1Key]),
+      );
+      setDocument(
+        kv,
+        comment2Key,
+        { __typename: 'Comment', id: 200, text: 'Second comment', tag: { __entityRef: tag2Key } },
+        new Set([tag2Key]),
+      );
+      setDocument(
+        kv,
+        comment3Key,
+        { __typename: 'Comment', id: 300, text: 'Third comment', tag: { __entityRef: tag1Key } },
+        new Set([tag1Key]),
+      );
+
+      // Pre-populate threads with array of comment __entityRef
+      const thread1Key = hashValue('Thread:10');
+      const thread2Key = hashValue('Thread:20');
+      setDocument(
+        kv,
+        thread1Key,
+        {
+          __typename: 'Thread',
+          id: 10,
+          title: 'Thread One',
+          comments: [{ __entityRef: comment1Key }, { __entityRef: comment2Key }],
+        },
+        new Set([comment1Key, comment2Key]),
+      );
+      setDocument(
+        kv,
+        thread2Key,
+        {
+          __typename: 'Thread',
+          id: 20,
+          title: 'Thread Two',
+          comments: [{ __entityRef: comment3Key }],
+        },
+        new Set([comment3Key]),
+      );
+
+      // Pre-populate forum with array of thread __entityRef
+      const forumKey = hashValue('Forum:1');
+      setDocument(
+        kv,
+        forumKey,
+        {
+          __typename: 'Forum',
+          id: 1,
+          threads: [{ __entityRef: thread1Key }, { __entityRef: thread2Key }],
+        },
+        new Set([thread1Key, thread2Key]),
+      );
+
+      // Set up query result
+      setQuery(kv, GetForum, { id: '1' }, { forum: { __entityRef: forumKey } }, new Set([forumKey]));
+
+      mockFetch.get('/forums/[id]', { forum: { __typename: 'Forum', id: 1, threads: [] } }, { delay: 100 });
+
+      await testWithClient(client, async () => {
+        const relay = getQuery(GetForum, { id: '1' });
+        relay.value;
+        await sleep();
+
+        const result = relay.value;
+        expect(result?.forum).toBeDefined();
+        expect(result?.forum.threads).toHaveLength(2);
+
+        // Thread 1 with its comments and their tags
+        const threads = result?.forum.threads as any[];
+        expect(threads[0].title).toBe('Thread One');
+        expect(threads[0].comments).toHaveLength(2);
+        expect(threads[0].comments[0].text).toBe('First comment');
+        expect(threads[0].comments[0].tag.label).toBe('question');
+        expect(threads[0].comments[1].text).toBe('Second comment');
+        expect(threads[0].comments[1].tag.label).toBe('answer');
+
+        // Thread 2 with its comment and tag
+        expect(threads[1].title).toBe('Thread Two');
+        expect(threads[1].comments).toHaveLength(1);
+        expect(threads[1].comments[0].text).toBe('Third comment');
+        expect(threads[1].comments[0].tag.label).toBe('question');
+      });
+    });
   });
 
   describe('Reference Counting', () => {

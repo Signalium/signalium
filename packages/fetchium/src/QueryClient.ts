@@ -11,7 +11,7 @@
  * - Self-contained validator (no external dependencies except Signalium)
  */
 
-import { context, DiscriminatedReactivePromise, ReactiveTask, type Context } from 'signalium';
+import { context, ReactiveTask, type Context } from 'signalium';
 import { hashValue } from 'signalium/utils';
 import {
   EntityDef,
@@ -21,8 +21,11 @@ import {
   BaseUrlValue,
   QueryRequestInit,
   MutationResultValue,
-  QueryResult,
   QueryPromise,
+  ComplexTypeDef,
+  Mask,
+  TypeDef,
+  InternalTypeDef,
 } from './types.js';
 import { EntityRecord, EntityStore } from './EntityMap.js';
 import { NetworkManager } from './NetworkManager.js';
@@ -33,6 +36,8 @@ import { RefetchManager, NoOpRefetchManager } from './RefetchManager.js';
 import { MemoryEvictionManager, NoOpMemoryEvictionManager } from './MemoryEvictionManager.js';
 import { type Signal } from 'signalium';
 import { Query, QueryDefinition } from './query.js';
+import { parseEntities } from './parseEntities.js';
+import { parseValue } from './proxy.js';
 
 // -----------------------------------------------------------------------------
 // Query Types
@@ -189,6 +194,8 @@ export class QueryClient {
   networkManager: NetworkManager;
   isServer: boolean;
 
+  currentParseId: number = 0;
+
   constructor(
     private store: QueryStore,
     private context: QueryContext = { fetch, log: console },
@@ -318,14 +325,28 @@ export class QueryClient {
     this.entityMap.revertOptimisticUpdate(entityKey);
   }
 
-  hydrateEntity(key: number, shape: EntityDef): EntityRecord {
-    return this.entityMap.hydratePreloadedEntity(key, shape);
+  getEntity(key: number) {
+    return this.entityMap.getEntity(key);
   }
 
-  saveEntity(key: number, obj: Record<string, unknown>, shape: EntityDef, entityRefs?: Set<number>): EntityRecord {
+  parseEntities(obj: unknown, shape: InternalTypeDef, entityRefs?: Set<number>, fromCache?: boolean): unknown {
+    this.currentParseId++;
+    const result = parseEntities(obj, shape as unknown as ComplexTypeDef, this, entityRefs, fromCache);
+    return parseValue(result, shape as unknown as TypeDef, '', false);
+  }
+
+  saveEntity(
+    key: number,
+    obj: Record<string, unknown>,
+    shape: EntityDef,
+    entityRefs?: Set<number>,
+    persist?: boolean,
+  ): EntityRecord {
     const record = this.entityMap.setEntity(key, obj, shape, entityRefs);
 
-    this.store.saveEntity(key, obj, entityRefs);
+    if (persist) {
+      this.store.saveEntity(key, obj, entityRefs);
+    }
 
     return record;
   }

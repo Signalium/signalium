@@ -172,17 +172,7 @@ export class QueryInstance<T extends Query> {
         // Set the cached timestamp
         this.updatedAt = cached.updatedAt;
 
-        const shape = this.def.shape;
-        if (shape instanceof ValidatorDef) {
-          this._data = parseEntities(
-            cached.value,
-            shape as ComplexTypeDef,
-            this.queryClient,
-            new Set(),
-          ) as QueryResult<T>;
-        } else {
-          this._data = parseValue(cached.value, shape as any, this.def.id) as QueryResult<T>;
-        }
+        this._data = this.queryClient.parseEntities(cached.value, this.def.shape, undefined, true) as QueryResult<T>;
 
         // Resolve the relay with the persistent proxy (object types) or raw data
         state.value = this._useProxy ? this._proxy! : (this._data as QueryResult<T>);
@@ -227,7 +217,7 @@ export class QueryInstance<T extends Query> {
 
     const extractedParams = this.currentParams;
     this.unsubscribe = subscribeFn(this.queryClient.getContext(), extractedParams as QueryParams, update => {
-      parseObjectEntities(update, shapeDef, this.queryClient);
+      this.queryClient.parseEntities(update, shapeDef);
     });
   }
 
@@ -251,12 +241,7 @@ export class QueryInstance<T extends Query> {
 
         const entityRefs = new Set<number>();
 
-        const shape = this.def.shape;
-
-        const parsedData =
-          shape instanceof ValidatorDef
-            ? parseEntities(freshData, shape as ComplexTypeDef, this.queryClient, entityRefs)
-            : parseValue(freshData, shape as any, this.def.id);
+        const parsedData = this.queryClient.parseEntities(freshData, this.def.shape, entityRefs);
 
         const updatedAt = (this.updatedAt = Date.now());
 

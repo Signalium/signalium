@@ -125,8 +125,16 @@ export function parseObjectValue(
   }
 
   const shape = objectShape.shape;
+  const subEntityPaths = objectShape.subEntityPaths;
 
   for (const [key, propShape] of entries(shape)) {
+    // Skip sub-entity paths — already resolved by parseEntities
+    if (subEntityPaths !== undefined) {
+      if (typeof subEntityPaths === 'string' ? key === subEntityPaths : subEntityPaths.includes(key)) {
+        continue;
+      }
+    }
+
     object[key] = parseValue(object[key], propShape as unknown as TypeDef, `${path}.${key}`, false, warn);
   }
 
@@ -372,63 +380,6 @@ export function createEntityProxy(
 
       if (!Object.hasOwnProperty.call(shape, prop)) {
         return value;
-      }
-
-      // Handle __entityRef for nested entities loaded from cache
-      if (value && typeof value === 'object') {
-        type ScopeOwnerWithHydrate = {
-          hydrateEntity?: (ref: number, def: InternalObjectFieldTypeDef) => { proxy?: unknown } | undefined;
-        };
-        const ownerWithHydrate = scopeOwner as ScopeOwnerWithHydrate;
-
-        // Handle single entity reference
-        if (typeof (value as { __entityRef?: number }).__entityRef === 'number') {
-          const nestedRecord = ownerWithHydrate.hydrateEntity?.(
-            (value as { __entityRef: number }).__entityRef,
-            propDef,
-          );
-          if (nestedRecord && nestedRecord.proxy) {
-            cache.set(prop, nestedRecord.proxy);
-            return nestedRecord.proxy;
-          }
-        }
-
-        // Handle arrays that may contain __entityRef objects
-        if (Array.isArray(value) && value.length > 0) {
-          const firstItem = value[0];
-          if (
-            firstItem &&
-            typeof firstItem === 'object' &&
-            typeof (firstItem as { __entityRef?: number }).__entityRef === 'number'
-          ) {
-            // This is an array of entity references from cache
-            // For ArrayDef, the shape property is the item type definition directly
-            const arrayTypeDef = propDef as { mask?: number; shape?: InternalTypeDef };
-            const isArrayType = typeof arrayTypeDef.mask === 'number' && (arrayTypeDef.mask & Mask.ARRAY) !== 0;
-            const itemDef = isArrayType ? arrayTypeDef.shape : undefined;
-
-            if (itemDef) {
-              const hydratedArray = value.map(item => {
-                if (
-                  item &&
-                  typeof item === 'object' &&
-                  typeof (item as { __entityRef?: number }).__entityRef === 'number'
-                ) {
-                  const nestedRecord = ownerWithHydrate.hydrateEntity?.(
-                    (item as { __entityRef: number }).__entityRef,
-                    itemDef as InternalObjectFieldTypeDef,
-                  );
-                  if (nestedRecord && nestedRecord.proxy) {
-                    return nestedRecord.proxy;
-                  }
-                }
-                return item;
-              });
-              cache.set(prop, hydratedArray);
-              return hydratedArray;
-            }
-          }
-        }
       }
 
       const parsed = parseValue(value, propDef as unknown as TypeDef, `[[${desc}]].${prop as string}`, false, warn);

@@ -116,7 +116,7 @@ export class MutationResultImpl<Request, Response> {
       return;
     }
 
-    parseEntities(request, requestShape as ComplexTypeDef, this.queryClient, new Set());
+    this.queryClient.parseEntities(request, requestShape as ComplexTypeDef, new Set());
   }
 
   /**
@@ -248,7 +248,7 @@ export class MutationResultImpl<Request, Response> {
     }
 
     const entityRefs = new Set<number>();
-    const parsed = parseEntities(response, responseShape as ComplexTypeDef, this.queryClient, entityRefs);
+    const parsed = this.queryClient.parseEntities(response, responseShape as ComplexTypeDef, entityRefs);
 
     return parsed as Response;
   }
