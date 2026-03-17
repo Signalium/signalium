@@ -34,9 +34,16 @@ export interface AsyncPersistentStore {
   getAllKeys(): Promise<string[]>;
 }
 
+const enum StoreMessageType {
+  SaveQuery = 0,
+  SaveEntity = 1,
+  ActivateQuery = 2,
+  DeleteQuery = 3,
+}
+
 export type StoreMessage =
   | {
-      type: 'saveQuery';
+      type: StoreMessageType.SaveQuery;
       queryDefId: string;
       queryKey: number;
       value: unknown;
@@ -44,9 +51,9 @@ export type StoreMessage =
       cacheTime: number;
       refIds?: number[];
     }
-  | { type: 'saveEntity'; entityKey: number; value: unknown; refIds?: number[] }
-  | { type: 'activateQuery'; queryDefId: string; queryKey: number; cacheTime: number }
-  | { type: 'deleteQuery'; queryKey: number };
+  | { type: StoreMessageType.SaveEntity; entityKey: number; value: unknown; refIds?: number[] }
+  | { type: StoreMessageType.ActivateQuery; queryDefId: string; queryKey: number; cacheTime: number }
+  | { type: StoreMessageType.DeleteQuery; queryKey: number };
 
 export interface AsyncQueryStoreConfig {
   isWriter: boolean;
@@ -102,6 +109,14 @@ export class AsyncQueryStore implements QueryStore {
     }
   }
 
+  private dispatch(msg: StoreMessage): void {
+    if (this.isWriter) {
+      this.enqueueMessage(msg);
+    } else {
+      this.sendMessage(msg);
+    }
+  }
+
   private startQueueProcessor(): void {
     this.queueProcessorPromise = this.processQueue();
   }
@@ -128,16 +143,16 @@ export class AsyncQueryStore implements QueryStore {
 
   private async processMessage(msg: StoreMessage): Promise<void> {
     switch (msg.type) {
-      case 'saveQuery':
+      case StoreMessageType.SaveQuery:
         await this.writerSaveQuery(msg.queryDefId, msg.queryKey, msg.value, msg.updatedAt, msg.cacheTime, msg.refIds);
         break;
-      case 'saveEntity':
+      case StoreMessageType.SaveEntity:
         await this.writerSaveEntity(msg.entityKey, msg.value, msg.refIds);
         break;
-      case 'activateQuery':
+      case StoreMessageType.ActivateQuery:
         await this.writerActivateQuery(msg.queryDefId, msg.queryKey, msg.cacheTime);
         break;
-      case 'deleteQuery':
+      case StoreMessageType.DeleteQuery:
         await this.writerDeleteValue(msg.queryKey);
         break;
     }
@@ -211,7 +226,7 @@ export class AsyncQueryStore implements QueryStore {
     refIds?: Set<number>,
   ): void {
     const message: StoreMessage = {
-      type: 'saveQuery',
+      type: StoreMessageType.SaveQuery,
       queryDefId: queryDef.id,
       queryKey,
       value,
@@ -220,54 +235,38 @@ export class AsyncQueryStore implements QueryStore {
       refIds: refIds ? Array.from(refIds) : undefined,
     };
 
-    if (this.isWriter) {
-      this.enqueueMessage(message);
-    } else {
-      this.sendMessage(message);
-    }
+    this.dispatch(message);
   }
 
   saveEntity(entityKey: number, value: unknown, refIds?: Set<number>): void {
     const message: StoreMessage = {
-      type: 'saveEntity',
+      type: StoreMessageType.SaveEntity,
       entityKey,
       value,
       refIds: refIds ? Array.from(refIds) : undefined,
     };
 
-    if (this.isWriter) {
-      this.enqueueMessage(message);
-    } else {
-      this.sendMessage(message);
-    }
+    this.dispatch(message);
   }
 
   activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void {
     const message: StoreMessage = {
-      type: 'activateQuery',
+      type: StoreMessageType.ActivateQuery,
       queryDefId: queryDef.id,
       queryKey,
       cacheTime: queryDef.cache?.cacheTime ?? DEFAULT_CACHE_TIME,
     };
 
-    if (this.isWriter) {
-      this.enqueueMessage(message);
-    } else {
-      this.sendMessage(message);
-    }
+    this.dispatch(message);
   }
 
   deleteQuery(queryKey: number): void {
     const message: StoreMessage = {
-      type: 'deleteQuery',
+      type: StoreMessageType.DeleteQuery,
       queryKey,
     };
 
-    if (this.isWriter) {
-      this.enqueueMessage(message);
-    } else {
-      this.sendMessage(message);
-    }
+    this.dispatch(message);
   }
 
   // Writer-specific methods below
@@ -294,18 +293,19 @@ export class AsyncQueryStore implements QueryStore {
       return;
     }
 
+    const queueKey = queueKeyFor(queryDefId);
     let queue = this.queues.get(queryDefId);
 
     if (queue === undefined) {
       const maxCount = DEFAULT_MAX_COUNT;
-      queue = await this.delegate!.getBuffer(queueKeyFor(queryDefId));
+      queue = await this.delegate!.getBuffer(queueKey);
 
       if (queue === undefined) {
         queue = new Uint32Array(maxCount);
-        await this.delegate!.setBuffer(queueKeyFor(queryDefId), queue);
+        await this.delegate!.setBuffer(queueKey, queue);
       } else if (queue.length !== maxCount) {
         queue = new Uint32Array(queue.buffer, 0, maxCount);
-        await this.delegate!.setBuffer(queueKeyFor(queryDefId), queue);
+        await this.delegate!.setBuffer(queueKey, queue);
       }
 
       this.queues.set(queryDefId, queue);
@@ -419,12 +419,13 @@ export class AsyncQueryStore implements QueryStore {
 
   private async writerDeleteValue(id: number): Promise<void> {
     const delegate = this.delegate!;
+    const refIdsKey = refIdsKeyFor(id);
 
     await delegate.delete(valueKeyFor(id));
     await delegate.delete(refCountKeyFor(id));
 
-    const refIds = await delegate.getBuffer(refIdsKeyFor(id));
-    await delegate.delete(refIdsKeyFor(id)); // Clean up the refIds key
+    const refIds = await delegate.getBuffer(refIdsKey);
+    await delegate.delete(refIdsKey); // Clean up the refIds key
 
     if (refIds === undefined) {
       return;

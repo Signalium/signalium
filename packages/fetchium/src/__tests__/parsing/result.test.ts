@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { ParseError, ParseResult, ParseSuccess } from '../../types.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
@@ -225,7 +225,7 @@ describe('t.result', () => {
             response = { value: t.result(t.number) };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.value).toEqual({ success: true, value: 42 });
@@ -242,7 +242,7 @@ describe('t.result', () => {
             response = { value: t.result(t.number) };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.value.success).toBe(false);
@@ -264,7 +264,7 @@ describe('t.result', () => {
             response = { status: t.result(Status) };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.status).toEqual({ success: true, value: 'active' });
@@ -283,7 +283,7 @@ describe('t.result', () => {
             response = { status: t.result(Status) };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.status.success).toBe(false);
@@ -302,7 +302,7 @@ describe('t.result', () => {
             response = { items: t.array(t.result(t.number)) };
           }
 
-          const relay = getQuery(GetItems);
+          const relay = fetchQuery(GetItems);
           const result = await relay;
 
           expect(result.items).toHaveLength(3);
@@ -324,7 +324,7 @@ describe('t.result', () => {
             response = { date: t.result(t.format('date-time')) };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.date.success).toBe(true);
@@ -342,7 +342,7 @@ describe('t.result', () => {
             response = { date: t.result(t.format('date-time')) };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.date.success).toBe(false);
@@ -369,7 +369,7 @@ describe('t.result', () => {
             };
           }
 
-          const relay = getQuery(GetData);
+          const relay = fetchQuery(GetData);
           const result = await relay;
 
           expect(result.data.name).toBe('Test');
@@ -404,7 +404,7 @@ describe('t.result', () => {
             response = { user: t.result(t.entity(UserEntity)) };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.user.success).toBe(true);
@@ -432,7 +432,7 @@ describe('t.result', () => {
             response = { user: t.result(t.entity(UserEntity)) };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.user.success).toBe(false);
@@ -463,7 +463,7 @@ describe('t.result', () => {
             response = { users: t.array(t.result(t.entity(UserEntity))) };
           }
 
-          const relay = getQuery(GetUsers);
+          const relay = fetchQuery(GetUsers);
           const result = await relay;
 
           expect(result.users).toHaveLength(3);
@@ -502,7 +502,7 @@ describe('t.result', () => {
             response = { pet: t.result(PetUnion) };
           }
 
-          const relay = getQuery(GetPet);
+          const relay = fetchQuery(GetPet);
           const result = await relay;
 
           expect(result.pet.success).toBe(true);
@@ -537,7 +537,7 @@ describe('t.result', () => {
             response = { pet: t.result(PetUnion) };
           }
 
-          const relay = getQuery(GetPet);
+          const relay = fetchQuery(GetPet);
           const result = await relay;
 
           expect(result.pet.success).toBe(false);
@@ -590,7 +590,7 @@ describe('t.result', () => {
           response = { value: t.result(t.optional(t.number)) };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         const result = await relay;
 
         expect(result.value.success).toBe(false);
@@ -608,7 +608,7 @@ describe('t.result', () => {
           response = { date: t.result(t.optional(t.format('date-time'))) };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         const result = await relay;
 
         expect(result.date.success).toBe(false);
@@ -628,7 +628,7 @@ describe('t.result', () => {
           response = { items: t.array(t.result(t.number)) };
         }
 
-        const relay = getQuery(GetItems);
+        const relay = fetchQuery(GetItems);
         const result = await relay;
 
         expect(result.items).toHaveLength(3);
@@ -648,7 +648,7 @@ describe('t.result', () => {
           response = { value: t.result(t.optional(t.number)) };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         const result = await relay;
 
         expect(result.value.success).toBe(true);
@@ -671,7 +671,7 @@ describe('t.result', () => {
           response = { value: t.result(t.number) };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         const result = await relay;
 
         if (result.value.success) {

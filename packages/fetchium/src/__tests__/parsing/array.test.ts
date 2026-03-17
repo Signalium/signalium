@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import {
   setupParsingTests,
@@ -150,7 +150,7 @@ describe('t.array', () => {
             response = { items: t.array(t.number) };
           }
 
-          const relay = getQuery(GetItems);
+          const relay = fetchQuery(GetItems);
           const result = await relay;
 
           expect(result.items).toEqual([1, 2, 3, 4, 5]);
@@ -167,7 +167,7 @@ describe('t.array', () => {
             response = { items: t.array(t.number) };
           }
 
-          const relay = getQuery(GetItems);
+          const relay = fetchQuery(GetItems);
           const result = await relay;
 
           expect(result.items).toEqual([]);
@@ -195,7 +195,7 @@ describe('t.array', () => {
             };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.user.profile.skills).toEqual(['js', 'ts', 'python']);
@@ -219,7 +219,7 @@ describe('t.array', () => {
             response = { matrix: t.array(t.array(t.number)) };
           }
 
-          const relay = getQuery(GetMatrix);
+          const relay = fetchQuery(GetMatrix);
           const result = await relay;
 
           expect(result.matrix).toEqual([
@@ -248,7 +248,7 @@ describe('t.array', () => {
             };
           }
 
-          const relay = getQuery(GetItems);
+          const relay = fetchQuery(GetItems);
           const result = await relay;
 
           expect(result.items).toHaveLength(2);
@@ -274,7 +274,7 @@ describe('t.array', () => {
             response = { tagsByCategory: t.record(t.array(t.string)) };
           }
 
-          const relay = getQuery(GetTags);
+          const relay = fetchQuery(GetTags);
           const result = await relay;
 
           expect(result.tagsByCategory.tech).toEqual(['javascript', 'typescript']);
@@ -598,7 +598,7 @@ describe('t.array', () => {
             response = { numbers: t.array(t.number) };
           }
 
-          const relay = getQuery(GetNumbers);
+          const relay = fetchQuery(GetNumbers);
           const result = await relay;
 
           expect(result.numbers).toEqual([1, 2, 4]);
@@ -628,7 +628,7 @@ describe('t.array', () => {
             response = { users: t.array(t.entity(User)) };
           }
 
-          const relay = getQuery(GetUsers);
+          const relay = fetchQuery(GetUsers);
           const result = await relay;
 
           expect(result.users).toHaveLength(2);
@@ -666,7 +666,7 @@ describe('t.array', () => {
             response = { posts: t.array(t.union(t.entity(TextPost), t.entity(ImagePost))) };
           }
 
-          const relay = getQuery(GetPosts);
+          const relay = fetchQuery(GetPosts);
           const result = await relay;
 
           expect(result.posts).toHaveLength(2);

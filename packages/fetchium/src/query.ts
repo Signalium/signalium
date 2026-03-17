@@ -1,14 +1,11 @@
-import { DiscriminatedReactivePromise, getContext } from 'signalium';
+import { getContext } from 'signalium';
 import {
   InternalTypeDef,
   ExtractType,
   TypeDef,
   QueryRequestOptions,
   ResponseTypeDef,
-  ComplexTypeDef,
   RetryConfig,
-  ExtractTypesFromObjectOrEntity,
-  QueryResult,
   QueryPromise,
 } from './types.js';
 import {
@@ -19,10 +16,10 @@ import {
   queryKeyFor,
   resolveBaseUrl,
 } from './QueryClient.js';
-import { t, ValidatorDef } from './typeDefs.js';
+import { ValidatorDef } from './typeDefs.js';
 import { createPathInterpolator } from './pathInterpolator.js';
-import { hashValue } from 'signalium/utils';
 import { HasRequiredKeys, Optionalize, Signalize } from './type-utils.js';
+import { resolveTypeDef } from './resolveTypeDef.js';
 
 // ================================
 // Path param extraction types
@@ -160,25 +157,6 @@ export const queryKeyForClass = (cls: new () => Query, params: unknown): number 
 };
 
 // ================================
-// Internal: normalize a TypeDef into InternalTypeDef + shapeKey
-// ================================
-
-function resolveTypeDef(def: ResponseTypeDef): { shape: InternalTypeDef; shapeKey: number } {
-  if (typeof def === 'object') {
-    if (def instanceof ValidatorDef) {
-      return { shape: def as InternalTypeDef, shapeKey: def.shapeKey };
-    } else if (def instanceof Set) {
-      return { shape: def, shapeKey: hashValue(def) };
-    } else {
-      const shape = t.object(def as any) as unknown as ComplexTypeDef;
-      return { shape, shapeKey: shape.shapeKey };
-    }
-  }
-
-  return { shape: def as unknown as InternalTypeDef, shapeKey: hashValue(def) };
-}
-
-// ================================
 // Internal: build query definition from class
 // ================================
 
@@ -302,7 +280,7 @@ function getQueryDefinition(QueryClass: new () => Query): QueryDefinition<any, a
 // Public API
 // ================================
 
-export function getQuery<T extends Query>(
+export function fetchQuery<T extends Query>(
   QueryClass: new () => T,
   ...args: HasRequiredKeys<ExtractQueryParams<T>> extends true
     ? [params: Optionalize<Signalize<ExtractQueryParams<T>>>]

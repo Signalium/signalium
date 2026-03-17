@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import {
   setupParsingTests,
@@ -208,7 +208,7 @@ describe('t.record', () => {
             response = { settings: t.record(t.string) };
           }
 
-          const relay = getQuery(GetConfig);
+          const relay = fetchQuery(GetConfig);
           const result = await relay;
 
           expect(result.settings.theme).toBe('dark');
@@ -226,7 +226,7 @@ describe('t.record', () => {
             response = { data: t.record(t.string) };
           }
 
-          const relay = getQuery(GetEmpty);
+          const relay = fetchQuery(GetEmpty);
           const result = await relay;
 
           expect(result.data).toEqual({});
@@ -253,7 +253,7 @@ describe('t.record', () => {
             };
           }
 
-          const relay = getQuery(GetUserMap);
+          const relay = fetchQuery(GetUserMap);
           const result = await relay;
 
           expect(result.users.alice.id).toBe(1);
@@ -278,7 +278,7 @@ describe('t.record', () => {
             response = { permissions: t.record(t.record(t.boolean)) };
           }
 
-          const relay = getQuery(GetPermissions);
+          const relay = fetchQuery(GetPermissions);
           const result = await relay;
 
           expect(result.permissions.admin.write).toBe(true);
@@ -303,7 +303,7 @@ describe('t.record', () => {
             response = { tagsByCategory: t.record(t.array(t.string)) };
           }
 
-          const relay = getQuery(GetTags);
+          const relay = fetchQuery(GetTags);
           const result = await relay;
 
           expect(result.tagsByCategory.tech).toEqual(['javascript', 'typescript', 'react']);
@@ -328,7 +328,7 @@ describe('t.record', () => {
             response = { events: t.record(t.format('date-time')) };
           }
 
-          const relay = getQuery(GetTimestamps);
+          const relay = fetchQuery(GetTimestamps);
           const result = await relay;
 
           expect(result.events.login).toBeInstanceOf(Date);

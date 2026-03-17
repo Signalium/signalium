@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { RefetchInterval } from '../types.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import { t } from '../typeDefs.js';
@@ -47,7 +47,7 @@ describe('RefetchInterval', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetCounter);
+        const relay = fetchQuery(GetCounter);
         await relay;
         expect(relay.value!).toMatchObject({ count: 1 });
 
@@ -72,7 +72,7 @@ describe('RefetchInterval', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         await relay;
         const initialCount = relay.value!.n;
 
@@ -116,8 +116,8 @@ describe('RefetchInterval', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay1s = getQuery(GetEvery1s);
-        const relay5s = getQuery(GetEvery5s);
+        const relay1s = fetchQuery(GetEvery1s);
+        const relay5s = fetchQuery(GetEvery5s);
 
         await relay1s;
         await relay5s;
@@ -162,8 +162,8 @@ describe('RefetchInterval', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay5 = getQuery(Get5s);
-        const relay10 = getQuery(Get10s);
+        const relay5 = fetchQuery(Get5s);
+        const relay10 = fetchQuery(Get10s);
 
         await Promise.all([relay5, relay10]);
 
@@ -202,7 +202,7 @@ describe('RefetchInterval', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetSlow);
+        const relay = fetchQuery(GetSlow);
         await relay;
 
         // Wait for several intervals (350ms = 3.5 intervals)
@@ -229,7 +229,7 @@ describe('RefetchInterval', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         await relay;
         expect(relay.value!).toMatchObject({ n: 1 });
 
@@ -252,7 +252,7 @@ describe('RefetchInterval', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetFast);
+        const relay = fetchQuery(GetFast);
         await relay;
 
         // Wait 250ms (2.5 intervals at 0.1x)

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t, CaseInsensitiveSet } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { typeToString } from '../../errors.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
@@ -122,7 +122,7 @@ describe('t.enum', () => {
             };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.status).toBe('active');
@@ -149,7 +149,7 @@ describe('t.enum', () => {
             };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.user.settings.theme).toBe('dark');
@@ -168,7 +168,7 @@ describe('t.enum', () => {
             response = { statuses: t.array(t.enum('active', 'inactive', 'pending')) };
           }
 
-          const relay = getQuery(GetStatuses);
+          const relay = fetchQuery(GetStatuses);
           const result = await relay;
 
           expect(result.statuses).toEqual(['active', 'inactive', 'pending']);
@@ -189,7 +189,7 @@ describe('t.enum', () => {
             response = { userStatuses: t.record(t.enum('active', 'inactive')) };
           }
 
-          const relay = getQuery(GetUsers);
+          const relay = fetchQuery(GetUsers);
           const result = await relay;
 
           expect(result.userStatuses.alice).toBe('active');
@@ -512,7 +512,7 @@ describe('t.enum.caseInsensitive', () => {
             };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.status).toBe('Active');
@@ -531,7 +531,7 @@ describe('t.enum.caseInsensitive', () => {
             };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.status).toBe('Pending');
@@ -560,7 +560,7 @@ describe('t.enum.caseInsensitive', () => {
             };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.user.role).toBe('Admin');
@@ -583,7 +583,7 @@ describe('t.enum.caseInsensitive', () => {
             };
           }
 
-          const relay = getQuery(GetTags);
+          const relay = fetchQuery(GetTags);
           const result = await relay;
 
           expect(result.tags).toEqual(['High', 'Medium', 'Low']);
@@ -604,7 +604,7 @@ describe('t.enum.caseInsensitive', () => {
             };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
 
           await expect(relay).rejects.toThrow(/Validation error/);
         });
@@ -635,7 +635,7 @@ describe('t.enum.caseInsensitive', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.user.role).toBe('Admin');
@@ -667,7 +667,7 @@ describe('t.enum.caseInsensitive', () => {
             response = { task: t.entity(Task) };
           }
 
-          const relay = getQuery(GetTask);
+          const relay = fetchQuery(GetTask);
           const result = await relay;
 
           expect(result.task.tags).toEqual(['High', 'Medium', 'Low']);

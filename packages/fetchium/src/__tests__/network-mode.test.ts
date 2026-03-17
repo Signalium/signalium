@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientContext } from '../QueryClient.js';
 import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { NetworkManager } from '../NetworkManager.js';
 import { NetworkMode } from '../types.js';
 import { createMockFetch, testWithClient, sleep, createTestWatcher } from './utils.js';
@@ -36,7 +36,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
         await result;
         expect(result.value).toMatchObject({ id: '1', name: 'Alice' });
       });
@@ -55,7 +55,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
 
         expect(result.isPending).toBe(true);
 
@@ -81,7 +81,7 @@ describe('Network Mode', () => {
       // Create a test watcher to keep the query active
       const { unsub } = withContexts([[QueryClientContext, client]], () =>
         createTestWatcher(() => {
-          const result = getQuery(GetUser);
+          const result = fetchQuery(GetUser);
           return result.value;
         }),
       );
@@ -119,7 +119,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
 
         await result;
         expect(result.value).toMatchObject({ id: '1', name: 'Alice' });
@@ -137,7 +137,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
         await result;
 
         // Go offline
@@ -160,7 +160,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
 
         await result;
         expect(result.value).toMatchObject({ id: '1', name: 'Alice' });
@@ -181,7 +181,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
 
         expect(result.isPending).toBe(true);
         expect(mockFetch.calls.length).toBe(0);
@@ -203,7 +203,7 @@ describe('Network Mode', () => {
 
       await testWithClient(client, async () => {
         // First fetch while online
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
         await result;
         expect(result.value).toMatchObject({ id: '1', name: 'Alice' });
         expect(mockFetch.calls.length).toBe(1);
@@ -235,7 +235,7 @@ describe('Network Mode', () => {
 
       await testWithClient(client, async () => {
         // First fetch while online
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
         await result;
         expect(result.value).toMatchObject({ id: '1', name: 'Alice' });
         expect(mockFetch.calls.length).toBe(1);
@@ -270,7 +270,7 @@ describe('Network Mode', () => {
 
       await testWithClient(client, async () => {
         // First fetch while online
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
         await result;
         expect(result.value).toMatchObject({ id: '1', name: 'Alice' });
         expect(mockFetch.calls.length).toBe(1);
@@ -304,7 +304,7 @@ describe('Network Mode', () => {
 
       await testWithClient(client, async () => {
         // First fetch while online
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
         await result;
         expect(result.value).toMatchObject({ id: '1', name: 'Alice' });
         expect(mockFetch.calls.length).toBe(1);
@@ -352,7 +352,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
         await result;
 
         // Should have tried 4 times total (1 initial + 3 retries)
@@ -386,7 +386,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(serverClient, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
 
         try {
           await result;
@@ -430,7 +430,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
         await result;
 
         // Should have tried 6 times total (1 initial + 5 retries)
@@ -453,7 +453,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
 
         try {
           await result;
@@ -494,7 +494,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
         await result;
 
         expect(attempts).toBe(3);
@@ -526,7 +526,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
 
         try {
           await result;
@@ -566,7 +566,7 @@ describe('Network Mode', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
         await result;
 
         // First fetch: 1 failure + 1 retry success = 2 attempts

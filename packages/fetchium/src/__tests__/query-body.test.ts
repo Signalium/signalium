@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 
 /**
@@ -53,7 +53,7 @@ describe('Query Body Support', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetPrices, { tokens: ['ETH', 'BTC'] });
+        const relay = fetchQuery(GetPrices, { tokens: ['ETH', 'BTC'] });
         const result = await relay;
 
         expect(result.prices).toHaveLength(2);
@@ -85,7 +85,7 @@ describe('Query Body Support', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(PostData, { value: 'test' });
+        const relay = fetchQuery(PostData, { value: 'test' });
         await relay;
 
         expect(mockFetch.calls[0].options.headers).toEqual({
@@ -113,7 +113,7 @@ describe('Query Body Support', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(PostComplex, {
+        const relay = fetchQuery(PostComplex, {
           user: { name: 'Alice', age: 30 },
           tags: ['admin', 'verified'],
         });
@@ -146,7 +146,7 @@ describe('Query Body Support', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(PostCustom, { data: 'test' });
+        const relay = fetchQuery(PostCustom, { data: 'test' });
         await relay;
 
         // User headers should override the default Content-Type
@@ -175,7 +175,7 @@ describe('Query Body Support', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(UpdateUserPreferences, {
+        const relay = fetchQuery(UpdateUserPreferences, {
           id: '123',
           theme: 'dark',
           language: 'en',
@@ -213,7 +213,7 @@ describe('Query Body Support', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(UpdateTeamSettings, {
+        const relay = fetchQuery(UpdateTeamSettings, {
           orgId: 'acme',
           teamId: 'engineering',
           name: 'New Team Name',
@@ -264,7 +264,7 @@ describe('Query Body Support', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(SearchItems, {
+        const relay = fetchQuery(SearchItems, {
           page: 1,
           limit: 20,
           query: 'test query',
@@ -321,7 +321,7 @@ describe('Query Body Support', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(CreateUserPost, {
+        const relay = fetchQuery(CreateUserPost, {
           userId: '42',
           draft: true,
           notify: false,
@@ -384,11 +384,11 @@ describe('Query Body Support', () => {
 
       await testWithClient(client, async () => {
         // First call
-        const relay1 = getQuery(GetPrices, { tokens: ['ETH'] });
+        const relay1 = fetchQuery(GetPrices, { tokens: ['ETH'] });
         await relay1;
 
         // Second call with same params - should be cached
-        const relay2 = getQuery(GetPrices, { tokens: ['ETH'] });
+        const relay2 = fetchQuery(GetPrices, { tokens: ['ETH'] });
 
         // Should be the same relay instance (deduplication)
         expect(relay1).toBe(relay2);
@@ -419,8 +419,8 @@ describe('Query Body Support', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(GetPrices, { tokens: ['ETH'] });
-        const relay2 = getQuery(GetPrices, { tokens: ['BTC'] });
+        const relay1 = fetchQuery(GetPrices, { tokens: ['ETH'] });
+        const relay2 = fetchQuery(GetPrices, { tokens: ['BTC'] });
 
         // Should be different relay instances
         expect(relay1).not.toBe(relay2);
@@ -460,13 +460,13 @@ describe('Query Body Support', () => {
 
       await testWithClient(client, async () => {
         // First call
-        const relay1 = getQuery(GetPrices, { tokens: ['ETH'] });
+        const relay1 = fetchQuery(GetPrices, { tokens: ['ETH'] });
         const result1 = await relay1;
         expect(result1.prices[0].price).toBe(2000);
         expect(mockFetch.calls).toHaveLength(1);
 
         // Immediate second call - should use cache
-        const relay2 = getQuery(GetPrices, { tokens: ['ETH'] });
+        const relay2 = fetchQuery(GetPrices, { tokens: ['ETH'] });
         expect(relay2).toBe(relay1);
         expect(mockFetch.calls).toHaveLength(1);
       });
@@ -493,9 +493,9 @@ describe('Query Body Support', () => {
 
       await testWithClient(client, async () => {
         // Make multiple concurrent calls with same params
-        const relay1 = getQuery(GetPrices, { tokens: ['ETH', 'BTC'] });
-        const relay2 = getQuery(GetPrices, { tokens: ['ETH', 'BTC'] });
-        const relay3 = getQuery(GetPrices, { tokens: ['ETH', 'BTC'] });
+        const relay1 = fetchQuery(GetPrices, { tokens: ['ETH', 'BTC'] });
+        const relay2 = fetchQuery(GetPrices, { tokens: ['ETH', 'BTC'] });
+        const relay3 = fetchQuery(GetPrices, { tokens: ['ETH', 'BTC'] });
 
         // All should be the same relay instance
         expect(relay1).toBe(relay2);
@@ -524,7 +524,7 @@ describe('Query Body Support', () => {
 
       await testWithClient(client, async () => {
         // Empty body means no params are required
-        const relay = getQuery(TriggerAction);
+        const relay = fetchQuery(TriggerAction);
         const result = await relay;
 
         expect(result.triggered).toBe(true);
@@ -545,7 +545,7 @@ describe('Query Body Support', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(ListUsers);
+        const relay = fetchQuery(ListUsers);
         const result = await relay;
 
         expect(result.users).toEqual([]);
@@ -577,7 +577,7 @@ describe('Query Body Support', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(BulkCreate, {
+        const relay = fetchQuery(BulkCreate, {
           items: [
             { name: 'item1', value: 1 },
             { name: 'item2', value: 2 },
@@ -608,7 +608,7 @@ describe('Query Body Support', () => {
 
       await testWithClient(client, async () => {
         expect(() => {
-          getQuery(ConflictingQuery, { id: '123', name: 'test' });
+          fetchQuery(ConflictingQuery, { id: '123', name: 'test' });
         }).toThrow(/Body field\(s\) \[id\] conflict with path parameter\(s\)/);
       });
     });
@@ -629,7 +629,7 @@ describe('Query Body Support', () => {
 
       await testWithClient(client, async () => {
         expect(() => {
-          getQuery(MultiConflictQuery, { orgId: 'org1', teamId: 'team1', name: 'test' });
+          fetchQuery(MultiConflictQuery, { orgId: 'org1', teamId: 'team1', name: 'test' });
         }).toThrow(/Body field\(s\) \[orgId, teamId\] conflict with path parameter\(s\)/);
       });
     });
@@ -648,7 +648,7 @@ describe('Query Body Support', () => {
 
       await testWithClient(client, async () => {
         expect(() => {
-          getQuery(ConflictingQuery, { id: '123', filter: 'active' });
+          fetchQuery(ConflictingQuery, { id: '123', filter: 'active' });
         }).toThrow(/Search param\(s\) \[id\] conflict with path parameter\(s\)/);
       });
     });
@@ -671,7 +671,7 @@ describe('Query Body Support', () => {
 
       await testWithClient(client, async () => {
         expect(() => {
-          getQuery(ConflictingQuery, { version: '1.0', name: 'test' });
+          fetchQuery(ConflictingQuery, { version: '1.0', name: 'test' });
         }).toThrow(/Body field\(s\) \[version\] conflict with search param\(s\)/);
       });
     });
@@ -691,7 +691,7 @@ describe('Query Body Support', () => {
 
       await testWithClient(client, async () => {
         expect(() => {
-          getQuery(MultiConflictQuery, { orgId: 'org1', teamId: 'team1', filter: 'active' });
+          fetchQuery(MultiConflictQuery, { orgId: 'org1', teamId: 'team1', filter: 'active' });
         }).toThrow(/Search param\(s\) \[orgId, teamId\] conflict with path parameter\(s\)/);
       });
     });

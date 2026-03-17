@@ -1,7 +1,5 @@
 import { relay, type RelayState, DiscriminatedReactivePromise, notifier, type Notifier } from 'signalium';
 import { type InternalTypeDef, EntityDef, ComplexTypeDef, Mask, NetworkMode, type QueryResult } from './types.js';
-import { parseValue } from './proxy.js';
-import { parseEntities, parseObjectEntities } from './parseEntities.js';
 import { ValidatorDef } from './typeDefs.js';
 import { type QueryClient, type QueryParams, extractParamsForKey, queryKeyFor } from './QueryClient.js';
 import { CachedQuery } from './QueryClient.js';
@@ -53,13 +51,10 @@ export class QueryInstance<T extends Query> {
   entityRefs: Set<number> | undefined = undefined;
 
   private get relayState(): RelayState<QueryResult<T>> {
-    const relayState = this._relayState;
-
-    if (!relayState) {
+    if (IS_DEV && !this._relayState) {
       throw new Error('Relay state not initialized');
     }
-
-    return relayState;
+    return this._relayState!;
   }
 
   constructor(
@@ -154,6 +149,7 @@ export class QueryInstance<T extends Query> {
    * Initialize the query by loading from cache and fetching if stale
    */
   private async initialize(): Promise<void> {
+    const qc = this.queryClient;
     const state = this.relayState;
 
     this.initialized = true;
@@ -162,29 +158,27 @@ export class QueryInstance<T extends Query> {
 
     try {
       // Load from cache first (use storage key for cache operations)
-      cached = await this.queryClient.loadCachedQuery(this.def, this.storageKey);
+      cached = await qc.loadCachedQuery(this.def, this.storageKey);
 
       if (cached !== undefined) {
         this.updatedAt = cached.updatedAt;
 
         const entityRefs = cached.refIds ?? new Set<number>();
-        this._data = this.queryClient.parseEntities(
+        this._data = qc.parseEntities(
           cached.value,
           this.def.shape,
           undefined,
           cached.preloadedEntities,
         ) as QueryResult<T>;
 
-        this.queryClient.updateEntityRefs(this.entityRefs, entityRefs);
+        qc.updateEntityRefs(this.entityRefs, entityRefs);
         this.entityRefs = entityRefs.size > 0 ? entityRefs : undefined;
 
         state.value = this._useProxy ? this._proxy! : (this._data as QueryResult<T>);
       }
     } catch (error) {
-      this.queryClient.deleteCachedQuery(this.storageKey);
-      this.queryClient
-        .getContext()
-        .log?.warn?.('Failed to initialize query, the query cache may be corrupted or invalid', error);
+      qc.deleteCachedQuery(this.storageKey);
+      qc.getContext().log?.warn?.('Failed to initialize query, the query cache may be corrupted or invalid', error);
     }
 
     if (this.isPaused) {
@@ -228,29 +222,31 @@ export class QueryInstance<T extends Query> {
    * Fetches fresh data, updates the cache, and updates updatedAt timestamp
    */
   private async runQuery(params: QueryParams | undefined): Promise<QueryResult<T>> {
+    const qc = this.queryClient;
+    const def = this.def;
+
     // Check if paused before attempting fetch
     if (this.isPaused) {
       throw new Error('Query is paused due to network status');
     }
 
-    const { retries, retryDelay } = this.def.retryConfig;
+    const { retries, retryDelay } = def.retryConfig;
     let lastError: unknown;
 
     // Attempt fetch with retries
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const queryDef = this.def as QueryDefinition<any, any, any>;
-        const freshData = await queryDef.fetchFn(this.queryClient.getContext(), params);
+        const freshData = await def.fetchFn(qc.getContext(), params);
 
         const entityRefs = new Set<number>();
 
-        const parsedData = this.queryClient.parseEntities(freshData, this.def.shape, entityRefs);
+        const parsedData = qc.parseEntities(freshData, def.shape, entityRefs);
 
         const updatedAt = (this.updatedAt = Date.now());
 
-        this.queryClient.saveQueryData(this.def, this.storageKey, parsedData, updatedAt, entityRefs);
+        qc.saveQueryData(def, this.storageKey, parsedData, updatedAt, entityRefs);
 
-        this.queryClient.updateEntityRefs(this.entityRefs, entityRefs);
+        qc.updateEntityRefs(this.entityRefs, entityRefs);
         this.entityRefs = entityRefs.size > 0 ? entityRefs : undefined;
 
         this._data = parsedData as QueryResult<T>;
@@ -354,14 +350,17 @@ export class QueryInstance<T extends Query> {
 
 function createQueryProxy<T extends Query>(instance: QueryInstance<T>): QueryResult<T> {
   const target = {} as QueryResult<T>;
+  const notifier = instance['_notifier'];
+  const getData = () => instance['_data'];
+  const REFETCH = '__refetch';
 
   return new Proxy(target, {
     get(_target, prop) {
-      if (prop === '__refetch') return instance.refetch;
+      if (prop === REFETCH) return instance.refetch;
 
-      instance['_notifier'].consume();
+      notifier.consume();
 
-      const data = instance['_data'];
+      const data = getData();
       if (data === undefined) return undefined;
 
       const value = (data as any)[prop];
@@ -375,43 +374,43 @@ function createQueryProxy<T extends Query>(instance: QueryInstance<T>): QueryRes
     },
 
     has(_target, prop) {
-      if (prop === '__refetch') return true;
+      if (prop === REFETCH) return true;
 
-      instance['_notifier'].consume();
+      notifier.consume();
 
-      const data = instance['_data'];
+      const data = getData();
       if (data === undefined) return false;
       if (typeof data !== 'object' || data === null) return false;
 
-      return prop in (data as any) || prop === '__refetch';
+      return prop in (data as any);
     },
 
     ownKeys() {
-      instance['_notifier'].consume();
+      notifier.consume();
 
-      const data = instance['_data'];
+      const data = getData();
       if (data === undefined || typeof data !== 'object' || data === null) return [];
 
-      const keys = ['__refetch', ...Reflect.ownKeys(data as any)];
+      const keys = [REFETCH, ...Reflect.ownKeys(data as any)];
 
       return keys;
     },
 
     getOwnPropertyDescriptor(_target, prop) {
-      if (prop === '__refetch') {
+      if (prop === REFETCH) {
         return { enumerable: true, configurable: true };
       }
 
-      instance['_notifier'].consume();
+      notifier.consume();
 
-      const data = instance['_data'];
+      const data = getData();
       if (data === undefined || typeof data !== 'object' || data === null) return undefined;
 
       return Reflect.getOwnPropertyDescriptor(data as any, prop);
     },
 
     getPrototypeOf() {
-      const data = instance['_data'];
+      const data = getData();
       if (data === undefined) return Object.prototype;
       if (typeof data !== 'object' || data === null) return Object.getPrototypeOf(data);
 

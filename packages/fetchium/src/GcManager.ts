@@ -20,14 +20,9 @@ export const enum GcKeyType {
   Entity = 1,
 }
 
-interface GcEntry {
-  key: number;
-  type: GcKeyType;
-}
-
 class GcBucket {
-  private _currentFlush = new Map<number, GcEntry>();
-  private _nextFlush = new Map<number, GcEntry>();
+  private _currentFlush = new Map<number, GcKeyType>();
+  private _nextFlush = new Map<number, GcKeyType>();
   private _intervalId: ReturnType<typeof setInterval>;
 
   constructor(
@@ -39,7 +34,7 @@ class GcBucket {
   }
 
   schedule(key: number, type: GcKeyType): void {
-    this._nextFlush.set(key, { key, type });
+    this._nextFlush.set(key, type);
   }
 
   cancel(key: number): void {
@@ -49,8 +44,8 @@ class GcBucket {
 
   private _tick = (): void => {
     const { _currentFlush, _nextFlush, _onEvict } = this;
-    for (const entry of _currentFlush.values()) {
-      _onEvict(entry.key, entry.type);
+    for (const [key, type] of _currentFlush) {
+      _onEvict(key, type);
     }
     this._currentFlush = _nextFlush;
     this._nextFlush = new Map();
@@ -63,7 +58,7 @@ class GcBucket {
 
 export class GcManager {
   private _buckets = new Map<number, GcBucket>();
-  private _nextTickEntries = new Map<number, GcEntry>();
+  private _nextTickEntries = new Map<number, GcKeyType>();
   private _nextTickScheduled = false;
   private _onEvict: (key: number, type: GcKeyType) => void;
   private _multiplier: number;
@@ -78,7 +73,7 @@ export class GcManager {
 
     if (gcTime === 0) {
       const { _nextTickEntries } = this;
-      _nextTickEntries.set(key, { key, type });
+      _nextTickEntries.set(key, type);
       if (!this._nextTickScheduled) {
         this._nextTickScheduled = true;
         setTimeout(this._flushNextTick, 0);
@@ -109,8 +104,8 @@ export class GcManager {
   private _flushNextTick = (): void => {
     const { _nextTickEntries, _onEvict } = this;
     this._nextTickScheduled = false;
-    for (const entry of _nextTickEntries.values()) {
-      _onEvict(entry.key, entry.type);
+    for (const [key, type] of _nextTickEntries) {
+      _onEvict(key, type);
     }
     _nextTickEntries.clear();
   };

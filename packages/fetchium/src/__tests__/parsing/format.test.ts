@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { t, registerFormat } from '../../typeDefs.js';
 import { Mask } from '../../types.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -128,7 +128,7 @@ describe('t.format', () => {
             response = { createdAt: t.format('date-time') };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.createdAt).toBeInstanceOf(Date);
@@ -147,7 +147,7 @@ describe('t.format', () => {
             response = { events: t.record(t.format('date-time')) };
           }
 
-          const relay = getQuery(GetTimestamps);
+          const relay = fetchQuery(GetTimestamps);
           const result = await relay;
 
           expect(result.events.login).toBeInstanceOf(Date);
@@ -271,7 +271,7 @@ describe('t.format', () => {
             response = { birthDate: t.format('date') };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.birthDate).toBeInstanceOf(Date);
@@ -343,7 +343,7 @@ describe('t.format', () => {
             response = { deletedAt: t.optional(t.format('date-time')) };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.deletedAt).toBeUndefined();
@@ -360,7 +360,7 @@ describe('t.format', () => {
             response = { endDate: t.format('date') };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.endDate).toBeInstanceOf(Date);
@@ -598,7 +598,7 @@ describe('t.format', () => {
             };
           }
 
-          const relay = getQuery(GetProduct);
+          const relay = fetchQuery(GetProduct);
           const result = await relay;
 
           expect(result.price).toBe(49.99);
@@ -616,7 +616,7 @@ describe('t.format', () => {
             response = { prices: t.array(t.format('price')) };
           }
 
-          const relay = getQuery(GetPrices);
+          const relay = fetchQuery(GetPrices);
           const result = await relay;
 
           expect(result.prices).toEqual([10, 20, 30]);
@@ -635,7 +635,7 @@ describe('t.format', () => {
             response = { rates: t.record(t.format('percentage')) };
           }
 
-          const relay = getQuery(GetRates);
+          const relay = fetchQuery(GetRates);
           const result = await relay;
 
           expect(result.rates.tax).toBeCloseTo(0.085);
@@ -654,7 +654,7 @@ describe('t.format', () => {
             response = { location: t.format('coordinates') };
           }
 
-          const relay = getQuery(GetLocation);
+          const relay = fetchQuery(GetLocation);
           const result = await relay;
 
           expect((result.location as any).lat).toBe(37.7749);

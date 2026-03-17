@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { Query, getQuery, queryKeyForClass } from '../query.js';
+import { Query, fetchQuery, queryKeyForClass } from '../query.js';
 import { t, getShapeKey } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
@@ -49,7 +49,7 @@ describe('cacheTime (disk expiration)', () => {
     mockFetch.get('/item/1', { id: 1, name: 'Item 1' });
 
     await testWithClient(client, async () => {
-      const relay = getQuery(GetItem, { id: '1' });
+      const relay = fetchQuery(GetItem, { id: '1' });
       expect(relay.value).toEqual(undefined);
       await relay;
       expect(relay.value!).toMatchObject({ id: 1, name: 'Item 1' });
@@ -59,7 +59,7 @@ describe('cacheTime (disk expiration)', () => {
 
     mockFetch.get('/item/1', { id: 1, name: 'Item 1 updated' }, { delay: 50 });
     await testWithClient(client, async () => {
-      const relay = getQuery(GetItem, { id: '1' });
+      const relay = fetchQuery(GetItem, { id: '1' });
       expect(relay.value!).toMatchObject({ id: 1, name: 'Item 1' });
       await relay;
       expect(relay.value!).toMatchObject({ id: 1, name: 'Item 1' });
@@ -71,7 +71,7 @@ describe('cacheTime (disk expiration)', () => {
     await sleep(200);
 
     await testWithClient(client, async () => {
-      const relay = getQuery(GetItem, { id: '1' });
+      const relay = fetchQuery(GetItem, { id: '1' });
       expect(relay.value).toEqual(undefined);
       await relay;
       expect(relay.value!).toMatchObject({ id: 1, name: 'Item 1 updated' });
@@ -88,7 +88,7 @@ describe('cacheTime (disk expiration)', () => {
     mockFetch.get('/active', { data: 'test' });
 
     await testWithClient(client, async () => {
-      const relay = getQuery(GetItem);
+      const relay = fetchQuery(GetItem);
       await relay;
 
       const queryKey = queryKeyForClass(GetItem, undefined);
@@ -131,7 +131,7 @@ describe('GC Time (in-memory eviction)', () => {
     const queryKey = queryKeyForClass(GetItem, undefined);
 
     await testWithClient(client, async () => {
-      const relay = getQuery(GetItem);
+      const relay = fetchQuery(GetItem);
       await relay;
       expect(client.queryInstances.has(queryKey)).toBe(true);
     });
@@ -154,7 +154,7 @@ describe('GC Time (in-memory eviction)', () => {
     const queryKey = queryKeyForClass(GetItem, undefined);
 
     await testWithClient(client, async () => {
-      const relay = getQuery(GetItem);
+      const relay = fetchQuery(GetItem);
       await relay;
     });
 
@@ -164,7 +164,7 @@ describe('GC Time (in-memory eviction)', () => {
     // Reactivate before eviction fires
     mockFetch.get('/reactivate', { n: 2 });
     await testWithClient(client, async () => {
-      const relay = getQuery(GetItem);
+      const relay = fetchQuery(GetItem);
       relay.value;
       await sleep(40);
 
@@ -188,7 +188,7 @@ describe('GC Time (in-memory eviction)', () => {
     const queryKey = queryKeyForClass(GetItem, undefined);
 
     await testWithClient(client, async () => {
-      const relay = getQuery(GetItem);
+      const relay = fetchQuery(GetItem);
       await relay;
     });
 
@@ -210,7 +210,7 @@ describe('GC Time (in-memory eviction)', () => {
     const queryKey = queryKeyForClass(GetItem, undefined);
 
     await testWithClient(client, async () => {
-      const relay = getQuery(GetItem);
+      const relay = fetchQuery(GetItem);
       await relay;
     });
 
@@ -239,8 +239,8 @@ describe('GC Time (in-memory eviction)', () => {
     const slowKey = queryKeyForClass(SlowQuery, undefined);
 
     await testWithClient(client, async () => {
-      await getQuery(FastQuery);
-      await getQuery(SlowQuery);
+      await fetchQuery(FastQuery);
+      await fetchQuery(SlowQuery);
     });
 
     // After 150ms the fast bucket should have fired twice, slow once (nextFlush only)
@@ -310,7 +310,7 @@ describe('GC with Entities', () => {
     const postKey = hashValue(['Post:10', getShapeKey(t.entity(Post))]);
 
     await testWithClient(client, async () => {
-      const relay = getQuery(GetUser);
+      const relay = fetchQuery(GetUser);
       await relay;
 
       expect(client.getEntity(userKey)).toBeDefined();
@@ -351,8 +351,8 @@ describe('GC with Entities', () => {
 
     // Activate both queries
     await testWithClient(client, async () => {
-      await getQuery(GetUser1);
-      await getQuery(GetUser2);
+      await fetchQuery(GetUser1);
+      await fetchQuery(GetUser2);
 
       expect(client.getEntity(userKey)).toBeDefined();
     });
@@ -384,7 +384,7 @@ describe('GC with Entities', () => {
     const entityKey = hashValue(['Delayed:1', getShapeKey(t.entity(DelayedEntity))]);
 
     await testWithClient(client, async () => {
-      await getQuery(GetDelayed);
+      await fetchQuery(GetDelayed);
       expect(client.getEntity(entityKey)).toBeDefined();
     });
 
@@ -427,7 +427,7 @@ describe('GC with Entities', () => {
 
     // First query fetches entity, then deactivates
     await testWithClient(client, async () => {
-      await getQuery(GetCancel1);
+      await fetchQuery(GetCancel1);
       expect(client.getEntity(entityKey)).toBeDefined();
     });
 
@@ -437,7 +437,7 @@ describe('GC with Entities', () => {
 
     // Before entity GC fires, a new query references the same entity
     await testWithClient(client, async () => {
-      await getQuery(GetCancel2);
+      await fetchQuery(GetCancel2);
       expect(client.getEntity(entityKey)).toBeDefined();
 
       // Wait past the entity's gcTime bucket — entity should survive
@@ -473,7 +473,7 @@ describe('GC with Entities', () => {
     const entityKey = hashValue(['Wrapped:1', getShapeKey(t.entity(WrappedEntity))]);
 
     await testWithClient(client, async () => {
-      await getQuery(GetWrapped);
+      await fetchQuery(GetWrapped);
       expect(client.getEntity(entityKey)).toBeDefined();
     });
 
@@ -524,7 +524,7 @@ describe('GC with Entities', () => {
     const tag3Key = hashValue(['GcTag:3', getShapeKey(t.entity(Tag))]);
 
     await testWithClient(client, async () => {
-      const relay = getQuery(GetPost);
+      const relay = fetchQuery(GetPost);
       await relay;
 
       expect(client.getEntity(tag1Key)).toBeDefined();
@@ -575,9 +575,9 @@ describe('GC with Entities', () => {
     mockFetch.get('/users/3', { user: { __typename: 'LruUser', id: 3, name: 'User 3' } });
 
     await testWithClient(client, async () => {
-      await getQuery(GetUser, { id: '1' });
-      await getQuery(GetUser, { id: '2' });
-      await getQuery(GetUser, { id: '3' });
+      await fetchQuery(GetUser, { id: '1' });
+      await fetchQuery(GetUser, { id: '2' });
+      await fetchQuery(GetUser, { id: '3' });
 
       const query1Key = queryKeyForClass(GetUser, { id: '1' });
       const query2Key = queryKeyForClass(GetUser, { id: '2' });

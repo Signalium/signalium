@@ -4,7 +4,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient } from './utils.js';
 
 /**
@@ -93,7 +93,7 @@ describe('Entity Methods', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Verify methods work and have correct this context
@@ -133,7 +133,7 @@ describe('Entity Methods', () => {
           response = { calc: t.entity(Calculator) };
         }
 
-        const relay = getQuery(GetCalc, { id: '1' });
+        const relay = fetchQuery(GetCalc, { id: '1' });
         const result = await relay;
 
         expect(result.calc.add(5)).toBe(15);
@@ -177,7 +177,7 @@ describe('Entity Methods', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         expect(result.user.getFullName()).toEqual({ first: 'Alice', last: 'Smith' });
@@ -251,7 +251,7 @@ describe('Entity Methods', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         expect(result.user.getLocation()).toBe('New York, USA');
@@ -296,7 +296,7 @@ describe('Entity Methods', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         expect(result.user.hasTag('typescript')).toBe(true);
@@ -347,7 +347,7 @@ describe('Entity Methods', () => {
           response = { book: t.entity(Book) };
         }
 
-        const relay = getQuery(GetBook, { id: '1' });
+        const relay = fetchQuery(GetBook, { id: '1' });
         const result = await relay;
 
         expect(result.book.getFullTitle()).toBe('"The Great Gatsby" by F. Scott Fitzgerald');
@@ -386,7 +386,7 @@ describe('Entity Methods', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Call the method multiple times
@@ -437,7 +437,7 @@ describe('Entity Methods', () => {
           response = { calc: t.entity(Calculator) };
         }
 
-        const relay = getQuery(GetCalc, { id: '1' });
+        const relay = fetchQuery(GetCalc, { id: '1' });
         const result = await relay;
 
         // Call multiply with same param multiple times - should be cached
@@ -497,7 +497,7 @@ describe('Entity Methods', () => {
 
       // Initial computation in first reactive scope
       await testWithClient(client, async () => {
-        const relay = getQuery(GetCalc, { id: '1' });
+        const relay = fetchQuery(GetCalc, { id: '1' });
         calc = await relay;
 
         // Initial computation
@@ -514,7 +514,7 @@ describe('Entity Methods', () => {
 
       // Verify recomputation happens with new signal value in new reactive scope
       await testWithClient(client, async () => {
-        const relay = getQuery(GetCalc, { id: '1' });
+        const relay = fetchQuery(GetCalc, { id: '1' });
         calc = await relay;
 
         // Should recompute with new multiplier value
@@ -558,7 +558,7 @@ describe('Entity Methods', () => {
 
       // Use testWithClient and wrap the context access
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Inside testWithClient, we need to call the method inside a context that has the theme
@@ -579,7 +579,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '2' });
+        const relay = fetchQuery(GetUser, { id: '2' });
         const result = await relay;
 
         const greeting = await withContexts([[ThemeContext, 'light']], () =>
@@ -630,7 +630,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetProduct, { id: '1' });
+        const relay = fetchQuery(GetProduct, { id: '1' });
         const result = await relay;
 
         // Call method with US locale context
@@ -660,7 +660,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetProduct, { id: '2' });
+        const relay = fetchQuery(GetProduct, { id: '2' });
         const result = await relay;
 
         // Call method with German locale context
@@ -724,7 +724,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetDoc, { id: '1' });
+        const relay = fetchQuery(GetDoc, { id: '1' });
         const result = await relay;
 
         const content = await withContexts([[UserRoleContext, 'admin']], () =>
@@ -752,7 +752,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetDoc, { id: '2' });
+        const relay = fetchQuery(GetDoc, { id: '2' });
         const result = await relay;
 
         const content = await withContexts([[UserRoleContext, 'user']], () =>
@@ -780,7 +780,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetDoc, { id: '3' });
+        const relay = fetchQuery(GetDoc, { id: '3' });
         const result = await relay;
 
         const content = await withContexts([[UserRoleContext, 'guest']], () =>
@@ -839,7 +839,7 @@ describe('Entity Methods', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Test direct method calls
@@ -897,7 +897,7 @@ describe('Entity Methods', () => {
           response = { calc: t.entity(Calculator) };
         }
 
-        const relay = getQuery(GetCalc, { id: '1' });
+        const relay = fetchQuery(GetCalc, { id: '1' });
         const result = await relay;
 
         // Test basic methods
@@ -956,7 +956,7 @@ describe('Entity Methods', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Call greet multiple times - it calls getFullName internally

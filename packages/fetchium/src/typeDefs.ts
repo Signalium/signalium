@@ -20,6 +20,7 @@ import { hashValue, registerCustomHash } from 'signalium/utils';
 
 const entries = Object.entries;
 const isArray = Array.isArray;
+const keys = Object.keys;
 const { imul } = Math;
 
 /**
@@ -73,11 +74,11 @@ export class ValidatorDef<T> {
     mask: Mask,
     shape: InternalTypeDef | InternalObjectShape | UnionTypeDefs | ComplexTypeDef[] | undefined,
     shapeKey: number,
-    values: Set<string | boolean | number> | undefined = undefined,
-    typenameField: string | undefined = undefined,
-    typenameValue: string | undefined = undefined,
-    idField: string | undefined = undefined,
-    subEntityPaths: undefined | string | string[] = undefined,
+    values?: Set<string | boolean | number>,
+    typenameField?: string,
+    typenameValue?: string,
+    idField?: string,
+    subEntityPaths?: string | string[],
   ) {
     this.mask = mask;
     this.shape = shape;
@@ -305,7 +306,7 @@ function addDefToUnion(
     const nestedShape = nestedUnion.shape;
 
     if (nestedShape !== undefined) {
-      for (const key of [...Object.keys(nestedShape), ARRAY_KEY, RECORD_KEY] as const) {
+      for (const key of [...keys(nestedShape), ARRAY_KEY, RECORD_KEY] as const) {
         const value = nestedShape[key];
 
         if (unionShape[key] !== undefined && unionShape[key] !== value) {
@@ -494,9 +495,8 @@ const FORMAT_MASK_SHIFT = 16;
 
 let nextFormatId = 0;
 const FORMAT_PARSERS: ((value: unknown) => unknown)[] = [];
-const FORMAT_SERIALIZERS: ((value: unknown) => unknown)[] = [];
 const FORMAT_MAP = new Map<string, number>();
-const FORMAT_ID_TO_NAME = new Map<number, string>();
+const FORMAT_ID_TO_NAME: Map<number, string> | undefined = IS_DEV ? new Map<number, string>() : undefined;
 
 function defineFormatted<K extends keyof SignaliumQuery.FormatRegistry>(
   format: K,
@@ -516,14 +516,10 @@ export function getFormat(mask: number): (value: unknown) => unknown {
   return FORMAT_PARSERS[formatId];
 }
 
-export function getFormatSerializer(mask: number): ((value: unknown) => unknown) | undefined {
-  const formatId = mask >> FORMAT_MASK_SHIFT;
-  return FORMAT_SERIALIZERS[formatId];
-}
-
 export function getFormatName(mask: number): string | undefined {
+  if (!IS_DEV) return undefined;
   const formatId = mask >> FORMAT_MASK_SHIFT;
-  return FORMAT_ID_TO_NAME.get(formatId);
+  return FORMAT_ID_TO_NAME!.get(formatId);
 }
 
 export function registerFormat<Input extends Mask.STRING | Mask.NUMBER, T>(
@@ -534,8 +530,7 @@ export function registerFormat<Input extends Mask.STRING | Mask.NUMBER, T>(
 ) {
   const maskId = nextFormatId++;
   FORMAT_PARSERS[maskId] = parse as (value: unknown) => unknown;
-  FORMAT_SERIALIZERS[maskId] = serialize as (value: unknown) => unknown;
-  FORMAT_ID_TO_NAME.set(maskId, name);
+  if (IS_DEV) FORMAT_ID_TO_NAME!.set(maskId, name);
 
   const shiftedId = maskId << FORMAT_MASK_SHIFT;
   const formatMask = type === Mask.STRING ? Mask.HAS_STRING_FORMAT : Mask.HAS_NUMBER_FORMAT;
@@ -622,7 +617,7 @@ export function getEntityDef(cls: new () => Entity): ValidatorDef<any> {
       if (ParentClass !== Entity && typeof ParentClass === 'function') {
         const parentDef = getEntityDef(ParentClass);
         const parentShape = parentDef.shape as InternalObjectShape;
-        for (const key of Object.keys(parentShape)) {
+        for (const key of keys(parentShape)) {
           if (key in shape && shape[key] !== parentShape[key]) {
             throw new Error(`Cannot extend: field '${key}' already exists in type definition`);
           }
@@ -642,7 +637,7 @@ export function getEntityDef(cls: new () => Entity): ValidatorDef<any> {
 
     def._entityClass = cls;
 
-    if (Object.keys(methods).length > 0) {
+    if (keys(methods).length > 0) {
       def._methods = methods;
     }
 

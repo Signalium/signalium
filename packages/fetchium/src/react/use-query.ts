@@ -1,7 +1,7 @@
 import { useReactive } from 'signalium/react';
 import { reactive } from 'signalium';
 import { QueryPromise } from '../types.js';
-import { ExtractQueryParams, getQuery, Query } from '../query.js';
+import { ExtractQueryParams, fetchQuery, Query } from '../query.js';
 import { HasRequiredKeys, Optionalize, Signalize } from '../type-utils.js';
 
 function cloneDeep<T>(value: T): T {
@@ -39,7 +39,7 @@ const reifiedQuery = reactive(
       ? [params: Optionalize<Signalize<ExtractQueryParams<T>>>]
       : [params?: Optionalize<Signalize<ExtractQueryParams<T>>> | undefined]
   ): QueryPromise<T> => {
-    const queryResult = getQuery(QueryClass, ...args);
+    const queryResult = fetchQuery(QueryClass, ...args);
 
     return new Proxy(queryResult, {
       get(target, prop, receiver) {

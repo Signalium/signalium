@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import {
   setupParsingTests,
@@ -322,7 +322,7 @@ describe('t.typename', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.user.__typename).toBe('User');
@@ -358,7 +358,7 @@ describe('t.typename', () => {
             response = { pet: PetUnion };
           }
 
-          const relay = getQuery(GetPet);
+          const relay = fetchQuery(GetPet);
           const result = await relay;
 
           expect(result.pet.__typename).toBe('Dog');
@@ -395,7 +395,7 @@ describe('t.typename', () => {
             response = { pets: t.array(PetUnion) };
           }
 
-          const relay = getQuery(GetPets);
+          const relay = fetchQuery(GetPets);
           const result = await relay;
 
           expect(result.pets).toHaveLength(2);
@@ -427,7 +427,7 @@ describe('t.typename', () => {
             response = { items: t.array(t.entity(Item)) };
           }
 
-          const relay = getQuery(GetItems);
+          const relay = fetchQuery(GetItems);
           const result = await relay;
 
           expect(result.items).toHaveLength(2);
@@ -459,7 +459,7 @@ describe('t.typename', () => {
             response = { configs: t.record(t.entity(Config)) };
           }
 
-          const relay = getQuery(GetConfigs);
+          const relay = fetchQuery(GetConfigs);
           const result = await relay;
 
           expect(result.configs.a.__typename).toBe('Config');

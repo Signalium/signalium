@@ -153,4 +153,4 @@ Key concepts at a glance:
 - **Entity** — normalized entity cache with identity-stable Proxy objects. Entity proxies consume a `Notifier` on property access for reactive tracking.
 - **QueryClient** — manages query instances, entity store, cache, network/refetch/eviction managers.
 - **`t` type DSL** — `t.string`, `t.entity(User)`, `t.array(...)`, etc. for defining response shapes. During `reifyShape()`, computes `subEntityPaths` for fast entity traversal.
-- **`useQuery()`** — React hook, delegates to `useReactive(getQuery, ...)`. Deep entity tracking handled by `CONSUME_DEEP` protocol.
+- **`useQuery()`** — React hook, delegates to `useReactive(fetchQuery, ...)`. Deep entity tracking handled by `CONSUME_DEEP` protocol.

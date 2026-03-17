@@ -144,9 +144,12 @@ export function typeToString(type: InternalObjectFieldTypeDef): string {
 }
 
 export function typeError(path: string, expectedType: InternalObjectFieldTypeDef, value: unknown): Error {
-  return new TypeError(
-    `Validation error at ${path}: expected ${typeToString(expectedType)}, got ${
-      typeof value === 'object' ? (value === null ? 'null' : Array.isArray(value) ? 'array' : 'object') : typeof value
-    }`,
-  );
+  if (IS_DEV) {
+    return new TypeError(
+      `Validation error at ${path}: expected ${typeToString(expectedType)}, got ${
+        typeof value === 'object' ? (value === null ? 'null' : Array.isArray(value) ? 'array' : 'object') : typeof value
+      }`,
+    );
+  }
+  return new TypeError(`Validation error at ${path}`);
 }

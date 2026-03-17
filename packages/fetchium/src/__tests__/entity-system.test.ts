@@ -3,7 +3,7 @@ import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t, getShapeKey } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { parseObjectEntities, parseArrayEntities, parseEntities, parseEntity } from '../parseEntities.js';
 import { createMockFetch, getClientEntityMap, getEntityMapSize, testWithClient } from './utils.js';
 import { hashValue } from 'signalium/utils';
@@ -56,7 +56,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Verify proxy provides reactive access
@@ -90,7 +90,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         const user = result.user;
@@ -132,7 +132,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const initialResult = await relay;
         expect(initialResult.user.name).toBe('Alice');
 
@@ -195,7 +195,7 @@ describe('Entity System', () => {
           response = { user: t.entity(ExtendedUser) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         expect(result.user.__typename).toBe('User');
@@ -227,7 +227,7 @@ describe('Entity System', () => {
           response = { user: t.entity(MinimalUser) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         expect(result.user.__typename).toBe('User');
@@ -504,7 +504,7 @@ describe('Entity System', () => {
           };
         }
 
-        const relay = getQuery(GetUsers);
+        const relay = fetchQuery(GetUsers);
         const result = await relay;
 
         // Verify array length
@@ -553,13 +553,13 @@ describe('Entity System', () => {
           response = { author: t.entity(User) };
         }
 
-        const relay1 = getQuery(GetUser, { id: '1' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
         const result1 = await relay1;
 
-        const relay2 = getQuery(ListUsers);
+        const relay2 = fetchQuery(ListUsers);
         const result2 = await relay2;
 
-        const relay3 = getQuery(GetAuthor);
+        const relay3 = fetchQuery(GetAuthor);
         const result3 = await relay3;
 
         // All three should reference the same User entity (id: 1)
@@ -617,7 +617,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Access deeply nested property
@@ -668,7 +668,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Verify user entity
@@ -777,7 +777,7 @@ describe('Entity System', () => {
           };
         }
 
-        const relay = getQuery(GetUserMap);
+        const relay = fetchQuery(GetUserMap);
         const result = await relay;
 
         expect(result.userMap.alice.name).toBe('Alice');
@@ -818,7 +818,7 @@ describe('Entity System', () => {
           };
         }
 
-        const relay = getQuery(GetPosts);
+        const relay = fetchQuery(GetPosts);
         const result = await relay;
 
         expect(result.posts).toHaveLength(3);
@@ -859,7 +859,7 @@ describe('Entity System', () => {
         }
 
         // First query
-        const relay = getQuery(ListUsers);
+        const relay = fetchQuery(ListUsers);
         await relay;
 
         expect(getEntityMapSize(client)).toBe(2);
@@ -919,7 +919,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay1 = getQuery(GetUser, { id: '1' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
         const result1 = await relay1;
 
         // Verify initial data
@@ -988,7 +988,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay1 = getQuery(GetUser, { id: '1' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
         const result1 = await relay1;
 
         expect(result1.user.tags).toEqual(['engineer', 'javascript']);
@@ -1052,7 +1052,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay1 = getQuery(GetUser, { id: '1' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
         const result1 = await relay1;
 
         expect((result1.user.address as any).street).toBe('123 Main St');
@@ -1122,7 +1122,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay1 = getQuery(GetUser, { id: '1' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
         const result1 = await relay1;
 
         expect((result1.user.metadata as any).createdAt).toBe('2024-01-01');
@@ -1199,7 +1199,7 @@ describe('Entity System', () => {
         }
 
         // Fetch basic info first
-        const relay1 = getQuery(GetUserBasic, { id: '1' });
+        const relay1 = fetchQuery(GetUserBasic, { id: '1' });
         const result1 = await relay1;
 
         expect(result1.user.name).toBe('Alice');
@@ -1207,7 +1207,7 @@ describe('Entity System', () => {
         expect(result1.user.bio).toBe('Engineer');
 
         // Fetch profile info - should merge with existing entity
-        const relay2 = getQuery(GetUserProfile, { id: '1' });
+        const relay2 = fetchQuery(GetUserProfile, { id: '1' });
         const result2 = await relay2;
 
         // Both results should have the merged data
@@ -1242,7 +1242,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Typename should be returned from definition even though data omits it
@@ -1284,7 +1284,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         expect(result.user.__typename).toBe('User');
@@ -1312,7 +1312,7 @@ describe('Entity System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         expect(result.user.__typename).toBe('User');
@@ -1348,7 +1348,7 @@ describe('Entity System', () => {
           };
         }
 
-        const relay = getQuery(GetPosts);
+        const relay = fetchQuery(GetPosts);
         const result = await relay;
 
         // Item without typename should be filtered out, resulting in empty array
@@ -1377,7 +1377,7 @@ describe('Entity System', () => {
           response = { users: t.array(t.entity(User)) };
         }
 
-        const relay = getQuery(GetUsers);
+        const relay = fetchQuery(GetUsers);
         const result = await relay;
 
         expect(result.users).toHaveLength(2);

@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import { t } from '../typeDefs.js';
 
@@ -39,14 +39,14 @@ describe('StaleTime', () => {
 
       await testWithClient(client, async () => {
         // First fetch
-        const relay1 = getQuery(GetItem);
+        const relay1 = fetchQuery(GetItem);
         await relay1;
         expect(relay1.value!).toMatchObject({ value: 'first' });
         expect(mockFetch.calls).toHaveLength(1);
 
         // Second access immediately (data is fresh)
         mockFetch.get('/item', { value: 'second' });
-        const relay2 = getQuery(GetItem);
+        const relay2 = fetchQuery(GetItem);
 
         // Force evaluation
         relay2.value;
@@ -68,7 +68,7 @@ describe('StaleTime', () => {
       mockFetch.get('/item', { data: 42 });
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(GetItem);
+        const relay1 = fetchQuery(GetItem);
         await relay1;
         expect(mockFetch.calls).toHaveLength(1);
       });
@@ -79,7 +79,7 @@ describe('StaleTime', () => {
       const client2 = new QueryClient(store, { fetch: mockFetch as any });
 
       await testWithClient(client2, async () => {
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
 
         // Should immediately have cached value
         relay.value;
@@ -105,7 +105,7 @@ describe('StaleTime', () => {
 
       await testWithClient(client, async () => {
         // Initial fetch
-        const relay1 = getQuery(GetItem);
+        const relay1 = fetchQuery(GetItem);
         await relay1;
         expect(relay1.value!).toMatchObject({ count: 1 });
       });
@@ -118,7 +118,7 @@ describe('StaleTime', () => {
         mockFetch.get('/item', { count: 2 }, { delay: 50 });
 
         // Access again - should serve stale data immediately
-        const relay2 = getQuery(GetItem);
+        const relay2 = fetchQuery(GetItem);
         relay2.value;
         await sleep(10);
 
@@ -144,7 +144,7 @@ describe('StaleTime', () => {
       mockFetch.get('/data', { version: 1 });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         await relay;
       });
 
@@ -157,7 +157,7 @@ describe('StaleTime', () => {
       const client2 = new QueryClient(store, { fetch: mockFetch as any });
 
       await testWithClient(client2, async () => {
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
 
         // Should have cached value immediately
         relay.value;
@@ -182,7 +182,7 @@ describe('StaleTime', () => {
       mockFetch.get('/item', { value: 'first' });
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(GetItem);
+        const relay1 = fetchQuery(GetItem);
         await relay1;
         expect(mockFetch.calls).toHaveLength(1);
       });
@@ -192,7 +192,7 @@ describe('StaleTime', () => {
       // Access again immediately
       await testWithClient(client, async () => {
         mockFetch.get('/item', { value: 'second' }, { delay: 50 });
-        const relay2 = getQuery(GetItem);
+        const relay2 = fetchQuery(GetItem);
 
         relay2.value;
         await sleep(10);
@@ -220,7 +220,7 @@ describe('StaleTime', () => {
       mockFetch.get('/item', { n: 1 });
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(GetItem);
+        const relay1 = fetchQuery(GetItem);
         await relay1;
       });
 
@@ -228,7 +228,7 @@ describe('StaleTime', () => {
 
       await testWithClient(client, async () => {
         mockFetch.get('/item', { n: 2 }, { delay: 50 });
-        const relay2 = getQuery(GetItem);
+        const relay2 = fetchQuery(GetItem);
 
         // Should serve cached but refetch immediately
         relay2.value;
@@ -254,7 +254,7 @@ describe('StaleTime', () => {
 
         // First subscription - fetch initial data
         await testWithClient(client, async () => {
-          const relay1 = getQuery(GetItem);
+          const relay1 = fetchQuery(GetItem);
           // trigger initial fetch
           vi.advanceTimersByTimeAsync(100);
           await relay1;
@@ -268,7 +268,7 @@ describe('StaleTime', () => {
         mockFetch.reset();
         mockFetch.get('/item', { data: 'fresh1' });
         await testWithClient(client, async () => {
-          const relay2 = getQuery(GetItem);
+          const relay2 = fetchQuery(GetItem);
           relay2.value;
           await vi.advanceTimersByTimeAsync(100);
 
@@ -284,7 +284,7 @@ describe('StaleTime', () => {
         mockFetch.reset();
         mockFetch.get('/item', { data: 'fresh2' });
         await testWithClient(client, async () => {
-          const relay3 = getQuery(GetItem);
+          const relay3 = fetchQuery(GetItem);
           relay3.value;
           await vi.advanceTimersByTimeAsync(100);
           // Should still use cached data (within 1 hour)
@@ -299,7 +299,7 @@ describe('StaleTime', () => {
         mockFetch.reset();
         mockFetch.get('/item', { data: 'fresh-after-hour' }, { delay: 100 });
         await testWithClient(client, async () => {
-          const relay4 = getQuery(GetItem);
+          const relay4 = fetchQuery(GetItem);
 
           // Should serve stale data immediately
           relay4.value;
@@ -329,7 +329,7 @@ describe('StaleTime', () => {
       mockFetch.get('/item', { id: 1 });
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(GetItem);
+        const relay1 = fetchQuery(GetItem);
         await relay1;
 
         await sleep(100); // Make stale
@@ -340,9 +340,9 @@ describe('StaleTime', () => {
 
       await testWithClient(client, async () => {
         // Multiple concurrent accesses
-        const relay2 = getQuery(GetItem);
-        const relay3 = getQuery(GetItem);
-        const relay4 = getQuery(GetItem);
+        const relay2 = fetchQuery(GetItem);
+        const relay3 = fetchQuery(GetItem);
+        const relay4 = fetchQuery(GetItem);
 
         // All should be the same relay
         expect(relay2).toBe(relay3);
