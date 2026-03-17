@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { notifier, reactive, signal, watcher } from '../index.js';
+import { notifier, reactive, reactiveSignal, signal, watcher } from '../index.js';
 import { nextTick } from './utils/async.js';
 
 describe('addListener with skipInitial', () => {
@@ -200,5 +200,52 @@ describe('notifier', () => {
     expect(calls).toBe(1);
 
     stop();
+  });
+
+  test('notify() dirties all consumers when there are multiple', async () => {
+    const n = notifier();
+    let count1 = 0,
+      count2 = 0,
+      count3 = 0;
+
+    const a = reactiveSignal(() => {
+      n.consume();
+      count1++;
+      return 'a';
+    });
+
+    const b = reactiveSignal(() => {
+      n.consume();
+      count2++;
+      return 'b';
+    });
+
+    const c = reactiveSignal(() => {
+      n.consume();
+      count3++;
+      return 'c';
+    });
+
+    const unsub1 = (a as any).addListener(() => {});
+    const unsub2 = (b as any).addListener(() => {});
+    const unsub3 = (c as any).addListener(() => {});
+
+    expect(a.value).toBe('a');
+    expect(b.value).toBe('b');
+    expect(c.value).toBe('c');
+    expect(count1).toBe(1);
+    expect(count2).toBe(1);
+    expect(count3).toBe(1);
+
+    n.notify();
+    await nextTick();
+
+    expect(count1).toBe(2);
+    expect(count2).toBe(2);
+    expect(count3).toBe(2);
+
+    unsub1();
+    unsub2();
+    unsub3();
   });
 });

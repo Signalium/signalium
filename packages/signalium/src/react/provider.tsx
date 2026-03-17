@@ -1,6 +1,7 @@
-import { useContext, useRef } from 'react';
+import { useContext, useMemo } from 'react';
 import { ScopeContext } from './context.js';
 import { ContextImpl, ContextPair, getGlobalScope, SignalScope } from '../internals/contexts.js';
+import { hashValue } from '../internals/utils/hash.js';
 
 export function ContextProvider<C extends unknown[]>({
   children,
@@ -12,13 +13,12 @@ export function ContextProvider<C extends unknown[]>({
   inherit?: boolean;
 }) {
   const parentScope = useContext(ScopeContext) ?? getGlobalScope();
-  const scopeRef = useRef<SignalScope | null>(null);
-  if (scopeRef.current === null) {
-    scopeRef.current = new SignalScope(
-      contexts as [ContextImpl<unknown>, unknown][],
-      inherit ? parentScope : undefined,
-    );
-  }
 
-  return <ScopeContext.Provider value={scopeRef.current}>{children}</ScopeContext.Provider>;
+  const scope = useMemo(
+    () => new SignalScope(contexts as [ContextImpl<unknown>, unknown][], inherit ? parentScope : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [parentScope, inherit, hashValue(contexts)],
+  );
+
+  return <ScopeContext.Provider value={scope}>{children}</ScopeContext.Provider>;
 }

@@ -13,22 +13,30 @@ export interface EdgeTypeDep {
   [EdgeType.Promise]: ReactivePromiseImpl<any>;
 }
 
-interface BaseEdge {
+export class EdgeBase {
   type: EdgeType;
   dep: EdgeTypeDep[EdgeType];
   ord: number;
   updatedAt: number;
   consumedAt: number;
-
   nextDirty: Edge | undefined;
+
+  constructor(type: EdgeType, dep: EdgeTypeDep[EdgeType], updatedAt: number, consumedAt: number) {
+    this.type = type;
+    this.dep = dep;
+    this.ord = CURRENT_ORD++;
+    this.updatedAt = updatedAt;
+    this.consumedAt = consumedAt;
+    this.nextDirty = undefined;
+  }
 }
 
-export interface SignalEdge extends BaseEdge {
+export interface SignalEdge extends EdgeBase {
   type: EdgeType.Signal;
   dep: ReactiveSignal<any, any>;
 }
 
-export interface PromiseEdge extends BaseEdge {
+export interface PromiseEdge extends EdgeBase {
   type: EdgeType.Promise;
   dep: ReactivePromiseImpl<any>;
 }
@@ -43,14 +51,7 @@ export function createEdge<T extends EdgeType, R extends T extends EdgeType.Sign
   consumedAt: number,
 ): R {
   if (prevEdge === undefined) {
-    return {
-      type,
-      dep,
-      ord: CURRENT_ORD++,
-      updatedAt,
-      consumedAt,
-      nextDirty: undefined,
-    } as R;
+    return new EdgeBase(type, dep, updatedAt, consumedAt) as R;
   }
 
   prevEdge.ord = CURRENT_ORD++;

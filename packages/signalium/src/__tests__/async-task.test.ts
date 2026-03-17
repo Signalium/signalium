@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { task as _task } from '../index.js';
 import { task, reactive } from './utils/instrumented-hooks.js';
 import { nextTick } from './utils/async.js';
 
@@ -381,5 +382,34 @@ describe('async tasks', () => {
 
     // Second run while pending should NOT throw (default behavior)
     expect(() => t.run()).not.toThrow();
+  });
+
+  test('task rejection exposes error state', async () => {
+    const t = _task(async () => {
+      throw new Error('Task failed');
+    });
+
+    await expect(t.run()).rejects.toThrow('Task failed');
+
+    expect(t.isRejected).toBe(true);
+    expect(t.error).toBeInstanceOf(Error);
+    expect((t.error as Error).message).toBe('Task failed');
+  });
+
+  test('task recovers from error on re-run', async () => {
+    let shouldFail = true;
+
+    const t = _task(async () => {
+      if (shouldFail) throw new Error('fail');
+      return 'success';
+    });
+
+    await expect(t.run()).rejects.toThrow('fail');
+    expect(t.isRejected).toBe(true);
+
+    shouldFail = false;
+    await expect(t.run()).resolves.toBe('success');
+    expect(t.isResolved).toBe(true);
+    expect(t.value).toBe('success');
   });
 });

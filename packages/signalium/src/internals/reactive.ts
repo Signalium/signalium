@@ -82,15 +82,21 @@ export function createReactiveDefinition<T, Args extends unknown[]>(
   paramKey: ((...args: Args) => string | number) | undefined,
   tracer: Tracer | undefined,
 ): ReactiveDefinition<T, Args> {
-  return {
-    id,
-    desc,
+  const def: ReactiveDefinition<T, Args> = {
     compute,
     equals: equalsFrom(equals),
     isRelay,
     paramKey,
-    tracer,
+    tracer: undefined,
   };
+
+  if (IS_DEV) {
+    def.id = id;
+    def.desc = desc;
+    def.tracer = tracer;
+  }
+
+  return def;
 }
 
 export class ReactiveSignal<T, Args extends unknown[]> {

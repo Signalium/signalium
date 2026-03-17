@@ -16,10 +16,10 @@ import {
   ReactiveDefinition as ReactiveDefinition,
 } from './reactive.js';
 import { createRelay, createTask } from './async.js';
-import { Tracer } from './trace.js';
+import type { Tracer } from './trace.js';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-export const DERIVED_DEFINITION_MAP = new Map<Function, [(...args: any) => any, ReactiveDefinition<any, any>]>();
+export const DERIVED_DEFINITION_MAP = new WeakMap<Function, [(...args: any) => any, ReactiveDefinition<any, any>]>();
 
 export function getReactiveFnAndDefinition<T, Args extends unknown[]>(
   fn: (...args: Args) => T,

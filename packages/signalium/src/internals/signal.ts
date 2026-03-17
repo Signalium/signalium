@@ -4,6 +4,7 @@ import { ReactiveSignal } from './reactive.js';
 import { dirtySignal } from './dirty.js';
 import { getCurrentConsumer } from './consumer.js';
 import { scheduleListeners } from './scheduling.js';
+import { FALSE_EQUALS } from './utils/equals.js';
 
 let STATE_ID = 0;
 
@@ -11,16 +12,19 @@ export class StateSignal<T> implements Signal<T> {
   private _value: T;
   private _equals: Equals<T>;
   private _subs = new Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, number>();
-  _desc: string;
-  _id: number;
+  _desc!: string;
+  _id!: number;
 
   private _listeners: Set<() => void> | null = null;
 
   constructor(value: T, equals: Equals<T> = (a, b) => a === b, desc: string = 'signal') {
     this._value = value;
     this._equals = equals;
-    this._id = STATE_ID++;
-    this._desc = desc;
+
+    if (IS_DEV) {
+      this._id = STATE_ID++;
+      this._desc = desc;
+    }
   }
 
   get value(): T {
@@ -76,7 +80,7 @@ export class StateSignal<T> implements Signal<T> {
       dirtySignal(sub);
     }
 
-    this._subs = new Map();
+    this._subs.clear();
 
     scheduleListeners(this);
   }
@@ -105,8 +109,6 @@ export function runListeners(signal: StateSignal<any>) {
     listener();
   }
 }
-
-const FALSE_EQUALS: Equals<unknown> = () => false;
 
 export function signal<T>(initialValue: T, opts?: SignalOptions<T>): Signal<T> {
   const equals = opts?.equals === false ? FALSE_EQUALS : (opts?.equals ?? ((a, b) => a === b));
