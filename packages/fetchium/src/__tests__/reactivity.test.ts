@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { watcher, reactive } from 'signalium';
 import { createMockFetch, testWithClient } from './utils.js';
 
@@ -40,7 +40,7 @@ describe('Signalium Reactivity', () => {
           response = { data: t.string };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
 
         // Relay should exist and be in pending state
         expect(relay).toBeDefined();
@@ -57,7 +57,7 @@ describe('Signalium Reactivity', () => {
           response = { data: t.string };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         await relay;
 
         expect(relay.isResolved).toBe(true);
@@ -77,7 +77,7 @@ describe('Signalium Reactivity', () => {
           response = { data: t.string };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         await expect(relay).rejects.toThrow('Failed to fetch');
 
         expect(relay.isRejected).toBe(true);
@@ -96,7 +96,7 @@ describe('Signalium Reactivity', () => {
           response = { count: t.number };
         }
 
-        const relay = getQuery(GetCounter);
+        const relay = fetchQuery(GetCounter);
 
         // Create a reactive function that depends on the relay
         const doubled = reactive(() => {
@@ -124,7 +124,7 @@ describe('Signalium Reactivity', () => {
           response = { value: t.number };
         }
 
-        const relay = getQuery(GetValue);
+        const relay = fetchQuery(GetValue);
 
         const doubled = reactive(() => {
           if (relay.isReady) {
@@ -153,7 +153,7 @@ describe('Signalium Reactivity', () => {
           response = { value: t.number, shouldDouble: t.boolean };
         }
 
-        const relay = getQuery(GetConfig);
+        const relay = fetchQuery(GetConfig);
 
         const computed = reactive(() => {
           if (relay.isReady) {
@@ -180,7 +180,7 @@ describe('Signalium Reactivity', () => {
           response = { data: t.string };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
 
         // Initially should be pending
         expect(relay.isPending).toBe(true);
@@ -202,7 +202,7 @@ describe('Signalium Reactivity', () => {
           response = { data: t.string };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
 
         await relay;
 
@@ -221,7 +221,7 @@ describe('Signalium Reactivity', () => {
           response = { success: t.boolean };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         await relay;
 
         expect(relay.isResolved).toBe(true);
@@ -238,7 +238,7 @@ describe('Signalium Reactivity', () => {
           response = { success: t.boolean };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         await expect(relay).rejects.toThrow('Failed');
 
         expect(relay.isRejected).toBe(true);
@@ -264,7 +264,7 @@ describe('Signalium Reactivity', () => {
           };
         }
 
-        const relay = getQuery(GetUsers);
+        const relay = fetchQuery(GetUsers);
 
         const userCount = reactive(() => {
           if (relay.isReady) {
@@ -296,7 +296,7 @@ describe('Signalium Reactivity', () => {
           response = { enabled: t.boolean, data: t.string };
         }
 
-        const relay = getQuery(GetConfig);
+        const relay = fetchQuery(GetConfig);
 
         const result = reactive(() => {
           if (relay.isReady) {
@@ -329,9 +329,9 @@ describe('Signalium Reactivity', () => {
         }
 
         // Start multiple concurrent queries
-        const relay1 = getQuery(GetItem, { id: '1' });
-        const relay2 = getQuery(GetItem, { id: '2' });
-        const relay3 = getQuery(GetItem, { id: '3' });
+        const relay1 = fetchQuery(GetItem, { id: '1' });
+        const relay2 = fetchQuery(GetItem, { id: '2' });
+        const relay3 = fetchQuery(GetItem, { id: '3' });
 
         const [result1, result2, result3] = await Promise.all([relay1, relay2, relay3]);
 
@@ -352,9 +352,9 @@ describe('Signalium Reactivity', () => {
         }
 
         // Start multiple concurrent identical requests
-        const relay1 = getQuery(GetItem);
-        const relay2 = getQuery(GetItem);
-        const relay3 = getQuery(GetItem);
+        const relay1 = fetchQuery(GetItem);
+        const relay2 = fetchQuery(GetItem);
+        const relay3 = fetchQuery(GetItem);
 
         // Should be same relay
         expect(relay1).toBe(relay2);
@@ -383,7 +383,7 @@ describe('Signalium Reactivity', () => {
           response = { data: t.string };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         let errorCaught = false;
 
         const w = watcher(() => {
@@ -413,7 +413,7 @@ describe('Signalium Reactivity', () => {
           response = { data: t.string };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         await expect(relay).rejects.toThrow('Custom error');
 
         expect(relay.error).toBe(error);

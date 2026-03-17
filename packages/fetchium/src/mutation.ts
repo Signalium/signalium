@@ -10,10 +10,9 @@ import {
   ResponseTypeDef,
 } from './types.js';
 import { QueryClientContext, QueryContext } from './QueryClient.js';
-import { t, ValidatorDef } from './typeDefs.js';
 import { createPathInterpolator } from './pathInterpolator.js';
-import { hashValue } from 'signalium/utils';
 import { Prettify } from './type-utils.js';
+import { resolveTypeDef } from './resolveTypeDef.js';
 
 // ================================
 // Path param extraction types
@@ -100,36 +99,6 @@ export const mutationKeyForClass = (cls: new () => Mutation): string => {
 };
 
 // ================================
-// Internal: process a TypeDef into shape + shapeKey
-// ================================
-
-function processTypeDef(typeDef: Record<string, TypeDef> | TypeDef): {
-  shape: InternalTypeDef;
-  shapeKey: number;
-} {
-  let shape: InternalTypeDef;
-  let shapeKey: number;
-
-  if (typeof typeDef === 'object') {
-    if (typeDef instanceof ValidatorDef) {
-      shape = typeDef as InternalTypeDef;
-      shapeKey = typeDef.shapeKey;
-    } else if (typeDef instanceof Set) {
-      shape = typeDef;
-      shapeKey = hashValue(typeDef);
-    } else {
-      shape = t.object(typeDef as any) as unknown as InternalTypeDef;
-      shapeKey = (shape as any).shapeKey;
-    }
-  } else {
-    shape = typeDef as unknown as InternalTypeDef;
-    shapeKey = hashValue(shape);
-  }
-
-  return { shape, shapeKey };
-}
-
-// ================================
 // Internal: build mutation definition from class
 // ================================
 
@@ -153,8 +122,8 @@ function getMutationDefinition(MutationClass: new () => Mutation): () => Mutatio
 
     const id = `mutation:${method}:${path}`;
 
-    const { shape: requestShape, shapeKey: requestShapeKey } = processTypeDef(request);
-    const { shape: responseShape, shapeKey: responseShapeKey } = processTypeDef(response);
+    const { shape: requestShape, shapeKey: requestShapeKey } = resolveTypeDef(request);
+    const { shape: responseShape, shapeKey: responseShapeKey } = resolveTypeDef(response);
 
     const { interpolate: interpolatePath, pathParamNames } = createPathInterpolator(path);
 

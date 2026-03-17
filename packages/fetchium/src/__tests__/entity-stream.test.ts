@@ -4,7 +4,7 @@ import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { createMockFetch, sendStreamUpdate, sleep, testWithClient } from './utils.js';
 
 /**
@@ -67,7 +67,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         const user = relay.value!.user;
@@ -132,7 +132,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const { user } = await getQuery(GetUser, { id: '1' });
+        const { user } = await fetchQuery(GetUser, { id: '1' });
 
         // Access user outside reactive context - stream should not activate
         expect(streamActivated).toBe(false);
@@ -178,7 +178,7 @@ describe('Entity Streaming', () => {
       const shouldGetUser = signal(false);
 
       const maybeGetUser = reactive(async () => {
-        return shouldGetUser.value ? (await getQuery(GetUser, { id: '1' })).user.name : { user: undefined };
+        return shouldGetUser.value ? (await fetchQuery(GetUser, { id: '1' })).user.name : { user: undefined };
       });
 
       await testWithClient(client, async () => {
@@ -237,7 +237,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         const user = relay.value!.user;
@@ -290,7 +290,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         const user = relay.value!.user;
@@ -349,7 +349,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         const user = relay.value!.user;
@@ -414,8 +414,8 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(GetUser, { id: '1' });
-        const relay2 = getQuery(GetUser, { id: '2' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
+        const relay2 = fetchQuery(GetUser, { id: '2' });
 
         await Promise.all([relay1, relay2]);
 
@@ -465,7 +465,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         const user = relay.value!.user;
@@ -508,7 +508,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '123' });
+        const relay = fetchQuery(GetUser, { id: '123' });
         await relay;
 
         const user = relay.value!.user;
@@ -553,7 +553,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         const user = relay.value!.user;
@@ -599,7 +599,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         const user = relay.value!.user;
@@ -661,7 +661,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         const user = relay.value!.user;
@@ -704,7 +704,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         const user = relay.value!.user;
@@ -753,7 +753,7 @@ describe('Entity Streaming', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         const user = relay.value!.user;

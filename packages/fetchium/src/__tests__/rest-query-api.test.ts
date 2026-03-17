@@ -3,7 +3,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, getEntityMapSize, sleep } from './utils.js';
 
 /**
@@ -40,7 +40,7 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '123' });
+        const relay = fetchQuery(GetUser, { id: '123' });
         const result = await relay;
 
         expect(result.id).toBe(123);
@@ -72,7 +72,7 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(ListUsers, { page: 1, limit: 10 });
+        const relay = fetchQuery(ListUsers, { page: 1, limit: 10 });
         const result = await relay;
 
         expect(result.page).toBe(1);
@@ -104,7 +104,7 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUserPosts, { userId: '5', status: 'published' } as any);
+        const relay = fetchQuery(GetUserPosts, { userId: '5', status: 'published' } as any);
         const result = await relay;
 
         expect(result.userId).toBe(5);
@@ -128,7 +128,7 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(CreateUser);
+        const relay = fetchQuery(CreateUser);
         const result = await relay;
 
         expect(result.id).toBe(456);
@@ -153,7 +153,7 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '123' });
+        const relay = fetchQuery(GetUser, { id: '123' });
 
         await expect(relay).rejects.toThrow('Network connection failed');
         expect(relay.isRejected).toBe(true);
@@ -175,7 +175,7 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '123' });
+        const relay = fetchQuery(GetUser, { id: '123' });
 
         await expect(relay).rejects.toThrow('Unexpected token in JSON');
 
@@ -195,7 +195,7 @@ describe('REST Query API', () => {
       }
 
       // Call without reactive context should throw
-      expect(() => getQuery(GetUser, { id: '123' } as any)).toThrow();
+      expect(() => fetchQuery(GetUser, { id: '123' } as any)).toThrow();
     });
   });
 
@@ -212,9 +212,9 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(GetUser, { id: '123' });
-        const relay2 = getQuery(GetUser, { id: '123' });
-        const relay3 = getQuery(GetUser, { id: '123' });
+        const relay1 = fetchQuery(GetUser, { id: '123' });
+        const relay2 = fetchQuery(GetUser, { id: '123' });
+        const relay3 = fetchQuery(GetUser, { id: '123' });
 
         // Should return the same relay instance
         expect(relay1).toBe(relay2);
@@ -241,8 +241,8 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(GetUser, { id: '1' });
-        const relay2 = getQuery(GetUser, { id: '2' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
+        const relay2 = fetchQuery(GetUser, { id: '2' });
 
         // Should be different relay instances
         expect(relay1).not.toBe(relay2);
@@ -266,7 +266,7 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetMessage);
+        const relay = fetchQuery(GetMessage);
         const result = await relay;
 
         expect(result).toBe('Hello, World!');
@@ -282,7 +282,7 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetNumbers);
+        const relay = fetchQuery(GetNumbers);
         const result = await relay;
 
         expect(result).toEqual([1, 2, 3, 4, 5]);
@@ -314,7 +314,7 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser);
+        const relay = fetchQuery(GetUser);
         const result = await relay;
 
         expect(result.user.profile.name).toBe('Alice');
@@ -349,7 +349,7 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         expect(result.user.name).toBe('Alice');
@@ -383,7 +383,7 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(ListUsers);
+        const relay = fetchQuery(ListUsers);
         const result = await relay;
 
         expect(result.users).toHaveLength(3);
@@ -425,10 +425,10 @@ describe('REST Query API', () => {
           };
         }
 
-        const relay1 = getQuery(GetUser, { id: '1' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
         const result1 = await relay1;
 
-        const relay2 = getQuery(ListUsers);
+        const relay2 = fetchQuery(ListUsers);
         const result2 = await relay2;
 
         // Should be the same entity proxy
@@ -456,16 +456,16 @@ describe('REST Query API', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(ListUsers);
+        const relay1 = fetchQuery(ListUsers);
         await relay1;
 
-        const relay2 = getQuery(ListUsers, {});
+        const relay2 = fetchQuery(ListUsers, {});
         await relay2;
 
-        const relay3 = getQuery(ListUsers, { page: 1 });
+        const relay3 = fetchQuery(ListUsers, { page: 1 });
         await relay3;
 
-        const relay4 = getQuery(ListUsers, { page: 1, limit: 10 });
+        const relay4 = fetchQuery(ListUsers, { page: 1, limit: 10 });
         await relay4;
 
         expect(mockFetch.calls).toHaveLength(4);
@@ -487,7 +487,7 @@ describe('REST Query API', () => {
 
       await testWithClient(client, async () => {
         // TypeScript should require both path params
-        const relay = getQuery(GetItem, { itemId: '1', detailId: '2' });
+        const relay = fetchQuery(GetItem, { itemId: '1', detailId: '2' });
         await relay;
 
         expect(mockFetch.calls[0].url).toContain('/items/1/details/2');
@@ -523,7 +523,7 @@ describe('BaseUrl and RequestOptions', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '123' });
+        const relay = fetchQuery(GetUser, { id: '123' });
         await relay;
 
         expect(mockFetch.calls[0].url).toBe('https://api.example.com/users/123');
@@ -554,7 +554,7 @@ describe('BaseUrl and RequestOptions', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(ListUsers);
+        const relay1 = fetchQuery(ListUsers);
         await relay1;
 
         expect(mockFetch.calls[0].url).toBe('https://api-v1.example.com/users');
@@ -566,7 +566,7 @@ describe('BaseUrl and RequestOptions', () => {
       baseUrlSignal.value = 'https://api-v2.example.com';
 
       await testWithClient(client, async () => {
-        const relay2 = getQuery(ListUsers);
+        const relay2 = fetchQuery(ListUsers);
         await relay2;
 
         await sleep();
@@ -594,7 +594,7 @@ describe('BaseUrl and RequestOptions', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(ListUsers);
+        const relay = fetchQuery(ListUsers);
         await relay;
 
         expect(mockFetch.calls[0].url).toBe('https://dynamic.example.com/users');
@@ -625,7 +625,7 @@ describe('BaseUrl and RequestOptions', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(ListItems);
+        const relay = fetchQuery(ListItems);
         await relay;
 
         // Query-level baseUrl should override context baseUrl
@@ -659,7 +659,7 @@ describe('BaseUrl and RequestOptions', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetSecureData);
+        const relay = fetchQuery(GetSecureData);
         await relay;
 
         expect(mockFetch.calls[0].options.credentials).toBe('include');
@@ -688,7 +688,7 @@ describe('BaseUrl and RequestOptions', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(ListUsers);
+        const relay = fetchQuery(ListUsers);
         await relay;
 
         // Should use relative path when no baseUrl

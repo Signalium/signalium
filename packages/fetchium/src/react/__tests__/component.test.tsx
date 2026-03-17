@@ -7,7 +7,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { createRenderCounter } from './utils.js';
 import { QueryPromise } from 'src/types.js';
@@ -41,7 +41,7 @@ describe('React Query Integration with component()', () => {
       }
 
       const Component = component(() => {
-        const item = getQuery(GetItem);
+        const item = fetchQuery(GetItem);
 
         if (item.isRejected) {
           return <div>Error: {String(item.error)}</div>;
@@ -74,7 +74,7 @@ describe('React Query Integration with component()', () => {
       }
 
       const Component = component(() => {
-        const item = getQuery(GetItem);
+        const item = fetchQuery(GetItem);
 
         if (item.isRejected) {
           return <div>Error occurred</div>;
@@ -119,8 +119,8 @@ describe('React Query Integration with component()', () => {
       }
 
       const Component = component(() => {
-        const user = getQuery(GetUser);
-        const posts = getQuery(GetPosts);
+        const user = fetchQuery(GetUser);
+        const posts = fetchQuery(GetPosts);
 
         if (!user.isReady || !posts.isReady) {
           return <div>Loading...</div>;
@@ -159,7 +159,7 @@ describe('React Query Integration with component()', () => {
       }
 
       const Component = component(() => {
-        const user = getQuery(GetUser, { id: '123' });
+        const user = fetchQuery(GetUser, { id: '123' });
 
         if (!user.isReady) {
           return <div>Loading...</div>;
@@ -188,7 +188,7 @@ describe('React Query Integration with component()', () => {
 
       const Component = component(() => {
         const [userId, setUserId] = useState('1');
-        const user = getQuery(GetUser, { id: userId });
+        const user = fetchQuery(GetUser, { id: userId });
 
         return (
           <div>
@@ -235,7 +235,7 @@ describe('React Query Integration with component()', () => {
       let userQuery: QueryPromise<GetUser>;
 
       const Component = component(() => {
-        userQuery = getQuery(GetUser, { id: '1' });
+        userQuery = fetchQuery(GetUser, { id: '1' });
 
         if (!userQuery.isReady) {
           return <div>Loading...</div>;
@@ -285,7 +285,7 @@ describe('React Query Integration with component()', () => {
       });
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div>Loading...</div>;
@@ -375,7 +375,7 @@ describe('React Query Integration with component()', () => {
 
       // First component - displays user profile from user endpoint
       const UserProfile = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div>Profile Loading...</div>;
@@ -391,7 +391,7 @@ describe('React Query Integration with component()', () => {
 
       // Second component - displays post with nested author from post endpoint
       const PostView = component(() => {
-        const result = getQuery(GetPost, { postId: '100' });
+        const result = fetchQuery(GetPost, { postId: '100' });
 
         if (!result.isReady) {
           return <div>Post Loading...</div>;
@@ -406,7 +406,7 @@ describe('React Query Integration with component()', () => {
             <button
               onClick={async () => {
                 // Refetch the USER endpoint, not the post
-                const userResult = getQuery(GetUser, { id: '1' });
+                const userResult = fetchQuery(GetUser, { id: '1' });
                 await userResult.value!.__refetch();
               }}
             >
@@ -510,7 +510,7 @@ describe('React Query Integration with component()', () => {
 
       const Component = component(() => {
         mainRenderCount++;
-        const promise = getQuery(GetUser, { id: '1' });
+        const promise = fetchQuery(GetUser, { id: '1' });
 
         return (
           <div>
@@ -595,7 +595,7 @@ describe('React Query Integration with component()', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetPost, { id: '1' });
+        const result = fetchQuery(GetPost, { id: '1' });
 
         if (!result.isReady) {
           return <div>Loading...</div>;
@@ -637,7 +637,7 @@ describe('React Query Integration with component()', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser);
+        const result = fetchQuery(GetUser);
 
         if (!result.isReady) {
           return <div>Loading...</div>;
@@ -675,12 +675,12 @@ describe('React Query Integration with component()', () => {
       }
 
       const ComponentA = component(() => {
-        const result = getQuery(GetCounter);
+        const result = fetchQuery(GetCounter);
         return <div data-testid="a">{result.isReady ? result.value.count : 'Loading'}</div>;
       });
 
       const ComponentB = component(() => {
-        const result = getQuery(GetCounter);
+        const result = fetchQuery(GetCounter);
         return <div data-testid="b">{result.isReady ? result.value.count : 'Loading'}</div>;
       });
 
@@ -721,7 +721,7 @@ describe('React Query Integration with component()', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetCounter);
+        const result = fetchQuery(GetCounter);
 
         return (
           <div>
@@ -767,7 +767,7 @@ describe('React Query Integration with component()', () => {
       }
 
       const Child = component(() => {
-        const item = getQuery(GetItem);
+        const item = fetchQuery(GetItem);
         return <div data-testid="child">{item.isReady ? item.value.name : 'Loading'}</div>;
       });
 
@@ -811,7 +811,7 @@ describe('React Query Integration with component()', () => {
       }> = [];
 
       const Component = component(() => {
-        const result = getQuery(GetItem);
+        const result = fetchQuery(GetItem);
 
         states.push({
           isPending: result.isPending,
@@ -861,7 +861,7 @@ describe('React Query Integration with component()', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetItem as any) as any;
+        const result = fetchQuery(GetItem as any) as any;
 
         if (result.isPending) {
           return <div data-testid="status">Pending</div>;
@@ -897,7 +897,7 @@ describe('React Query Integration with component()', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetItem);
+        const result = fetchQuery(GetItem);
 
         return (
           <div>
@@ -935,7 +935,7 @@ describe('React Query Integration with component()', () => {
       let itemQuery: QueryPromise<GetItem>;
 
       const Component = component(() => {
-        itemQuery = getQuery(GetItem);
+        itemQuery = fetchQuery(GetItem);
 
         return (
           <div>

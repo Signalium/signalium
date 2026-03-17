@@ -3,7 +3,7 @@ import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, sleep, sendStreamUpdate } from './utils.js';
 
 /**
@@ -66,7 +66,7 @@ describe('Query Stream Option', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetPosts);
+        const relay = fetchQuery(GetPosts);
 
         // Access a property to activate the relay
         expect(relay.isPending).toBe(true);
@@ -117,7 +117,7 @@ describe('Query Stream Option', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUserMessages, { userId: '123', limit: 10 } as any);
+        const relay = fetchQuery(GetUserMessages, { userId: '123', limit: 10 } as any);
         await relay;
 
         expect(receivedParams).toEqual({ userId: '123', limit: 10 });
@@ -158,7 +158,7 @@ describe('Query Stream Option', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetPosts);
+        const relay = fetchQuery(GetPosts);
         await relay;
 
         const initialPosts = relay.value!.posts;
@@ -219,7 +219,7 @@ describe('Query Stream Option', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetPosts);
+        const relay = fetchQuery(GetPosts);
         await relay;
 
         expect((relay.value!.posts[0].author as any).name).toBe('Alice');
@@ -269,7 +269,7 @@ describe('Query Stream Option', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetPosts);
+        const relay = fetchQuery(GetPosts);
         await relay;
 
         expect(subscribeCount).toBe(1);
@@ -314,7 +314,7 @@ describe('Query Stream Option', () => {
 
       // First activation
       await testWithClient(client, async () => {
-        const relay = getQuery(GetPosts);
+        const relay = fetchQuery(GetPosts);
         await relay;
         expect(subscribeCount).toBe(1);
       });
@@ -325,7 +325,7 @@ describe('Query Stream Option', () => {
 
       // Second activation
       await testWithClient(client, async () => {
-        const relay = getQuery(GetPosts);
+        const relay = fetchQuery(GetPosts);
         await relay;
         expect(subscribeCount).toBe(2);
       });
@@ -355,7 +355,7 @@ describe('Query Stream Option', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetPosts);
+        const relay = fetchQuery(GetPosts);
         await relay;
 
         expect(relay.value?.posts.length).toBe(1);
@@ -397,7 +397,7 @@ describe('Query Stream Option', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetPosts);
+        const relay = fetchQuery(GetPosts);
         await relay;
 
         // Send rapid successive stream events

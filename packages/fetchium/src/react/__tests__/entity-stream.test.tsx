@@ -6,7 +6,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { userEvent } from '@vitest/browser/context';
 
@@ -50,7 +50,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div>Loading...</div>;
@@ -115,7 +115,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component1 = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div>Loading 1...</div>;
@@ -125,7 +125,7 @@ describe('React Entity Stream Integration', () => {
       });
 
       const Component2 = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div>Loading 2...</div>;
@@ -192,7 +192,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(({ testId }: { testId: string }) => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div>Loading 1...</div>;
@@ -261,7 +261,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div>Loading...</div>;
@@ -322,7 +322,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div data-testid="loading">Loading...</div>;
@@ -380,7 +380,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
         const userName = result.value?.user.name;
 
         if (result.isPending) {
@@ -441,7 +441,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(({ show }: { show: boolean }) => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div>Loading...</div>;
@@ -523,7 +523,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
         const addressStreet = result.value?.user.address.street;
 
         if (result.isPending) {
@@ -598,7 +598,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
         const fullName = result.value?.user.fullName();
 
         if (result.isPending) {
@@ -667,8 +667,8 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result1 = getQuery(GetUser, { id: '1' });
-        const result2 = getQuery(GetUser, { id: '2' });
+        const result1 = fetchQuery(GetUser, { id: '1' });
+        const result2 = fetchQuery(GetUser, { id: '2' });
         const name1 = result1.value?.user?.name;
         const name2 = result2.value?.user?.name;
 
@@ -752,7 +752,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
         const count = result.value?.user?.count;
 
         if (result.isPending) {
@@ -805,7 +805,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
         const userName = result.value?.user?.name;
 
         if (result.isPending) {
@@ -870,7 +870,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
         const userName = result.value?.user?.name;
 
         if (result.isPending) {
@@ -937,7 +937,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
         const firstName = result.value?.user?.firstName;
         const lastName = result.value?.user?.lastName;
         const email = result.value?.user?.email;
@@ -1019,7 +1019,7 @@ describe('React Entity Stream Integration', () => {
       }
 
       const Component = component(() => {
-        const result = getQuery(GetUser, { id: '1' });
+        const result = fetchQuery(GetUser, { id: '1' });
         const userName = result.value?.user?.name;
 
         if (result.isPending) {

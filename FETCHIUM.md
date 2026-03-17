@@ -15,7 +15,7 @@ Data-fetching and entity management layer built on signalium. Lives in `packages
 
 | File                       | Purpose                                                                                                                                                                           |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `query.ts`                 | `Query` base class, `getQuery()`, `QueryDefinition`                                                                                                                               |
+| `query.ts`                 | `Query` base class, `fetchQuery()`, `QueryDefinition`                                                                                                                             |
 | `QueryResult.ts`           | `QueryInstance` — manages a single query's lifecycle (relay, fetch, cache, refetch). Creates the persistent query proxy.                                                          |
 | `QueryClient.ts`           | `QueryClient` — central coordinator. Manages query instances, entity store, cache operations, context. `QueryClientContext` for DI.                                               |
 | `proxy.ts`                 | `Entity` base class, `createEntityProxy()` — Proxy-based entity objects with lazy parsing, `notifier.consume()` on access, method wrapping. Also `parseValue()`, `mergeValues()`. |
@@ -52,7 +52,7 @@ The entity proxy (`createEntityProxy`):
 
 ## Query lifecycle
 
-1. `getQuery(QueryClass, params)` → gets/creates a `QueryInstance` (memoized by query key)
+1. `fetchQuery(QueryClass, params)` → gets/creates a `QueryInstance` (memoized by query key)
 2. `QueryInstance` creates a `relay()` that manages the query subscription
 3. On activation: loads from cache, then fetches if stale, sets up refetch intervals and stream subscriptions
 4. Data is parsed via `parseEntities()` which normalizes entities into the store and returns proxied objects

@@ -3,7 +3,7 @@ import { signal } from 'signalium';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient } from './utils.js';
 
 /**
@@ -41,7 +41,7 @@ describe('Signal Parameters', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = await getQuery(GetUser, { id: idSignal });
+        const result = await fetchQuery(GetUser, { id: idSignal });
         expect(result.id).toBe(123);
         expect(result.name).toBe('Test User');
         expect(mockFetch.calls[0].url).toBe('/users/123');
@@ -72,7 +72,7 @@ describe('Signal Parameters', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = await getQuery(ListUsers, { page: pageSignal, limit: limitSignal });
+        const result = await fetchQuery(ListUsers, { page: pageSignal, limit: limitSignal });
         expect(result.page).toBe(1);
         expect(mockFetch.calls[0].url).toContain('page=1');
         expect(mockFetch.calls[0].url).toContain('limit=10');
@@ -99,7 +99,7 @@ describe('Signal Parameters', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = await getQuery(GetUserPosts, { id: idSignal, status: 'published' } as any);
+        const result = await fetchQuery(GetUserPosts, { id: idSignal, status: 'published' } as any);
         expect(mockFetch.calls[0].url).toContain('/users/456/posts');
         expect(mockFetch.calls[0].url).toContain('status=published');
       });
@@ -121,7 +121,7 @@ describe('Signal Parameters', () => {
       }
 
       await testWithClient(client, async () => {
-        const result1 = await getQuery(GetUser, { id: idSignal });
+        const result1 = await fetchQuery(GetUser, { id: idSignal });
         expect(result1.id).toBe(123);
         expect(result1.name).toBe('User 123');
         expect(mockFetch.calls.length).toBe(1);
@@ -138,7 +138,7 @@ describe('Signal Parameters', () => {
         await new Promise(resolve => setTimeout(resolve, 100));
 
         // Access result again to trigger reactive update
-        const result2 = await getQuery(GetUser, { id: idSignal });
+        const result2 = await fetchQuery(GetUser, { id: idSignal });
         expect(result2.id).toBe(456);
         expect(result2.name).toBe('User 456');
         expect(mockFetch.calls.length).toBe(2);
@@ -165,7 +165,7 @@ describe('Signal Parameters', () => {
       }
 
       await testWithClient(client, async () => {
-        const result1 = await getQuery(ListUsers, { page: pageSignal, limit: limitSignal });
+        const result1 = await fetchQuery(ListUsers, { page: pageSignal, limit: limitSignal });
         expect(result1.page).toBe(1);
         expect(mockFetch.calls.length).toBe(1);
 
@@ -180,7 +180,7 @@ describe('Signal Parameters', () => {
         // Wait for refetch
         await new Promise(resolve => setTimeout(resolve, 100));
 
-        const result2 = await getQuery(ListUsers, { page: pageSignal, limit: limitSignal });
+        const result2 = await fetchQuery(ListUsers, { page: pageSignal, limit: limitSignal });
         expect(result2.page).toBe(2);
         expect(mockFetch.calls.length).toBe(2);
       });
@@ -202,8 +202,8 @@ describe('Signal Parameters', () => {
       }
 
       await testWithClient(client, async () => {
-        const result1 = await getQuery(GetUser, { id: idSignal1 });
-        const result2 = await getQuery(GetUser, { id: idSignal2 });
+        const result1 = await fetchQuery(GetUser, { id: idSignal1 });
+        const result2 = await fetchQuery(GetUser, { id: idSignal2 });
 
         // Should share cache - only one fetch call
         expect(mockFetch.calls.length).toBe(1);
@@ -227,8 +227,8 @@ describe('Signal Parameters', () => {
       }
 
       await testWithClient(client, async () => {
-        const result1 = await getQuery(GetUser, { id: idSignal1 });
-        const result2 = await getQuery(GetUser, { id: idSignal2 });
+        const result1 = await fetchQuery(GetUser, { id: idSignal1 });
+        const result2 = await fetchQuery(GetUser, { id: idSignal2 });
 
         // Should have separate cache entries - two fetch calls
         expect(mockFetch.calls.length).toBe(2);
@@ -256,7 +256,7 @@ describe('Signal Parameters', () => {
 
       await testWithClient(client, async () => {
         // This should work - undefined will be converted to string 'undefined' in URL
-        const result = await getQuery(GetUser, { id: idSignal });
+        const result = await fetchQuery(GetUser, { id: idSignal });
         expect(result.name).toBe('No User');
       });
     });
@@ -277,7 +277,7 @@ describe('Signal Parameters', () => {
       }
 
       await testWithClient(client, async () => {
-        const result = await getQuery(GetUser, { id: idSignal });
+        const result = await fetchQuery(GetUser, { id: idSignal });
         expect(result.name).toBe('No User');
       });
     });

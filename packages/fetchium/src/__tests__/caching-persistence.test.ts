@@ -4,7 +4,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t, getShapeKey, ValidatorDef } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, getQuery, queryKeyForClass } from '../query.js';
+import { Query, fetchQuery, queryKeyForClass } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import {
@@ -128,7 +128,7 @@ function deleteDocument(kv: any, key: number) {
 
 /**
  * Compute a query key from a Query class without needing the class to be registered
- * via getQuery(). This mirrors the internal logic of getQueryDefinition + queryKeyFor.
+ * via fetchQuery(). This mirrors the internal logic of getQueryDefinition + queryKeyFor.
  */
 function computeQueryKey(QueryClass: new () => Query, params: unknown): number {
   const instance = new QueryClass();
@@ -190,7 +190,7 @@ describe('Caching and Persistence', () => {
           response = { id: t.number, name: t.string };
         }
 
-        const relay = getQuery(GetItem, { id: '1' });
+        const relay = fetchQuery(GetItem, { id: '1' });
         // Watcher is automatically managed
         await relay;
 
@@ -224,7 +224,7 @@ describe('Caching and Persistence', () => {
       );
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetItem, { id: '1' });
+        const relay = fetchQuery(GetItem, { id: '1' });
         // Force a pull
         relay.value;
         await sleep();
@@ -255,7 +255,7 @@ describe('Caching and Persistence', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         await relay;
       });
 
@@ -267,7 +267,7 @@ describe('Caching and Persistence', () => {
       const client2 = new QueryClient(store, { fetch: mockFetch as any });
 
       await testWithClient(client2, async () => {
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         // Force a pull
         relay.value;
         await sleep();
@@ -308,7 +308,7 @@ describe('Caching and Persistence', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         // Verify entity is persisted
@@ -362,7 +362,7 @@ describe('Caching and Persistence', () => {
       );
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetDocument);
+        const relay = fetchQuery(GetDocument);
         // Force a pull
         relay.value;
         await sleep();
@@ -423,7 +423,7 @@ describe('Caching and Persistence', () => {
       );
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         // Force a pull to load from cache
         relay.value;
         await sleep();
@@ -504,7 +504,7 @@ describe('Caching and Persistence', () => {
       );
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetArticle, { id: '1' });
+        const relay = fetchQuery(GetArticle, { id: '1' });
         // Force a pull to load from cache
         relay.value;
         await sleep();
@@ -613,7 +613,7 @@ describe('Caching and Persistence', () => {
       );
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetAuthor, { id: '10' });
+        const relay = fetchQuery(GetAuthor, { id: '10' });
         relay.value;
         await sleep();
 
@@ -681,7 +681,7 @@ describe('Caching and Persistence', () => {
       mockFetch.get('/containers/[id]', { container: { __typename: 'Container', id: 100, items: [] } }, { delay: 100 });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetContainer, { id: '100' });
+        const relay = fetchQuery(GetContainer, { id: '100' });
         relay.value;
         await sleep();
 
@@ -762,7 +762,7 @@ describe('Caching and Persistence', () => {
       mockFetch.get('/blogs/[id]', { blog: { __typename: 'Blog', id: 1, posts: [] } }, { delay: 100 });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetBlog, { id: '1' });
+        const relay = fetchQuery(GetBlog, { id: '1' });
         relay.value;
         await sleep();
 
@@ -885,7 +885,7 @@ describe('Caching and Persistence', () => {
       mockFetch.get('/forums/[id]', { forum: { __typename: 'Forum', id: 1, threads: [] } }, { delay: 100 });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetForum, { id: '1' });
+        const relay = fetchQuery(GetForum, { id: '1' });
         relay.value;
         await sleep();
 
@@ -945,7 +945,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         // Check reference count
@@ -981,10 +981,10 @@ describe('Caching and Persistence', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay1 = getQuery(GetUser1);
+        const relay1 = fetchQuery(GetUser1);
         await relay1;
 
-        const relay2 = getQuery(GetUser2);
+        const relay2 = fetchQuery(GetUser2);
         await relay2;
 
         // Entity should have references from queries
@@ -1014,7 +1014,7 @@ describe('Caching and Persistence', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         // Check that query and entity are stored
@@ -1071,7 +1071,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
@@ -1109,10 +1109,10 @@ describe('Caching and Persistence', () => {
 
       await testWithClient(client, async () => {
         // Fetch 3 users, the third should evict the first
-        const relay1 = getQuery(GetUser, { id: '1' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
         await relay1;
 
-        const relay2 = getQuery(GetUser, { id: '2' });
+        const relay2 = fetchQuery(GetUser, { id: '2' });
         await relay2;
 
         const query1Key = queryKeyForClass(GetUser, { id: '1' });
@@ -1132,7 +1132,7 @@ describe('Caching and Persistence', () => {
         expect(getDocument(kv, user2Key)).toBeDefined();
 
         // Fetch user 3, should evict user 1's query
-        const relay3 = getQuery(GetUser, { id: '3' });
+        const relay3 = fetchQuery(GetUser, { id: '3' });
         await relay3;
 
         // Query 1 should be evicted
@@ -1174,10 +1174,10 @@ describe('Caching and Persistence', () => {
 
       await testWithClient(client, async () => {
         // Both queries reference the same user
-        const relay1 = getQuery(GetProfile, { id: '1' });
+        const relay1 = fetchQuery(GetProfile, { id: '1' });
         await relay1;
 
-        const relay2 = getQuery(GetDetails, { id: '1' });
+        const relay2 = fetchQuery(GetDetails, { id: '1' });
         await relay2;
 
         const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
@@ -1190,7 +1190,7 @@ describe('Caching and Persistence', () => {
           user: { __typename: 'User', id: 2, name: 'Bob' },
         });
 
-        const relay3 = getQuery(GetProfile, { id: '2' });
+        const relay3 = fetchQuery(GetProfile, { id: '2' });
         await relay3;
 
         // Original user should still exist (referenced by details query)
@@ -1245,7 +1245,7 @@ describe('Caching and Persistence', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(GetUser, { id: '1' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
         await relay1;
 
         const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
@@ -1276,7 +1276,7 @@ describe('Caching and Persistence', () => {
           },
         });
 
-        const relay2 = getQuery(GetUser, { id: '2' });
+        const relay2 = fetchQuery(GetUser, { id: '2' });
         await relay2;
 
         // All original entities should be cascade deleted
@@ -1326,7 +1326,7 @@ describe('Caching and Persistence', () => {
       let post10Key: number;
 
       await testWithClient(client, async () => {
-        relay = getQuery(GetUser, { id: '1' });
+        relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         post10Key = hashValue(['Post:10', getShapeKey(t.entity(Post))]);
@@ -1394,7 +1394,7 @@ describe('Caching and Persistence', () => {
           response = { posts: t.array(t.entity(Post)) };
         }
 
-        const relay = getQuery(GetPosts);
+        const relay = fetchQuery(GetPosts);
         const result = await relay;
 
         expect(result.posts.length).toEqual(3);
@@ -1444,7 +1444,7 @@ describe('Caching and Persistence', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(GetUser, { id: '1' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
         await relay1;
 
         const queryKey = queryKeyForClass(GetUser, { id: '1' });
@@ -1464,7 +1464,7 @@ describe('Caching and Persistence', () => {
           },
         });
 
-        const relay2 = getQuery(GetUser, { id: '2' });
+        const relay2 = fetchQuery(GetUser, { id: '2' });
         await relay2;
 
         // All query keys should be cleaned up
@@ -1505,7 +1505,7 @@ describe('Caching and Persistence', () => {
       }
 
       await testWithClient(client, async () => {
-        const relay1 = getQuery(GetUser, { id: '1' });
+        const relay1 = fetchQuery(GetUser, { id: '1' });
         await relay1;
 
         const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
@@ -1527,7 +1527,7 @@ describe('Caching and Persistence', () => {
           },
         });
 
-        const relay2 = getQuery(GetUser, { id: '2' });
+        const relay2 = fetchQuery(GetUser, { id: '2' });
         await relay2;
 
         // All entity keys should be cleaned up
@@ -1561,7 +1561,7 @@ describe('Caching and Persistence', () => {
         }
 
         // Fetch with V1 schema
-        const relay1 = getQuery(GetPositionV1, { id: '123' });
+        const relay1 = fetchQuery(GetPositionV1, { id: '123' });
         const result1 = await relay1;
 
         expect(result1.position.size).toBe(100);
@@ -1601,7 +1601,7 @@ describe('Caching and Persistence', () => {
         }
 
         // Fetch with V2 schema - this should NOT throw a validation error
-        const relay2 = getQuery(GetPositionV2, { id: '123' });
+        const relay2 = fetchQuery(GetPositionV2, { id: '123' });
         const result2 = await relay2;
 
         // Should have the new data with predictionOutcome
@@ -1637,7 +1637,7 @@ describe('Caching and Persistence', () => {
           response = { user: t.entity(UserV1) };
         }
 
-        const relay1 = getQuery(GetUserV1);
+        const relay1 = fetchQuery(GetUserV1);
         await relay1;
       });
 
@@ -1652,7 +1652,7 @@ describe('Caching and Persistence', () => {
           response = { user: t.entity(UserV2) };
         }
 
-        const relay2 = getQuery(GetUserV2);
+        const relay2 = fetchQuery(GetUserV2);
         await relay2;
       });
 
@@ -1685,7 +1685,7 @@ describe('Caching and Persistence', () => {
           response = { id: t.number, name: t.string };
         }
 
-        const relay = getQuery(GetItem, { id: '1' });
+        const relay = fetchQuery(GetItem, { id: '1' });
         await relay;
 
         const queryDefId = 'GET:/items/[id]';

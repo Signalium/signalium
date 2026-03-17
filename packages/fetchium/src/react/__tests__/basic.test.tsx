@@ -6,7 +6,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { createRenderCounter } from './utils.js';
 import { QueryPromise, QueryResult, RefetchInterval } from '../../types.js';
@@ -42,7 +42,7 @@ describe('React Query Integration', () => {
       }
 
       function Component(): React.ReactNode {
-        const item = useReactive(getQuery, GetItem);
+        const item = useReactive(fetchQuery, GetItem);
 
         if (item.isPending) {
           return <div>Loading...</div>;
@@ -75,7 +75,7 @@ describe('React Query Integration', () => {
       }
 
       function Component(): React.ReactNode {
-        const item = useReactive(getQuery, GetItem);
+        const item = useReactive(fetchQuery, GetItem);
 
         if (item.isPending) {
           return <div>Loading...</div>;
@@ -120,8 +120,8 @@ describe('React Query Integration', () => {
       }
 
       function Component(): React.ReactNode {
-        const user = useReactive(getQuery, GetUser);
-        const posts = useReactive(getQuery, GetPosts);
+        const user = useReactive(fetchQuery, GetUser);
+        const posts = useReactive(fetchQuery, GetPosts);
 
         if (user.isPending || posts.isPending) {
           return <div>Loading...</div>;
@@ -157,7 +157,7 @@ describe('React Query Integration', () => {
       }
 
       function Component(): React.ReactNode {
-        const user = useReactive(getQuery, GetUser, { id: '123' });
+        const user = useReactive(fetchQuery, GetUser, { id: '123' });
 
         if (!user.isReady) {
           return <div>Loading...</div>;
@@ -197,7 +197,7 @@ describe('React Query Integration', () => {
       let userQuery: QueryPromise<GetUser>;
 
       function Component(): React.ReactNode {
-        userQuery = useReactive(getQuery, GetUser, { id: '1' });
+        userQuery = useReactive(fetchQuery, GetUser, { id: '1' });
 
         if (!userQuery.isReady) {
           return <div>Loading...</div>;
@@ -246,7 +246,7 @@ describe('React Query Integration', () => {
       }
 
       function Component(): React.ReactNode {
-        const result = useReactive(getQuery, GetUser, { id: '1' });
+        const result = useReactive(fetchQuery, GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div>Loading...</div>;
@@ -335,7 +335,7 @@ describe('React Query Integration', () => {
 
       // First component - displays user profile from user endpoint
       function UserProfile(): React.ReactNode {
-        const result = useReactive(getQuery, GetUser, { id: '1' });
+        const result = useReactive(fetchQuery, GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div>Profile Loading...</div>;
@@ -351,8 +351,8 @@ describe('React Query Integration', () => {
 
       // Second component - displays post with nested author from post endpoint
       function PostView(): React.ReactNode {
-        const result = useReactive(getQuery, GetPost, { postId: '100' });
-        const userResult = useReactive(getQuery, GetUser, { id: '1' });
+        const result = useReactive(fetchQuery, GetPost, { postId: '100' });
+        const userResult = useReactive(fetchQuery, GetUser, { id: '1' });
 
         if (!result.isReady) {
           return <div>Post Loading...</div>;
@@ -447,7 +447,7 @@ describe('React Query Integration', () => {
       }
 
       function Component(): React.ReactNode {
-        const result = useReactive(getQuery, GetPost, { id: '1' });
+        const result = useReactive(fetchQuery, GetPost, { id: '1' });
 
         if (!result.isReady) {
           return <div>Loading...</div>;
@@ -489,7 +489,7 @@ describe('React Query Integration', () => {
       }
 
       function Component(): React.ReactNode {
-        const result = useReactive(getQuery, GetUser);
+        const result = useReactive(fetchQuery, GetUser);
 
         if (!result.isReady) {
           return <div>Loading...</div>;
@@ -535,7 +535,7 @@ describe('React Query Integration', () => {
       });
 
       function Parent(): React.ReactNode {
-        itemQuery = useReactive(getQuery, GetItem);
+        itemQuery = useReactive(fetchQuery, GetItem);
 
         if (!itemQuery.isReady) {
           return <div>Loading...</div>;
@@ -570,12 +570,12 @@ describe('React Query Integration', () => {
       }
 
       function ComponentA(): React.ReactNode {
-        const result = useReactive(getQuery, GetCounter);
+        const result = useReactive(fetchQuery, GetCounter);
         return <div data-testid="a">{result.isReady ? result.value.count : 'Loading'}</div>;
       }
 
       function ComponentB(): React.ReactNode {
-        const result = useReactive(getQuery, GetCounter);
+        const result = useReactive(fetchQuery, GetCounter);
         return <div data-testid="b">{result.isReady ? result.value.count : 'Loading'}</div>;
       }
 
@@ -616,7 +616,7 @@ describe('React Query Integration', () => {
       }
 
       function Component(): React.ReactNode {
-        const result = useReactive(getQuery, GetCounter);
+        const result = useReactive(fetchQuery, GetCounter);
 
         return (
           <div>
@@ -666,7 +666,7 @@ describe('React Query Integration', () => {
       }
 
       function Parent(): React.ReactNode {
-        const result = useReactive(getQuery, GetData);
+        const result = useReactive(fetchQuery, GetData);
 
         if (!result.isReady) {
           return <div>Loading...</div>;
@@ -694,7 +694,7 @@ describe('React Query Integration', () => {
       }
 
       function Child(): React.ReactNode {
-        const result = useReactive(getQuery, GetItem);
+        const result = useReactive(fetchQuery, GetItem);
         return <div data-testid="child">{result.isReady ? result.value.name : 'Loading'}</div>;
       }
 
@@ -757,7 +757,7 @@ describe('React Query Integration', () => {
       }> = [];
 
       function Component(): React.ReactNode {
-        const result = useReactive(getQuery, GetItem);
+        const result = useReactive(fetchQuery, GetItem);
 
         states.push({
           isPending: result.isPending,
@@ -807,7 +807,7 @@ describe('React Query Integration', () => {
       }
 
       function Component(): React.ReactNode {
-        const result = useReactive(getQuery, GetItem as any) as any;
+        const result = useReactive(fetchQuery, GetItem as any) as any;
 
         if (result.isPending) {
           return <div data-testid="status">Pending</div>;
@@ -843,7 +843,7 @@ describe('React Query Integration', () => {
       }
 
       function Component(): React.ReactNode {
-        const result = useReactive(getQuery, GetItem);
+        const result = useReactive(fetchQuery, GetItem);
 
         return (
           <div>
@@ -881,7 +881,7 @@ describe('React Query Integration', () => {
       let itemQuery: QueryPromise<GetItem>;
 
       function Component(): React.ReactNode {
-        itemQuery = useReactive(getQuery, GetItem);
+        itemQuery = useReactive(fetchQuery, GetItem);
 
         return (
           <div>
@@ -960,7 +960,7 @@ describe('React Query Integration', () => {
       }
 
       function QueryComponent(): React.ReactNode {
-        const user = useReactive(getQuery, GetUser);
+        const user = useReactive(fetchQuery, GetUser);
 
         if (user.isPending) {
           return <div>Loading...</div>;
@@ -1041,7 +1041,7 @@ describe('React Query Integration', () => {
       }
 
       function QueryComponent(): React.ReactNode {
-        const user = useReactive(getQuery, GetUser);
+        const user = useReactive(fetchQuery, GetUser);
 
         if (user.isPending) {
           return <div>Loading...</div>;

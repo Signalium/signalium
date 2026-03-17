@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -144,7 +144,7 @@ describe('t.const', () => {
             };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.type).toBe('user');
@@ -162,7 +162,7 @@ describe('t.const', () => {
             response = { version: t.const(1) };
           }
 
-          const relay = getQuery(GetVersion);
+          const relay = fetchQuery(GetVersion);
           const result = await relay;
 
           expect(result.version).toBe(1);
@@ -187,7 +187,7 @@ describe('t.const', () => {
             };
           }
 
-          const relay = getQuery(GetData);
+          const relay = fetchQuery(GetData);
           const result = await relay;
 
           expect(result.config.mode).toBe('production');
@@ -206,7 +206,7 @@ describe('t.const', () => {
             response = { flags: t.array(t.const('enabled')) };
           }
 
-          const relay = getQuery(GetFlags);
+          const relay = fetchQuery(GetFlags);
           const result = await relay;
 
           expect(result.flags).toEqual(['enabled', 'enabled', 'enabled']);
@@ -227,7 +227,7 @@ describe('t.const', () => {
             response = { statuses: t.record(t.const('ok')) };
           }
 
-          const relay = getQuery(GetStatuses);
+          const relay = fetchQuery(GetStatuses);
           const result = await relay;
 
           expect(result.statuses.a).toBe('ok');
@@ -249,7 +249,7 @@ describe('t.const', () => {
             };
           }
 
-          const relay = getQuery(GetStatus);
+          const relay = fetchQuery(GetStatus);
           const result = await relay;
 
           expect(result.status).toBe('pending');

@@ -8,7 +8,7 @@ import { AsyncPersistentStore, StoreMessage } from '../../stores/async.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, getQuery, queryKeyForClass } from '../../query.js';
+import { Query, fetchQuery, queryKeyForClass } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { valueKeyFor } from '../../stores/shared.js';
 
@@ -134,7 +134,7 @@ describe('React AsyncQueryStore Integration', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
       const UserComponent = component(() => {
-        const user = getQuery(GetUser, { id: '1' });
+        const user = fetchQuery(GetUser, { id: '1' });
 
         if (user.isPending) {
           return <div>Loading...</div>;
@@ -185,7 +185,7 @@ describe('React AsyncQueryStore Integration', () => {
 
       // First component fetches data
       const FirstComponent = component(() => {
-        const user = getQuery(GetUser, { id: '1' });
+        const user = fetchQuery(GetUser, { id: '1' });
         if (user.isPending) return <div>Loading...</div>;
         return <div data-testid="first-user">{user.value?.name}</div>;
       });
@@ -214,7 +214,7 @@ describe('React AsyncQueryStore Integration', () => {
 
       // Second component should load from cache (async load required)
       const SecondComponent = component(() => {
-        const user = getQuery(GetUser, { id: '1' });
+        const user = fetchQuery(GetUser, { id: '1' });
         if (user.isPending) return <div>Loading cache...</div>;
         return <div data-testid="second-user">{user.value?.name ?? 'No data'}</div>;
       });
@@ -254,7 +254,7 @@ describe('React AsyncQueryStore Integration', () => {
 
       // First component fetches data
       const FirstComponent = component(() => {
-        const user = getQuery(GetUser, { id: '1' });
+        const user = fetchQuery(GetUser, { id: '1' });
         if (user.isPending) return <div>Loading...</div>;
         return <div data-testid="first-user">{user.value?.name}</div>;
       });
@@ -286,7 +286,7 @@ describe('React AsyncQueryStore Integration', () => {
 
       // Second component should load from cache (async) then trigger background refetch
       const SecondComponent = component(() => {
-        const user = getQuery(GetUser, { id: '1' });
+        const user = fetchQuery(GetUser, { id: '1' });
         if (user.isPending) return <div>Loading cache...</div>;
         return <div data-testid="second-user">{user.value?.name ?? 'No data'}</div>;
       });
@@ -344,13 +344,13 @@ describe('React AsyncQueryStore Integration', () => {
       mockFetch.get('/posts/100', { id: '100', title: 'Hello World', authorId: '1' });
 
       const UserComponent = component(({ userId }: { userId: string }) => {
-        const user = getQuery(GetUser, { id: userId });
+        const user = fetchQuery(GetUser, { id: userId });
         if (!user.isReady) return <div>Loading user...</div>;
         return <div data-testid={`user-${userId}`}>{user.value?.name}</div>;
       });
 
       const PostComponent = component(({ postId }: { postId: string }) => {
-        const post = getQuery(GetPost, { id: postId });
+        const post = fetchQuery(GetPost, { id: postId });
         if (!post.isReady) return <div>Loading post...</div>;
         return <div data-testid={`post-${postId}`}>{post.value?.title}</div>;
       });
@@ -404,7 +404,7 @@ describe('React AsyncQueryStore Integration', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
       const UserComponent = component(() => {
-        const user = getQuery(GetUser, { id: '1' });
+        const user = fetchQuery(GetUser, { id: '1' });
 
         if (user.isPending) return <div>Loading...</div>;
 
@@ -468,7 +468,7 @@ describe('React AsyncQueryStore Integration', () => {
       mockFetch.get('/users/1', null, { error: new Error('Network error') });
 
       const UserComponent = component(() => {
-        const user = getQuery(GetUser, { id: '1' });
+        const user = fetchQuery(GetUser, { id: '1' });
 
         if (user.isRejected) return <div data-testid="error">Error occurred</div>;
         if (!user.isReady) return <div>Loading...</div>;
@@ -508,7 +508,7 @@ describe('React AsyncQueryStore Integration', () => {
 
       // Simulate reader thread - Component 1 fetches user 1
       const ReaderComponent1 = component(() => {
-        const user = getQuery(GetUser, { id: '1' });
+        const user = fetchQuery(GetUser, { id: '1' });
         if (!user.isReady) return <div>Loading user 1...</div>;
         return <div data-testid="reader1-name">{user.value.name}</div>;
       });
@@ -528,7 +528,7 @@ describe('React AsyncQueryStore Integration', () => {
 
       // Simulate reader thread - Component 2 fetches user 2
       const ReaderComponent2 = component(() => {
-        const user = getQuery(GetUser, { id: '2' });
+        const user = fetchQuery(GetUser, { id: '2' });
         if (!user.isReady) return <div>Loading user 2...</div>;
         return <div data-testid="reader2-name">{user.value.name}</div>;
       });
@@ -558,8 +558,8 @@ describe('React AsyncQueryStore Integration', () => {
       const newReaderClient = new QueryClient(newReaderStore, { fetch: mockFetch as any });
 
       const NewReaderComponent = component(() => {
-        const user1 = getQuery(GetUser, { id: '1' });
-        const user2 = getQuery(GetUser, { id: '2' });
+        const user1 = fetchQuery(GetUser, { id: '1' });
+        const user2 = fetchQuery(GetUser, { id: '2' });
 
         // Wait for both queries to load from cache
         if (!user1.isReady || !user2.isReady) {

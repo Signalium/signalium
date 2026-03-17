@@ -3,7 +3,7 @@ import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t, registerFormat, getShapeKey } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, getQuery, queryKeyForClass } from '../query.js';
+import { Query, fetchQuery, queryKeyForClass } from '../query.js';
 import { Mask, type ExtractType } from '../types.js';
 import { createMockFetch, testWithClient } from './utils.js';
 import { hashValue } from 'signalium/utils';
@@ -107,7 +107,7 @@ describe('Format System', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser, { id: '1' });
+          const relay = fetchQuery(GetUser, { id: '1' });
           const result = await relay;
 
           // Value should be parsed lazily - should be a Date object
@@ -138,7 +138,7 @@ describe('Format System', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser, { id: '1' });
+          const relay = fetchQuery(GetUser, { id: '1' });
           const result = await relay;
 
           const firstAccess = result.user.createdAt;
@@ -173,7 +173,7 @@ describe('Format System', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser, { id: '1' });
+          const relay = fetchQuery(GetUser, { id: '1' });
           await relay;
 
           // Access the field to trigger parsing
@@ -209,7 +209,7 @@ describe('Format System', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser, { id: '1' });
+          const relay = fetchQuery(GetUser, { id: '1' });
           const result = await relay;
 
           // Should throw error when accessing invalid date
@@ -243,7 +243,7 @@ describe('Format System', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser, { id: '1' });
+          const relay = fetchQuery(GetUser, { id: '1' });
           const result = await relay;
 
           // Value should be parsed lazily - should be a Date object
@@ -278,7 +278,7 @@ describe('Format System', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser, { id: '1' });
+          const relay = fetchQuery(GetUser, { id: '1' });
           await relay;
 
           // Access the field to trigger parsing
@@ -357,7 +357,7 @@ describe('Format System', () => {
           response = { product: t.entity(Product) };
         }
 
-        const relay = getQuery(GetProduct, { id: '1' });
+        const relay = fetchQuery(GetProduct, { id: '1' });
         const result = await relay;
 
         // Should parse to number
@@ -401,7 +401,7 @@ describe('Format System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Should throw validation error mentioning the format when accessing the field
@@ -435,7 +435,7 @@ describe('Format System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // At this point, createdAt should still be a string in the raw data
@@ -467,7 +467,7 @@ describe('Format System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         const first = result.user.createdAt;
@@ -510,7 +510,7 @@ describe('Format System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         // Access fields to trigger parsing
@@ -551,7 +551,7 @@ describe('Format System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         // Don't access createdAt - check store directly
@@ -591,7 +591,7 @@ describe('Format System', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser, { id: '1' });
+          const relay = fetchQuery(GetUser, { id: '1' });
           const result1 = await relay;
 
           // Access and verify initial value
@@ -647,7 +647,7 @@ describe('Format System', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser, { id: '1' });
+          const relay = fetchQuery(GetUser, { id: '1' });
           const result = await relay;
 
           // Access and cache the initial value
@@ -698,7 +698,7 @@ describe('Format System', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser, { id: '1' });
+          const relay = fetchQuery(GetUser, { id: '1' });
           const result1 = await relay;
 
           // Access and verify initial value
@@ -762,7 +762,7 @@ describe('Format System', () => {
             response = { product: t.entity(Product) };
           }
 
-          const relay = getQuery(GetProduct, { id: '1' });
+          const relay = fetchQuery(GetProduct, { id: '1' });
           const result1 = await relay;
 
           // Access and verify initial value
@@ -828,7 +828,7 @@ describe('Format System', () => {
             response = { product: t.entity(Product) };
           }
 
-          const relay = getQuery(GetProduct, { id: '1' });
+          const relay = fetchQuery(GetProduct, { id: '1' });
           const result = await relay;
 
           // Access and cache the initial value
@@ -884,7 +884,7 @@ describe('Format System', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser, { id: '1' });
+          const relay = fetchQuery(GetUser, { id: '1' });
           const result1 = await relay;
 
           // Access both formatted fields
@@ -949,7 +949,7 @@ describe('Format System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
         // Access the formatted fields to trigger parsing
@@ -1000,7 +1000,7 @@ describe('Format System', () => {
           response = { user: t.entity(User) };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Should restore correctly and parse lazily
@@ -1053,7 +1053,7 @@ describe('Format System', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetProduct, { id: '1' });
+        const relay = fetchQuery(GetProduct, { id: '1' });
         const result = await relay;
 
         // Should restore correctly and parse lazily

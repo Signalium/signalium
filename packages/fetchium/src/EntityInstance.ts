@@ -76,7 +76,7 @@ function createProxy(
   const warn = queryClient.getContext().log?.warn ?? noopWarn;
   const desc = `${shape.typenameValue}:${id}`;
 
-  const wrappedMethods = new Map<string, (...args: unknown[]) => unknown>();
+  const wrappedMethods = methods ? new Map<string, (...args: unknown[]) => unknown>() : undefined;
 
   const toJSON = () => ({ __entityRef: key });
 
@@ -100,6 +100,18 @@ function createProxy(
 
   let proxy: Record<string, unknown>;
 
+  const ownKeysList = Object.keys(shapeFields);
+  if (typenameField && !ownKeysList.includes(typenameField)) {
+    ownKeysList.push(typenameField);
+  }
+  if (methods) {
+    for (const methodKey of Object.keys(methods)) {
+      if (!ownKeysList.includes(methodKey)) {
+        ownKeysList.push(methodKey);
+      }
+    }
+  }
+
   const handler: ProxyHandler<object> = {
     getPrototypeOf() {
       return proto;
@@ -120,10 +132,10 @@ function createProxy(
       }
 
       if (methods && typeof prop === 'string' && prop in methods) {
-        let wrapped = wrappedMethods.get(prop);
+        let wrapped = wrappedMethods!.get(prop);
         if (!wrapped) {
           wrapped = reactiveMethod(proxy, methods[prop].bind(proxy));
-          wrappedMethods.set(prop, wrapped);
+          wrappedMethods!.set(prop, wrapped);
         }
         return wrapped;
       }
@@ -150,18 +162,7 @@ function createProxy(
     },
 
     ownKeys() {
-      const keys = Object.keys(shapeFields);
-      if (typenameField && !keys.includes(typenameField)) {
-        keys.push(typenameField);
-      }
-      if (methods) {
-        for (const methodKey of Object.keys(methods)) {
-          if (!keys.includes(methodKey)) {
-            keys.push(methodKey);
-          }
-        }
-      }
-      return keys;
+      return ownKeysList;
     },
 
     getOwnPropertyDescriptor(target, prop) {

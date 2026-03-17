@@ -3,7 +3,7 @@ export * from './types.js';
 export { QueryClient, QueryClientContext } from './QueryClient.js';
 export type { QueryContext } from './QueryClient.js';
 export { t, registerFormat, getShapeKey } from './typeDefs.js';
-export { Query, getQuery, queryKeyForClass } from './query.js';
+export { Query, fetchQuery, queryKeyForClass } from './query.js';
 export { Mutation, getMutation, mutationKeyForClass } from './mutation.js';
 export type { MutationDefinition } from './mutation.js';
 export { draft } from './utils.js';

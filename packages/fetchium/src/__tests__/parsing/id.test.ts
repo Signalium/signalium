@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import {
   setupParsingTests,
@@ -299,7 +299,7 @@ describe('t.id', () => {
             response = { user: t.entity(User) };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.user.id).toBe('user-123');
@@ -330,7 +330,7 @@ describe('t.id', () => {
             response = { users: t.array(t.entity(User)) };
           }
 
-          const relay = getQuery(GetUsers);
+          const relay = fetchQuery(GetUsers);
           const result = await relay;
 
           expect(result.users).toHaveLength(2);
@@ -362,7 +362,7 @@ describe('t.id', () => {
             response = { users: t.record(t.entity(User)) };
           }
 
-          const relay = getQuery(GetUsers);
+          const relay = fetchQuery(GetUsers);
           const result = await relay;
 
           expect(result.users.alice.id).toBe('u-1');

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import {
   setupParsingTests,
@@ -406,7 +406,7 @@ describe('t.union', () => {
             };
           }
 
-          const relay = getQuery(GetValues);
+          const relay = fetchQuery(GetValues);
           const result = await relay;
 
           expect(result.value1).toBe('string');
@@ -427,7 +427,7 @@ describe('t.union', () => {
             response = { value: t.union(t.string, t.null) };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.value).toBeNull();
@@ -460,7 +460,7 @@ describe('t.union', () => {
             response = { pet: PetUnion };
           }
 
-          const relay = getQuery(GetPet);
+          const relay = fetchQuery(GetPet);
           const result = await relay;
 
           expect(result.pet.__typename).toBe('Dog');
@@ -486,7 +486,7 @@ describe('t.union', () => {
             };
           }
 
-          const relay = getQuery(GetData);
+          const relay = fetchQuery(GetData);
           const result = await relay;
 
           expect(result.wrapper.value).toBe(42);
@@ -505,7 +505,7 @@ describe('t.union', () => {
             response = { values: t.array(t.union(t.string, t.number)) };
           }
 
-          const relay = getQuery(GetMixed);
+          const relay = fetchQuery(GetMixed);
           const result = await relay;
 
           expect(result.values).toEqual(['hello', 42, 'world', 123]);
@@ -526,7 +526,7 @@ describe('t.union', () => {
             response = { settings: t.record(t.union(t.string, t.number, t.boolean)) };
           }
 
-          const relay = getQuery(GetConfig);
+          const relay = fetchQuery(GetConfig);
           const result = await relay;
 
           expect(result.settings.name).toBe('test');

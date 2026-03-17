@@ -3,7 +3,7 @@ import { signal } from 'signalium';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, getEntityMapSize, sleep } from './utils.js';
 
 /**
@@ -41,7 +41,7 @@ describe('Debounce', () => {
 
       await testWithClient(client, async () => {
         // Initial fetch should happen immediately (debounce only applies to refetches)
-        await getQuery(ListUsers);
+        await fetchQuery(ListUsers);
         expect(mockFetch.calls.length).toBe(1);
       });
     });
@@ -57,7 +57,7 @@ describe('Debounce', () => {
       }
 
       await testWithClient(client, async () => {
-        await getQuery(ListUsers);
+        await fetchQuery(ListUsers);
         // Should fetch immediately
         expect(mockFetch.calls.length).toBe(1);
       });
@@ -79,7 +79,7 @@ describe('Debounce', () => {
 
       await testWithClient(client, async () => {
         // Initial fetch
-        const queryResult1 = getQuery(GetUser, { id: idSignal });
+        const queryResult1 = fetchQuery(GetUser, { id: idSignal });
         await queryResult1;
         expect(mockFetch.calls.length).toBe(1);
 
@@ -121,7 +121,7 @@ describe('Debounce', () => {
 
       await testWithClient(client, async () => {
         // Initial fetch
-        const queryResult1 = getQuery(GetUser, { id: idSignal });
+        const queryResult1 = fetchQuery(GetUser, { id: idSignal });
         await queryResult1;
         expect(mockFetch.calls.length).toBe(1);
 
@@ -162,7 +162,7 @@ describe('Debounce', () => {
       }
 
       await testWithClient(client, async () => {
-        await getQuery(ListUsers);
+        await fetchQuery(ListUsers);
         // Should fetch immediately (0ms debounce = no debounce)
         expect(mockFetch.calls.length).toBe(1);
       });
@@ -186,7 +186,7 @@ describe('Debounce', () => {
 
       await testWithClient(client, async () => {
         try {
-          await getQuery(ListUsers);
+          await fetchQuery(ListUsers);
         } catch (error) {
           // Expected to fail first time
         }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -135,7 +135,7 @@ describe('t.number', () => {
             response = { count: t.number, price: t.number };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.count).toBe(42);
@@ -162,7 +162,7 @@ describe('t.number', () => {
             };
           }
 
-          const relay = getQuery(GetNumbers);
+          const relay = fetchQuery(GetNumbers);
           const result = await relay;
 
           expect(result.zero).toBe(0);
@@ -181,7 +181,7 @@ describe('t.number', () => {
             response = { zero: t.number, negative: t.number, float: t.number };
           }
 
-          const relay = getQuery(GetNumbers);
+          const relay = fetchQuery(GetNumbers);
           const result = await relay;
 
           expect(result.zero).toBe(0);
@@ -211,7 +211,7 @@ describe('t.number', () => {
             };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.item.stats.views).toBe(100);
@@ -231,7 +231,7 @@ describe('t.number', () => {
             response = { values: t.array(t.number) };
           }
 
-          const relay = getQuery(GetNumbers);
+          const relay = fetchQuery(GetNumbers);
           const result = await relay;
 
           expect(result.values).toEqual([1, 2, 3, 4, 5]);
@@ -249,7 +249,7 @@ describe('t.number', () => {
             response = { numbers: t.array(t.number) };
           }
 
-          const relay = getQuery(GetNumbers);
+          const relay = fetchQuery(GetNumbers);
           const result = await relay;
 
           expect(result.numbers).toHaveLength(1000);
@@ -272,7 +272,7 @@ describe('t.number', () => {
             response = { counts: t.record(t.number) };
           }
 
-          const relay = getQuery(GetMetrics);
+          const relay = fetchQuery(GetMetrics);
           const result = await relay;
 
           expect(result.counts.users).toBe(1000);
@@ -292,7 +292,7 @@ describe('t.number', () => {
             response = { value: t.union(t.string, t.number) };
           }
 
-          const relay = getQuery(GetValue);
+          const relay = fetchQuery(GetValue);
           const result = await relay;
 
           expect(result.value).toBe(42);

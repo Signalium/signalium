@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -114,7 +114,7 @@ describe('t.nullable', () => {
             response = { value: t.nullable(t.string) };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.value).toBeNull();
@@ -131,7 +131,7 @@ describe('t.nullable', () => {
             response = { value: t.nullable(t.string) };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.value).toBe('present');
@@ -157,7 +157,7 @@ describe('t.nullable', () => {
             };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.user.name).toBe('Alice');
@@ -177,7 +177,7 @@ describe('t.nullable', () => {
             response = { items: t.array(t.nullable(t.string)) };
           }
 
-          const relay = getQuery(GetItems);
+          const relay = fetchQuery(GetItems);
           const result = await relay;
 
           expect(result.items).toEqual(['a', null, 'b', null]);
@@ -198,7 +198,7 @@ describe('t.nullable', () => {
             response = { values: t.record(t.nullable(t.string)) };
           }
 
-          const relay = getQuery(GetData);
+          const relay = fetchQuery(GetData);
           const result = await relay;
 
           expect(result.values.a).toBe('hello');
@@ -414,7 +414,7 @@ describe('t.nullable', () => {
             };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
 
           await expect(relay).rejects.toThrow(/Validation error/);
         });

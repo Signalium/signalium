@@ -4,7 +4,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t, ValidatorDef } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import { valueKeyFor, refIdsKeyFor, updatedAtKeyFor } from '../stores/shared.js';
@@ -19,7 +19,7 @@ import type { QueryStore } from '../QueryClient.js';
 
 /**
  * Compute a query key from a Query class without needing the class to be registered
- * via getQuery(). This mirrors the internal logic of getQueryDefinition + queryKeyFor.
+ * via fetchQuery(). This mirrors the internal logic of getQueryDefinition + queryKeyFor.
  */
 function computeQueryKey(QueryClass: new () => Query, params: unknown): number {
   const instance = new QueryClass();
@@ -83,7 +83,7 @@ describe('Cache Error Handling', () => {
       mockFetch.get('/items/[id]', { id: 1, name: 'Fresh Data' });
 
       await testWithClient(errorClient, async () => {
-        const relay = getQuery(GetItem, { id: '1' });
+        const relay = fetchQuery(GetItem, { id: '1' });
         const result = await relay;
 
         // Query should succeed despite cache error
@@ -117,7 +117,7 @@ describe('Cache Error Handling', () => {
       mockFetch.get('/items/[id]', { id: 1, name: 'Fresh Data' });
 
       await testWithClient(errorClient, async () => {
-        const relay = getQuery(GetItem, { id: '1' });
+        const relay = fetchQuery(GetItem, { id: '1' });
         const result = await relay;
 
         // Query should succeed despite cache error
@@ -147,7 +147,7 @@ describe('Cache Error Handling', () => {
       mockFetch.get('/items/[id]', { id: 1, name: 'Fresh Data' });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetItem, { id: '1' });
+        const relay = fetchQuery(GetItem, { id: '1' });
         const result = await relay;
 
         // Query should succeed despite cache parsing error
@@ -185,7 +185,7 @@ describe('Cache Error Handling', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         // Wait for cache error to be caught and query to proceed
         await sleep(50);
         const result = await relay;
@@ -227,7 +227,7 @@ describe('Cache Error Handling', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Query should succeed despite invalid entity reference
@@ -271,7 +271,7 @@ describe('Cache Error Handling', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Query should succeed despite entity preloading error
@@ -318,7 +318,7 @@ describe('Cache Error Handling', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
         // Query should succeed despite multiple cache errors
@@ -353,7 +353,7 @@ describe('Cache Error Handling', () => {
       mockFetch.get('/items/[id]', { id: 1, name: 'Fresh Data' }, { delay: 10 });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetItem, { id: '1' });
+        const relay = fetchQuery(GetItem, { id: '1' });
         // Wait for cache error to be caught and cache to be deleted
         await sleep(20);
 
@@ -387,7 +387,7 @@ describe('Cache Error Handling', () => {
       mockFetch.get('/items/[id]', { id: 1, name: 'Fresh Data' }, { delay: 10 });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetItem, { id: '1' });
+        const relay = fetchQuery(GetItem, { id: '1' });
         // Force a pull
         relay.value;
         await sleep();
@@ -461,7 +461,7 @@ describe('Cache Error Handling', () => {
           };
         }
 
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
 
         // Query should fetch initial data
         const result = await relay;
@@ -531,7 +531,7 @@ describe('Cache Error Handling', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
 
         // Query should fetch fresh data despite cache error
         const result = await relay;
@@ -597,7 +597,7 @@ describe('Cache Error Handling', () => {
       });
 
       await testWithClient(client, async () => {
-        const relay = getQuery(GetUser, { id: '1' });
+        const relay = fetchQuery(GetUser, { id: '1' });
 
         // Query should fetch fresh data despite cache error
         const result = await relay;

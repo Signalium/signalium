@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { watcher } from 'signalium';
 import { createMockFetch, testWithClient } from './utils.js';
 
@@ -41,7 +41,7 @@ describe('Query Behavior', () => {
           response = { data: t.string };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
 
         await expect(relay).rejects.toThrow('Network error');
         expect(relay.isRejected).toBe(true);
@@ -59,7 +59,7 @@ describe('Query Behavior', () => {
           response = { data: t.string };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
 
         await expect(relay).rejects.toThrow('Invalid JSON');
       });
@@ -72,7 +72,7 @@ describe('Query Behavior', () => {
       }
 
       // Call without reactive context should throw
-      expect(() => getQuery(GetItem)).toThrow();
+      expect(() => fetchQuery(GetItem)).toThrow();
     });
   });
 
@@ -86,7 +86,7 @@ describe('Query Behavior', () => {
           response = { data: t.string };
         }
 
-        const relay = getQuery(GetItem);
+        const relay = fetchQuery(GetItem);
         await relay;
 
         expect(mockFetch.calls[0].url).toBe('/static/path');
@@ -102,7 +102,7 @@ describe('Query Behavior', () => {
           response = { data: t.string };
         }
 
-        const relay = getQuery(GetItem, { orgId: '1', teamId: '2', userId: '3' });
+        const relay = fetchQuery(GetItem, { orgId: '1', teamId: '2', userId: '3' });
         await relay;
 
         expect(mockFetch.calls[0].url).toContain('/org/1/team/2/user/3');
@@ -121,9 +121,9 @@ describe('Query Behavior', () => {
         }
 
         // Call multiple times
-        const relay1 = getQuery(GetCounter);
-        const relay2 = getQuery(GetCounter);
-        const relay3 = getQuery(GetCounter);
+        const relay1 = fetchQuery(GetCounter);
+        const relay2 = fetchQuery(GetCounter);
+        const relay3 = fetchQuery(GetCounter);
 
         // Should all return the same relay (deduplication)
         expect(relay1).toBe(relay2);
@@ -155,8 +155,8 @@ describe('Query Behavior', () => {
           response = { success: t.boolean };
         }
 
-        const relay1 = getQuery(GetItem);
-        const relay2 = getQuery(PostItem);
+        const relay1 = fetchQuery(GetItem);
+        const relay2 = fetchQuery(PostItem);
 
         // Different methods should create different relays
         expect(relay1).not.toBe(relay2);
@@ -181,7 +181,7 @@ describe('Query Behavior', () => {
         const promises = [];
 
         for (let i = 0; i < 20; i++) {
-          const relay = getQuery(GetCounter);
+          const relay = fetchQuery(GetCounter);
           promises.push(relay);
         }
 
@@ -214,7 +214,7 @@ describe('Query Behavior', () => {
 
         // Create 50 concurrent queries
         for (let i = 0; i < 50; i++) {
-          const relay = getQuery(GetItem, { id: String(i) });
+          const relay = fetchQuery(GetItem, { id: String(i) });
           relays.push(relay);
         }
 
@@ -237,7 +237,7 @@ describe('Query Behavior', () => {
           response = { count: t.number };
         }
 
-        const relay = getQuery(GetCounter);
+        const relay = fetchQuery(GetCounter);
 
         // Create and immediately cleanup multiple watchers
         for (let i = 0; i < 10; i++) {

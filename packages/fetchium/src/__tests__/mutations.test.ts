@@ -4,7 +4,7 @@ import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
 import { Mutation, getMutation } from '../mutation.js';
-import { Query, getQuery } from '../query.js';
+import { Query, fetchQuery } from '../query.js';
 import { draft } from '../utils.js';
 import { createMockFetch, testWithClient, sleep, getEntityMapSize } from './utils.js';
 
@@ -361,7 +361,7 @@ describe('Mutations', () => {
 
       await testWithClient(client, async () => {
         // First fetch the user
-        const userQuery = getQuery(GetUser, { id: '1' });
+        const userQuery = fetchQuery(GetUser, { id: '1' });
         await userQuery;
         expect(userQuery.value?.name).toBe('Original Name');
 
@@ -406,7 +406,7 @@ describe('Mutations', () => {
       }
 
       await testWithClient(client, async () => {
-        const userQuery = getQuery(GetUser, { id: '1' });
+        const userQuery = fetchQuery(GetUser, { id: '1' });
         await userQuery;
         expect(userQuery.value?.name).toBe('Original Name');
 
@@ -475,7 +475,7 @@ describe('Mutations', () => {
       }
 
       await testWithClient(client, async () => {
-        const userQuery = getQuery(GetUser, { id: '1' });
+        const userQuery = fetchQuery(GetUser, { id: '1' });
         await userQuery;
 
         // Verify original nested object
@@ -546,7 +546,7 @@ describe('Mutations', () => {
       }
 
       await testWithClient(client, async () => {
-        const userQuery = getQuery(GetUser, { id: '1' });
+        const userQuery = fetchQuery(GetUser, { id: '1' });
         await userQuery;
 
         // Verify original array
@@ -632,7 +632,7 @@ describe('Mutations', () => {
       }
 
       await testWithClient(client, async () => {
-        const userQuery = getQuery(GetUser, { id: '1' });
+        const userQuery = fetchQuery(GetUser, { id: '1' });
         await userQuery;
 
         expect(userQuery.value?.name).toBe('Original User');
@@ -717,7 +717,7 @@ describe('Mutations', () => {
       }
 
       await testWithClient(client, async () => {
-        const postQuery = getQuery(GetPost, { id: '1' });
+        const postQuery = fetchQuery(GetPost, { id: '1' });
         await postQuery;
 
         expect(postQuery.value?.title).toBe('Original Post');
@@ -758,58 +758,6 @@ describe('Mutations', () => {
         expect((postQuery.value?.tags as any)[2].name).toBe('react');
       });
     });
-
-    it('should throw when trying to optimistically update an entity with pending update', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      // First get user via query
-      mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original Name' });
-
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
-      }
-
-      // Setup slow update mutation (takes 200ms to complete)
-      mockFetch.put('/users/[id]', { __typename: 'User', id: 1, name: 'Updated Name' }, { delay: 200 });
-
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
-        readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = t.entity(User);
-        optimisticUpdates = true;
-      }
-
-      await testWithClient(client, async () => {
-        // First fetch the user
-        const userQuery = getQuery(GetUser, { id: '1' });
-        await userQuery;
-        expect(userQuery.value?.name).toBe('Original Name');
-
-        // Start first mutation - optimistic update applies
-        const mut1 = getMutation(UpdateUser);
-        const mutPromise1 = mut1.run({ __typename: 'User', id: 1, name: 'First Update' } as any);
-
-        // Give time for first optimistic update to apply
-        await sleep(10);
-
-        // Try to start second mutation while first is pending
-        // This should throw synchronously because throwIfRunning is enabled for optimistic mutations
-        const mut2 = getMutation(UpdateUser);
-        expect(() => {
-          mut2.run({ __typename: 'User', id: 1, name: 'Second Update' } as any);
-        }).toThrow(/Task is already running/);
-
-        // Wait for first mutation to complete
-        await mutPromise1;
-        expect(mut1.value?.name).toBe('Updated Name');
-      });
-    });
   });
 
   // ============================================================
@@ -838,7 +786,7 @@ describe('Mutations', () => {
       }
 
       await testWithClient(client, async () => {
-        const userQuery = getQuery(GetUser, { id: '1' });
+        const userQuery = fetchQuery(GetUser, { id: '1' });
         await userQuery;
 
         const user = userQuery.value!;
@@ -931,7 +879,7 @@ describe('Mutations', () => {
 
       await testWithClient(client, async () => {
         // First fetch user
-        const userQuery = getQuery(GetUser, { id: '1' });
+        const userQuery = fetchQuery(GetUser, { id: '1' });
         await userQuery;
         expect(userQuery.value?.name).toBe('Original');
 
@@ -1060,7 +1008,7 @@ describe('Mutations', () => {
       }
 
       await testWithClient(client, async () => {
-        const userQuery = getQuery(GetUser, { id: '1' });
+        const userQuery = fetchQuery(GetUser, { id: '1' });
         await userQuery;
 
         expect((userQuery.value?.organization as any).name).toBe('Original Org');
@@ -1217,7 +1165,7 @@ describe('Mutations', () => {
       }
 
       await testWithClient(client, async () => {
-        const userQuery = getQuery(GetUser, { id: '1' });
+        const userQuery = fetchQuery(GetUser, { id: '1' });
         await userQuery;
         expect(userQuery.value?.name).toBe('Original');
 
@@ -1284,7 +1232,7 @@ describe('Mutations', () => {
       }
 
       await testWithClient(client, async () => {
-        const userQuery = getQuery(GetUser, { id: '1' });
+        const userQuery = fetchQuery(GetUser, { id: '1' });
         await userQuery;
         expect(userQuery.value?.name).toBe('Original');
 
@@ -1327,7 +1275,7 @@ describe('Mutations', () => {
       }
 
       await testWithClient(client, async () => {
-        const userQuery = getQuery(GetUser, { id: '1' });
+        const userQuery = fetchQuery(GetUser, { id: '1' });
         await userQuery;
         expect(userQuery.value?.name).toBe('Original');
 

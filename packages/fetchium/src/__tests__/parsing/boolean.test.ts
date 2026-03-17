@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -126,7 +126,7 @@ describe('t.boolean', () => {
             response = { active: t.boolean, deleted: t.boolean };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.active).toBe(true);
@@ -155,7 +155,7 @@ describe('t.boolean', () => {
             };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.user.settings.notifications).toBe(true);
@@ -175,7 +175,7 @@ describe('t.boolean', () => {
             response = { flags: t.array(t.boolean) };
           }
 
-          const relay = getQuery(GetFlags);
+          const relay = fetchQuery(GetFlags);
           const result = await relay;
 
           expect(result.flags).toEqual([true, false, true]);
@@ -196,7 +196,7 @@ describe('t.boolean', () => {
             response = { permissions: t.record(t.boolean) };
           }
 
-          const relay = getQuery(GetPermissions);
+          const relay = fetchQuery(GetPermissions);
           const result = await relay;
 
           expect(result.permissions.read).toBe(true);
@@ -217,7 +217,7 @@ describe('t.boolean', () => {
             response = { value: t.union(t.string, t.boolean) };
           }
 
-          const relay = getQuery(GetValue);
+          const relay = fetchQuery(GetValue);
           const result = await relay;
 
           expect(result.value).toBe(true);

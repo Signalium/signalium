@@ -6,7 +6,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { createRenderCounter } from './utils.js';
 import { useQuery } from '../use-query.js';
@@ -50,7 +50,7 @@ describe('useQuery Hook', () => {
       let clonedQueryResult: any;
 
       function DirectComponent(): React.ReactNode {
-        const result = useReactive(getQuery, GetUser);
+        const result = useReactive(fetchQuery, GetUser);
         if (result.isReady) {
           directQueryResult = result.value;
         }
@@ -222,7 +222,7 @@ describe('useQuery Hook', () => {
 
       function Component(): React.ReactNode {
         const cloned = useQuery(GetData);
-        const direct = useReactive(getQuery, GetData);
+        const direct = useReactive(fetchQuery, GetData);
 
         if (cloned.isReady && direct.isReady) {
           clonedValue = cloned.value;
@@ -917,7 +917,7 @@ describe('useQuery Hook', () => {
 
       function Component(): React.ReactNode {
         const cloned = useQuery(GetNested);
-        const direct = useReactive(getQuery, GetNested);
+        const direct = useReactive(fetchQuery, GetNested);
 
         if (cloned.isReady && direct.isReady) {
           clonedValue = cloned.value;

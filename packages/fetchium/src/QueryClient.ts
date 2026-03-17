@@ -307,11 +307,6 @@ export class QueryClient {
     return mutationInstance.task;
   }
 
-  // TODO: Optimistic update methods will be re-added later
-  registerOptimisticUpdate(_entityKey: number, _fields: Record<string, unknown>): void {}
-  clearOptimisticUpdates(_entityKey: number): void {}
-  revertOptimisticUpdate(_entityKey: number): void {}
-
   getEntity(key: number): EntityInstance | undefined {
     return this.entityMap.getEntity(key);
   }

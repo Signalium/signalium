@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, getQuery } from '../../query.js';
+import { Query, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -131,7 +131,7 @@ describe('t.string', () => {
             response = { name: t.string };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.name).toBe('Test String');
@@ -149,7 +149,7 @@ describe('t.string', () => {
             response = { value: t.string };
           }
 
-          const relay = getQuery(GetItem);
+          const relay = fetchQuery(GetItem);
           const result = await relay;
 
           expect(result.value).toBe('');
@@ -176,7 +176,7 @@ describe('t.string', () => {
             };
           }
 
-          const relay = getQuery(GetUser);
+          const relay = fetchQuery(GetUser);
           const result = await relay;
 
           expect(result.user.profile.bio).toBe('Hello world');
@@ -195,7 +195,7 @@ describe('t.string', () => {
             response = { tags: t.array(t.string) };
           }
 
-          const relay = getQuery(GetTags);
+          const relay = fetchQuery(GetTags);
           const result = await relay;
 
           expect(result.tags).toEqual(['a', 'b', 'c']);
@@ -216,7 +216,7 @@ describe('t.string', () => {
             response = { settings: t.record(t.string) };
           }
 
-          const relay = getQuery(GetConfig);
+          const relay = fetchQuery(GetConfig);
           const result = await relay;
 
           expect(result.settings.theme).toBe('dark');
@@ -236,7 +236,7 @@ describe('t.string', () => {
             response = { value: t.union(t.string, t.number) };
           }
 
-          const relay = getQuery(GetValue);
+          const relay = fetchQuery(GetValue);
           const result = await relay;
 
           expect(result.value).toBe('hello');
