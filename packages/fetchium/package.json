@@ -107,6 +107,7 @@
   "license": "ISC",
   "devDependencies": {
     "@babel/core": "^7.23.6",
+    "@types/node": "^25.5.0",
     "@babel/preset-react": "^7.23.3",
     "@vitejs/plugin-react": "^5.0.0",
     "@vitest/browser": "^3.0.6",

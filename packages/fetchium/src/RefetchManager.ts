@@ -4,7 +4,7 @@ const BASE_TICK_INTERVAL = 1000; // 1 second
 
 // Refetch interval manager - uses a fixed 1-second tick
 export class RefetchManager {
-  private intervalId: NodeJS.Timeout;
+  private intervalId: ReturnType<typeof setTimeout>;
   private clock: number = 0; // Increments by 1000ms on each tick
 
   // Buckets: Map of actual interval -> Set of query instances
