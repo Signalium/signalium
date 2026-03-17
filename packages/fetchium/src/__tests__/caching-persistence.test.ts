@@ -7,7 +7,15 @@ import { Entity } from '../proxy.js';
 import { Query, getQuery, queryKeyForClass } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
-import { valueKeyFor, refCountKeyFor, refIdsKeyFor, updatedAtKeyFor } from '../stores/shared.js';
+import {
+  valueKeyFor,
+  refCountKeyFor,
+  refIdsKeyFor,
+  updatedAtKeyFor,
+  lastUsedKeyFor,
+  cacheTimeKeyFor,
+  queueKeyFor,
+} from '../stores/shared.js';
 import { QueryResult } from 'src/types.js';
 import { DiscriminatedReactivePromise } from 'signalium';
 
@@ -1664,6 +1672,181 @@ describe('Caching and Persistence', () => {
       expect((entityV2 as any).email).toBe('alice@example.com');
       // V1 entity should not have email field
       expect((entityV1 as any).email).toBeUndefined();
+    });
+  });
+
+  describe('Stale Query Purge', () => {
+    it('should write lastUsedAt and cacheTime metadata on activateQuery', async () => {
+      mockFetch.get('/items/[id]', { id: 1, name: 'Test' });
+
+      await testWithClient(client, async () => {
+        class GetItem extends Query {
+          path = '/items/[id]';
+          response = { id: t.number, name: t.string };
+        }
+
+        const relay = getQuery(GetItem, { id: '1' });
+        await relay;
+
+        const queryDefId = 'GET:/items/[id]';
+        const lastUsed = kv.getNumber(lastUsedKeyFor(queryDefId));
+        const cacheTime = kv.getNumber(cacheTimeKeyFor(queryDefId));
+
+        expect(lastUsed).toBeDefined();
+        expect(lastUsed).toBeGreaterThan(0);
+        expect(cacheTime).toBe(60 * 24);
+      });
+    });
+
+    it('should purge expired queries on purgeStaleQueries', () => {
+      class GetItem extends Query {
+        path = '/purge-items/[id]';
+        response = { id: t.number, name: t.string };
+      }
+
+      const queryDefId = 'GET:/purge-items/[id]';
+      const queryKey = computeQueryKey(GetItem, { id: '1' });
+
+      setDocument(kv, queryKey, { id: 1, name: 'Old Data' });
+      kv.setNumber(updatedAtKeyFor(queryKey), Date.now() - 100_000_000);
+
+      const queue = new Uint32Array(50);
+      queue[0] = queryKey;
+      kv.setBuffer(queueKeyFor(queryDefId), queue);
+
+      kv.setNumber(lastUsedKeyFor(queryDefId), Date.now() - 100_000_000);
+      kv.setNumber(cacheTimeKeyFor(queryDefId), 60 * 24);
+
+      expect(kv.getString(valueKeyFor(queryKey))).toBeDefined();
+
+      store.purgeStaleQueries();
+
+      expect(kv.getString(valueKeyFor(queryKey))).toBeUndefined();
+      expect(kv.getNumber(updatedAtKeyFor(queryKey))).toBeUndefined();
+      expect(kv.getBuffer(queueKeyFor(queryDefId))).toBeUndefined();
+      expect(kv.getNumber(lastUsedKeyFor(queryDefId))).toBeUndefined();
+      expect(kv.getNumber(cacheTimeKeyFor(queryDefId))).toBeUndefined();
+    });
+
+    it('should not purge fresh queries', () => {
+      class GetItem extends Query {
+        path = '/fresh-items/[id]';
+        response = { id: t.number, name: t.string };
+      }
+
+      const queryDefId = 'GET:/fresh-items/[id]';
+      const queryKey = computeQueryKey(GetItem, { id: '1' });
+
+      setDocument(kv, queryKey, { id: 1, name: 'Fresh Data' });
+      kv.setNumber(updatedAtKeyFor(queryKey), Date.now());
+
+      const queue = new Uint32Array(50);
+      queue[0] = queryKey;
+      kv.setBuffer(queueKeyFor(queryDefId), queue);
+
+      kv.setNumber(lastUsedKeyFor(queryDefId), Date.now());
+      kv.setNumber(cacheTimeKeyFor(queryDefId), 60 * 24);
+
+      store.purgeStaleQueries();
+
+      expect(kv.getString(valueKeyFor(queryKey))).toBeDefined();
+      expect(kv.getBuffer(queueKeyFor(queryDefId))).toBeDefined();
+      expect(kv.getNumber(lastUsedKeyFor(queryDefId))).toBeDefined();
+    });
+
+    it('should cascade-delete orphaned entities when purging stale queries', () => {
+      class GetUser extends Query {
+        path = '/purge-users/[id]';
+        response = { id: t.number, name: t.string };
+      }
+
+      const queryDefId = 'GET:/purge-users/[id]';
+      const queryKey = computeQueryKey(GetUser, { id: '1' });
+      const entityKey = hashValue(['User:1', getShapeKey(t.object({ id: t.number, name: t.string }))]);
+
+      // Set entity data (no manual ref count -- setDocument below handles it)
+      setDocument(kv, entityKey, { id: 1, name: 'Entity Data' });
+
+      // Set query with a reference to the entity -- this increments entity ref count to 1
+      setDocument(kv, queryKey, { id: 1, name: 'Query Data' }, new Set([entityKey]));
+      kv.setNumber(updatedAtKeyFor(queryKey), Date.now() - 100_000_000);
+
+      const queue = new Uint32Array(50);
+      queue[0] = queryKey;
+      kv.setBuffer(queueKeyFor(queryDefId), queue);
+
+      kv.setNumber(lastUsedKeyFor(queryDefId), Date.now() - 100_000_000);
+      kv.setNumber(cacheTimeKeyFor(queryDefId), 60 * 24);
+
+      expect(kv.getString(valueKeyFor(entityKey))).toBeDefined();
+      expect(kv.getNumber(refCountKeyFor(entityKey))).toBe(1);
+
+      store.purgeStaleQueries();
+
+      expect(kv.getString(valueKeyFor(queryKey))).toBeUndefined();
+      expect(kv.getString(valueKeyFor(entityKey))).toBeUndefined();
+      expect(kv.getNumber(refCountKeyFor(entityKey))).toBeUndefined();
+    });
+
+    it('should respect custom cacheTime when purging', () => {
+      class GetLongLived extends Query {
+        path = '/long-lived/[id]';
+        response = { id: t.number };
+        cache = { cacheTime: 60 * 24 * 30 }; // 30 days
+      }
+
+      const queryDefId = 'GET:/long-lived/[id]';
+      const queryKey = computeQueryKey(GetLongLived, { id: '1' });
+
+      setDocument(kv, queryKey, { id: 1 });
+      kv.setNumber(updatedAtKeyFor(queryKey), Date.now());
+
+      const queue = new Uint32Array(50);
+      queue[0] = queryKey;
+      kv.setBuffer(queueKeyFor(queryDefId), queue);
+
+      // Last used 2 days ago -- within 30-day cacheTime
+      kv.setNumber(lastUsedKeyFor(queryDefId), Date.now() - 2 * 24 * 60 * 60 * 1000);
+      kv.setNumber(cacheTimeKeyFor(queryDefId), 60 * 24 * 30);
+
+      store.purgeStaleQueries();
+
+      expect(kv.getString(valueKeyFor(queryKey))).toBeDefined();
+    });
+
+    it('should purge multiple entries from the same queue', () => {
+      class GetItem extends Query {
+        path = '/multi-purge/[id]';
+        response = { id: t.number, name: t.string };
+      }
+
+      const queryDefId = 'GET:/multi-purge/[id]';
+      const key1 = computeQueryKey(GetItem, { id: '1' });
+      const key2 = computeQueryKey(GetItem, { id: '2' });
+      const key3 = computeQueryKey(GetItem, { id: '3' });
+
+      setDocument(kv, key1, { id: 1, name: 'One' });
+      kv.setNumber(updatedAtKeyFor(key1), Date.now() - 100_000_000);
+      setDocument(kv, key2, { id: 2, name: 'Two' });
+      kv.setNumber(updatedAtKeyFor(key2), Date.now() - 100_000_000);
+      setDocument(kv, key3, { id: 3, name: 'Three' });
+      kv.setNumber(updatedAtKeyFor(key3), Date.now() - 100_000_000);
+
+      const queue = new Uint32Array(50);
+      queue[0] = key1;
+      queue[1] = key2;
+      queue[2] = key3;
+      kv.setBuffer(queueKeyFor(queryDefId), queue);
+
+      kv.setNumber(lastUsedKeyFor(queryDefId), Date.now() - 100_000_000);
+      kv.setNumber(cacheTimeKeyFor(queryDefId), 60 * 24);
+
+      store.purgeStaleQueries();
+
+      expect(kv.getString(valueKeyFor(key1))).toBeUndefined();
+      expect(kv.getString(valueKeyFor(key2))).toBeUndefined();
+      expect(kv.getString(valueKeyFor(key3))).toBeUndefined();
+      expect(kv.getBuffer(queueKeyFor(queryDefId))).toBeUndefined();
     });
   });
 });

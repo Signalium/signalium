@@ -53,6 +53,10 @@ class MockAsyncPersistentStore implements AsyncPersistentStore {
   async delete(key: string): Promise<void> {
     delete this.kv[key];
   }
+
+  async getAllKeys(): Promise<string[]> {
+    return Object.keys(this.kv);
+  }
 }
 
 // Message channel simulator for testing reader-writer communication
