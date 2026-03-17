@@ -250,12 +250,12 @@ export function getClientEntityMap(client: QueryClient): EntityStore {
 }
 
 /**
- * Test helper to get the size of the entity map.
+ * Test helper to get the size of the entity instance map.
  * EntityStore doesn't expose a size property, so we access the internal map.
  */
 export function getEntityMapSize(client: QueryClient): number {
   const entityMap = getClientEntityMap(client);
-  return entityMap['map'].size;
+  return entityMap['instances'].size;
 }
 
 /**

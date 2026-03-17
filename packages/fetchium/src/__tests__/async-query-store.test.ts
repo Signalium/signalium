@@ -409,7 +409,7 @@ describe('AsyncQueryStore', () => {
       await mockDelegate.setString(valueKeyFor(queryKey), JSON.stringify(user));
       await mockDelegate.setNumber(updatedAtKeyFor(queryKey), Date.now());
 
-      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey, {} as any);
+      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey);
 
       expect(cached).toBeDefined();
       expect(cached!.value).toEqual(user);
@@ -427,7 +427,7 @@ describe('AsyncQueryStore', () => {
       await mockDelegate.setString(valueKeyFor(queryKey), JSON.stringify(user));
       await mockDelegate.setNumber(updatedAtKeyFor(queryKey), oldTime);
 
-      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey, {} as any);
+      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey);
 
       expect(cached).toBeUndefined();
     });
@@ -436,7 +436,7 @@ describe('AsyncQueryStore', () => {
       const queryDefId = 'GET:/users/[id]';
       const queryKey = hashValue([queryDefId, { id: '999' }]);
 
-      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey, {} as any);
+      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey);
 
       expect(cached).toBeUndefined();
     });
@@ -449,25 +449,18 @@ describe('AsyncQueryStore', () => {
       const user = { id: '1', name: 'Alice' };
       const entity = { id: 'e1', data: 'entity-data' };
 
-      // Save query with refIds
       await mockDelegate.setString(valueKeyFor(queryKey), JSON.stringify(user));
       await mockDelegate.setNumber(updatedAtKeyFor(queryKey), Date.now());
       await mockDelegate.setBuffer(refIdsKeyFor(queryKey), new Uint32Array([entityId]));
 
-      // Save entity
       await mockDelegate.setString(valueKeyFor(entityId), JSON.stringify(entity));
 
-      const entityMap = {
-        setPreloadedEntity: (id: number, value: any) => {
-          expect(id).toBe(entityId);
-          expect(value).toEqual(entity);
-        },
-      } as any;
-
-      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey, entityMap);
+      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey);
 
       expect(cached).toBeDefined();
       expect(cached!.refIds).toEqual(new Set([entityId]));
+      expect(cached!.preloadedEntities).toBeDefined();
+      expect(cached!.preloadedEntities!.get(entityId)).toEqual(entity);
     });
   });
 
@@ -500,7 +493,7 @@ describe('AsyncQueryStore', () => {
         connect: handler => newMessageChannel.connectReader(handler),
       });
 
-      const loaded = await newReaderStore.loadQuery({ id: queryDefId } as any, queryKey, {} as any);
+      const loaded = await newReaderStore.loadQuery({ id: queryDefId } as any, queryKey);
       expect(loaded).toBeDefined();
       expect(loaded!.value).toEqual(userData);
     });

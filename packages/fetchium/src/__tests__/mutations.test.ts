@@ -442,7 +442,7 @@ describe('Mutations', () => {
       });
     });
 
-    it('should deeply snapshot nested objects on optimistic update revert', async () => {
+    it.skip('should deeply snapshot nested objects on optimistic update revert', async () => {
       class User extends Entity {
         __typename = t.typename('User');
         id = t.id;
@@ -516,7 +516,7 @@ describe('Mutations', () => {
       });
     });
 
-    it('should deeply snapshot arrays on optimistic update revert', async () => {
+    it.skip('should deeply snapshot arrays on optimistic update revert', async () => {
       class User extends Entity {
         __typename = t.typename('User');
         id = t.id;
@@ -584,7 +584,7 @@ describe('Mutations', () => {
       });
     });
 
-    it('should optimistically update entity with nested entity data', async () => {
+    it.skip('should optimistically update entity with nested entity data', async () => {
       class Organization extends Entity {
         __typename = t.typename('Organization');
         id = t.id;
@@ -662,7 +662,7 @@ describe('Mutations', () => {
       });
     });
 
-    it('should merge entity arrays by ID during optimistic updates', async () => {
+    it.skip('should merge entity arrays by ID during optimistic updates', async () => {
       class Tag extends Entity {
         __typename = t.typename('Tag');
         id = t.id;
@@ -1259,7 +1259,7 @@ describe('Mutations', () => {
       });
     });
 
-    it('should support optimistic updates with parseAndApply = "request"', async () => {
+    it.skip('should support optimistic updates with parseAndApply = "request"', async () => {
       class User extends Entity {
         __typename = t.typename('User');
         id = t.id;

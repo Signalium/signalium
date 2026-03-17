@@ -1,4 +1,3 @@
-import { reactiveMethod, setScopeOwner } from 'signalium';
 import { typeError } from './errors.js';
 import { CaseInsensitiveSet, getFormat, ValidatorDef } from './typeDefs.js';
 import {
@@ -15,15 +14,13 @@ import {
   RecordDef,
 } from './types.js';
 import { typeMaskOf } from './utils.js';
-import { PreloadedEntityRecord } from './EntityMap.js';
+import { PROXY_ID } from './proxyId.js';
 
 export type WarnFn = (message: string, context?: Record<string, unknown>) => void;
 const noopWarn: WarnFn = () => {};
 
 const entries = Object.entries;
 const isArray = Array.isArray;
-
-const PROXY_ID = new WeakMap();
 
 /**
  * Base class for entity definitions. Users extend this to define entity shapes.
@@ -36,6 +33,9 @@ export class Entity {
       id: string | number,
       onUpdate: (update: any) => void,
     ) => (() => void) | undefined;
+  };
+  static cache?: {
+    gcTime?: number; // minutes - in-memory eviction time. Use 0 for next-tick, Infinity to never GC.
   };
 }
 
@@ -308,156 +308,4 @@ export function mergeValues<T extends Record<string, unknown>>(
   return target as T;
 }
 
-const CustomNodeInspect = Symbol.for('nodejs.util.inspect.custom');
-
-export function createEntityProxy(
-  id: number,
-  entityRecord: PreloadedEntityRecord,
-  def: ObjectDef | EntityDef,
-  entityRelay: any,
-  scopeOwner: object,
-  warn: WarnFn = noopWarn,
-  desc?: string,
-): Record<string, unknown> {
-  // Cache for nested proxies - each proxy gets its own cache
-  const shape = def.shape;
-
-  const methods = (def as ValidatorDef<unknown>)._methods;
-
-  // Use the specific entity class prototype if available (enables `proxy instanceof UserClass`)
-  const entityClass = (def as ValidatorDef<unknown>)._entityClass;
-  const proto = entityClass ? entityClass.prototype : Entity.prototype;
-
-  // Cache for wrapped reactive methods - each proxy gets its own bound methods
-  const wrappedMethods = new Map<string, (...args: unknown[]) => unknown>();
-
-  const toJSON = () => ({
-    __entityRef: id,
-  });
-
-  // We need to declare proxy first so we can reference it in the handler
-  let proxy: Record<string, unknown>;
-
-  const handler: ProxyHandler<object> = {
-    getPrototypeOf() {
-      return proto;
-    },
-
-    get(target, prop) {
-      // Handle toJSON for serialization
-      if (prop === 'toJSON') {
-        return toJSON;
-      }
-
-      const { data, cache, notifier } = entityRecord;
-
-      // Access relay value if it exists - this will activate it when watched in reactive context
-      // The relay access happens here to establish tracking when signal.value is read
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      entityRelay?.value;
-
-      notifier.consume();
-
-      // Check cache first, BEFORE any expensive checks
-      if (cache.has(prop)) {
-        return cache.get(prop);
-      }
-
-      // Check for method access
-      if (methods && typeof prop === 'string' && prop in methods) {
-        let wrapped = wrappedMethods.get(prop);
-        if (!wrapped) {
-          // Create reactive method wrapper bound to the proxy
-          // Bind the method to the proxy so `this` refers to the entity
-          wrapped = reactiveMethod(proxy, methods[prop].bind(proxy));
-          wrappedMethods.set(prop, wrapped);
-        }
-        return wrapped;
-      }
-
-      const value = data[prop as string];
-      const propDef = shape[prop as string];
-
-      if (!Object.hasOwnProperty.call(shape, prop)) {
-        return value;
-      }
-
-      const parsed = parseValue(value, propDef as unknown as TypeDef, `[[${desc}]].${prop as string}`, false, warn);
-
-      cache.set(prop, parsed);
-
-      return parsed;
-    },
-
-    has(target, prop) {
-      // Include methods in the "in" check
-      if (methods && typeof prop === 'string' && prop in methods) {
-        return true;
-      }
-      return prop in shape;
-    },
-
-    ownKeys(target) {
-      const keys = Object.keys(shape);
-      // Add typename field if it exists on the definition
-      const typenameField = (def as ObjectDef | EntityDef).typenameField;
-      if (typenameField && !keys.includes(typenameField)) {
-        keys.push(typenameField);
-      }
-      // Add method keys
-      if (methods) {
-        for (const methodKey of Object.keys(methods)) {
-          if (!keys.includes(methodKey)) {
-            keys.push(methodKey);
-          }
-        }
-      }
-      return keys;
-    },
-
-    getOwnPropertyDescriptor(target, prop) {
-      const typenameField = (def as ObjectDef | EntityDef).typenameField;
-      if (prop in shape || prop === typenameField) {
-        return {
-          enumerable: true,
-          configurable: true,
-        };
-      }
-      // Methods are non-enumerable (like regular object methods)
-      if (methods && typeof prop === 'string' && prop in methods) {
-        return {
-          enumerable: false,
-          configurable: true,
-        };
-      }
-      return undefined;
-    },
-  };
-
-  proxy = new Proxy<Record<string, unknown>>(
-    {
-      [CustomNodeInspect]: () => {
-        return Object.keys(shape).reduce(
-          (acc, key) => {
-            acc[key] = proxy[key];
-            return acc;
-          },
-          {} as Record<string, unknown>,
-        );
-      },
-    } as Record<string, unknown>,
-    handler,
-  );
-
-  // Add the proxy to the proxy brand set so we can easily identify it later
-  PROXY_ID.set(proxy, id);
-
-  // Associate the proxy with a scope owner for reactive method caching
-  setScopeOwner(proxy, scopeOwner);
-
-  return proxy;
-}
-
-export function getProxyId(object: Record<string, unknown>): number | undefined {
-  return PROXY_ID.get(object);
-}
+export { PROXY_ID, getProxyId } from './proxyId.js';

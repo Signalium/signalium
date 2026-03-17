@@ -6,7 +6,7 @@ import { RefetchInterval } from '../types.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import { t } from '../typeDefs.js';
 import { RefetchManager } from '../RefetchManager.js';
-import { MemoryEvictionManager } from '../MemoryEvictionManager.js';
+import { GcManager } from '../GcManager.js';
 
 /**
  * RefetchInterval Tests
@@ -27,9 +27,8 @@ describe('RefetchInterval', () => {
     store = new SyncQueryStore(kv);
     mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any, refetchMultiplier: 0.1 });
-    // Override with real managers for timer-based tests (SSR guard defaults to no-ops in Node)
     client.refetchManager = new RefetchManager(0.1);
-    client.memoryEvictionManager = new MemoryEvictionManager(client);
+    client.gcManager = new GcManager(() => {}, 0.001);
   });
 
   afterEach(() => {

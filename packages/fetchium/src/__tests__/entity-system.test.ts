@@ -873,8 +873,9 @@ describe('Entity System', () => {
 
         const result = await relay.value!.__refetch();
 
-        // The entity map should now have 4 entities
-        expect(getEntityMapSize(client)).toBe(4);
+        // After refetch, old entities (id 1, 2) are no longer referenced and
+        // get GC'd. Only the two new entities remain.
+        expect(getEntityMapSize(client)).toBe(2);
       });
     });
   });

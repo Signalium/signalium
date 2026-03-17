@@ -1,8 +1,7 @@
 import { QueryDefinition } from '../query.js';
-import { EntityStore } from '../EntityMap.js';
-import { CachedQuery, QueryStore } from '../QueryClient.js';
+import { CachedQuery, QueryStore, type PreloadedEntityMap } from '../QueryClient.js';
 import {
-  DEFAULT_GC_TIME,
+  DEFAULT_CACHE_TIME,
   DEFAULT_MAX_COUNT,
   queueKeyFor,
   refCountKeyFor,
@@ -138,18 +137,15 @@ export class AsyncQueryStore implements QueryStore {
     }
   }
 
-  async loadQuery(
-    queryDef: QueryDefinition<any, any, any>,
-    queryKey: number,
-    entityMap: EntityStore,
-  ): Promise<CachedQuery | undefined> {
+  async loadQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): Promise<CachedQuery | undefined> {
     if (!this.delegate) {
       return undefined;
     }
 
     const updatedAt = await this.delegate.getNumber(updatedAtKeyFor(queryKey));
 
-    if (updatedAt === undefined || updatedAt < Date.now() - (queryDef.cache?.gcTime ?? DEFAULT_GC_TIME)) {
+    const cacheTimeMs = (queryDef.cache?.cacheTime ?? DEFAULT_CACHE_TIME) * 60 * 1000;
+    if (updatedAt === undefined || updatedAt < Date.now() - cacheTimeMs) {
       return undefined;
     }
 
@@ -161,8 +157,10 @@ export class AsyncQueryStore implements QueryStore {
 
     const entityIds = await this.delegate.getBuffer(refIdsKeyFor(queryKey));
 
+    let preloadedEntities: PreloadedEntityMap | undefined;
     if (entityIds !== undefined) {
-      await this.preloadEntities(entityIds, entityMap);
+      preloadedEntities = new Map();
+      await this.preloadEntities(entityIds, preloadedEntities);
     }
 
     this.activateQuery(queryDef, queryKey);
@@ -171,10 +169,11 @@ export class AsyncQueryStore implements QueryStore {
       value: JSON.parse(valueStr) as Record<string, unknown>,
       refIds: entityIds === undefined ? undefined : new Set(entityIds ?? []),
       updatedAt,
+      preloadedEntities,
     };
   }
 
-  private async preloadEntities(entityIds: Uint32Array, entityMap: EntityStore): Promise<void> {
+  private async preloadEntities(entityIds: Uint32Array, preloaded: PreloadedEntityMap): Promise<void> {
     if (!this.delegate) {
       return;
     }
@@ -186,8 +185,7 @@ export class AsyncQueryStore implements QueryStore {
         continue;
       }
 
-      const entity = JSON.parse(entityValue) as Record<string, unknown>;
-      entityMap.setPreloadedEntity(entityId, entity);
+      preloaded.set(entityId, JSON.parse(entityValue) as Record<string, unknown>);
 
       const childIds = await this.delegate.getBuffer(refIdsKeyFor(entityId));
 
@@ -195,7 +193,7 @@ export class AsyncQueryStore implements QueryStore {
         continue;
       }
 
-      await this.preloadEntities(childIds, entityMap);
+      await this.preloadEntities(childIds, preloaded);
     }
   }
 

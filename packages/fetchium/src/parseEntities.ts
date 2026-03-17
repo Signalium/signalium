@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 
 import { hashValue } from 'signalium/utils';
-import { QueryClient } from './QueryClient.js';
+import { QueryClient, type PreloadedEntityMap } from './QueryClient.js';
 import { ValidatorDef } from './typeDefs.js';
 import {
   ARRAY_KEY,
@@ -28,7 +28,7 @@ export function parseUnionEntities(
   unionDef: UnionDef,
   queryClient: QueryClient,
   entityRefs?: Set<number>,
-  fromCache?: boolean,
+  preloadedEntities?: PreloadedEntityMap,
 ): unknown {
   if (valueType === Mask.ARRAY) {
     const shape = unionDef.shape![ARRAY_KEY];
@@ -42,10 +42,9 @@ export function parseUnionEntities(
       { mask: Mask.ARRAY, shape, values: undefined } as ArrayDef,
       queryClient,
       entityRefs,
-      fromCache,
+      preloadedEntities,
     );
   } else {
-    // Use the cached typename field from the union definition
     const typenameField = unionDef.typenameField;
     const typename = typenameField ? (value as Record<string, unknown>)[typenameField] : undefined;
 
@@ -53,7 +52,6 @@ export function parseUnionEntities(
       const recordShape = unionDef.shape![RECORD_KEY];
 
       if (recordShape === undefined || typeof recordShape === 'number') {
-        // Union of objects/entities requires typename for discrimination
         throw new Error(
           `Typename field '${typenameField}' is required for union discrimination but was not found in the data`,
         );
@@ -64,7 +62,7 @@ export function parseUnionEntities(
         recordShape as ComplexTypeDef,
         queryClient,
         entityRefs,
-        fromCache,
+        preloadedEntities,
       );
     }
 
@@ -80,7 +78,7 @@ export function parseUnionEntities(
         matchingDef as EntityDef,
         queryClient,
         entityRefs,
-        fromCache,
+        preloadedEntities,
       );
     }
 
@@ -89,7 +87,7 @@ export function parseUnionEntities(
       matchingDef as ObjectDef | EntityDef,
       queryClient,
       entityRefs,
-      fromCache,
+      preloadedEntities,
     );
   }
 }
@@ -99,13 +97,13 @@ export function parseArrayEntities(
   arrayShape: ComplexTypeDef,
   queryClient: QueryClient,
   entityRefs?: Set<number>,
-  fromCache?: boolean,
+  preloadedEntities?: PreloadedEntityMap,
 ): unknown[] {
   const result: unknown[] = [];
 
   for (let i = 0; i < array.length; i++) {
     try {
-      result.push(parseEntities(array[i], arrayShape, queryClient, entityRefs, fromCache));
+      result.push(parseEntities(array[i], arrayShape, queryClient, entityRefs, preloadedEntities));
     } catch (e) {
       queryClient.getContext().log?.warn?.('Failed to parse array item, filtering out', {
         index: i,
@@ -123,14 +121,14 @@ export function parseRecordEntities(
   recordShape: ComplexTypeDef,
   queryClient: QueryClient,
   entityRefs?: Set<number>,
-  fromCache?: boolean,
+  preloadedEntities?: PreloadedEntityMap,
 ): Record<string, unknown> {
   if (typeof recordShape === 'number') {
     return record;
   }
 
   for (const [key, value] of entries(record)) {
-    record[key] = parseEntities(value, recordShape, queryClient, entityRefs, fromCache);
+    record[key] = parseEntities(value, recordShape, queryClient, entityRefs, preloadedEntities);
   }
 
   return record;
@@ -141,28 +139,25 @@ function parseSubEntityPaths(
   objectShape: ObjectDef | EntityDef,
   queryClient: QueryClient,
   entityRefs?: Set<number>,
-  fromCache?: boolean,
+  preloadedEntities?: PreloadedEntityMap,
 ) {
-  // Extract shape first to resolve lazy definitions and set subEntityPaths
   const shape = objectShape.shape;
   const subEntityPaths = objectShape.subEntityPaths;
 
   if (subEntityPaths !== undefined) {
     if (typeof subEntityPaths === 'string') {
-      // Single path - avoid array allocation
       const propDef = shape[subEntityPaths];
       obj[subEntityPaths] = parseEntities(
         obj[subEntityPaths],
         propDef as ComplexTypeDef,
         queryClient,
         entityRefs,
-        fromCache,
+        preloadedEntities,
       );
     } else {
-      // Multiple paths - iterate directly
       for (const path of subEntityPaths) {
         const propDef = shape[path];
-        obj[path] = parseEntities(obj[path], propDef as ComplexTypeDef, queryClient, entityRefs, fromCache);
+        obj[path] = parseEntities(obj[path], propDef as ComplexTypeDef, queryClient, entityRefs, preloadedEntities);
       }
     }
   }
@@ -173,11 +168,11 @@ export function parseEntity(
   entityShape: EntityDef,
   queryClient: QueryClient,
   entityRefs?: Set<number>,
-  fromCache?: boolean,
+  preloadedEntities?: PreloadedEntityMap,
 ) {
   let key: number | undefined;
 
-  if (fromCache) {
+  if (preloadedEntities !== undefined) {
     key = obj.__entityRef as number;
   } else {
     const id = obj[entityShape.idField];
@@ -193,22 +188,22 @@ export function parseEntity(
   const existing = queryClient.getEntity(key);
 
   if (existing?.parseId === queryClient.currentParseId) {
-    return existing.proxy!;
+    return existing.proxy;
   }
 
-  if (fromCache) {
-    const cached = queryClient.getEntity(key);
+  if (preloadedEntities !== undefined) {
+    const preloaded = existing?.data ?? preloadedEntities.get(key);
 
-    if (cached === undefined) {
+    if (preloaded === undefined) {
       throw new Error(`Cached entity ${key} not found in preloaded map`);
     }
 
-    obj = cached.data;
+    obj = preloaded;
   }
 
   const childRefs = new Set<number>();
 
-  parseSubEntityPaths(obj, entityShape, queryClient, childRefs, fromCache);
+  parseSubEntityPaths(obj, entityShape, queryClient, childRefs, preloadedEntities);
 
   const typename = entityShape.typenameValue;
   const id = obj[entityShape.idField];
@@ -217,10 +212,9 @@ export function parseEntity(
     throw new Error(`Entity id is required: ${typename}`);
   }
 
-  // Add this entity's key to the parent's entityRefs (if provided)
   entityRefs?.add(key);
 
-  return queryClient.saveEntity(key, obj, entityShape, childRefs, !fromCache).proxy;
+  return queryClient.saveEntity(key, obj, entityShape, childRefs, preloadedEntities === undefined).proxy;
 }
 
 export function parseObjectEntities(
@@ -228,10 +222,9 @@ export function parseObjectEntities(
   objectShape: ObjectDef | EntityDef,
   queryClient: QueryClient,
   entityRefs?: Set<number>,
-  fromCache?: boolean,
+  preloadedEntities?: PreloadedEntityMap,
 ): Record<string, unknown> {
-  // Process sub-entity paths first (only these paths can contain entities)
-  parseSubEntityPaths(obj, objectShape, queryClient, entityRefs, fromCache);
+  parseSubEntityPaths(obj, objectShape, queryClient, entityRefs, preloadedEntities);
 
   return obj;
 }
@@ -241,7 +234,7 @@ export function parseEntities(
   typeDef: TypeDef | ComplexTypeDef,
   queryClient: QueryClient,
   entityRefs?: Set<number>,
-  fromCache?: boolean,
+  preloadedEntities?: PreloadedEntityMap,
 ): unknown {
   if (IS_DEV) {
     const d = typeDef as unknown;
@@ -254,7 +247,6 @@ export function parseEntities(
   const valueType = typeMaskOf(value);
   const defType = def.mask;
 
-  // Handle parseResult wrapper - wraps parsing in try-catch and returns discriminated union
   if ((defType & Mask.PARSE_RESULT) !== 0) {
     try {
       const innerResult = parseEntities(
@@ -262,7 +254,7 @@ export function parseEntities(
         (def as ParseResultDef).shape as ComplexTypeDef,
         queryClient,
         entityRefs,
-        fromCache,
+        preloadedEntities,
       );
       return { success: true as const, value: innerResult };
     } catch (e) {
@@ -270,14 +262,10 @@ export function parseEntities(
     }
   }
 
-  // Skip primitives and incompatible types - they can't contain entities
-  // Note: We silently return incompatible values rather than erroring
   if (valueType < Mask.OBJECT || (defType & valueType) === 0) {
     return value;
   }
 
-  // Handle unions first - they can contain multiple types, and all of the union
-  // logic is handled above, so we return early here if it's a union
   if ((defType & Mask.UNION) !== 0) {
     return parseUnionEntities(
       valueType,
@@ -285,37 +273,32 @@ export function parseEntities(
       def as UnionDef,
       queryClient,
       entityRefs,
-      fromCache,
+      preloadedEntities,
     );
   }
 
-  // If it's not a union, AND the value IS an array, then the definition must
-  // be an ArrayDef, so we can cast safely here
   if (valueType === Mask.ARRAY) {
     return parseArrayEntities(
       value as unknown[],
       (def as ArrayDef).shape as ComplexTypeDef,
       queryClient,
       entityRefs,
-      fromCache,
+      preloadedEntities,
     );
   }
 
-  // Now we know the value is an object, so def must be a RecordDef, ObjectDef
-  // or EntityDef. We first check to see if it's a RecordDef, and if so, we can
-  // cast it here and return early.
   if ((defType & Mask.RECORD) !== 0) {
     return parseRecordEntities(
       value as Record<string, unknown>,
       (def as RecordDef).shape as ComplexTypeDef,
       queryClient,
       entityRefs,
-      fromCache,
+      preloadedEntities,
     );
   }
 
   if ((defType & Mask.ENTITY) !== 0) {
-    return parseEntity(value as Record<string, unknown>, def as EntityDef, queryClient, entityRefs, fromCache);
+    return parseEntity(value as Record<string, unknown>, def as EntityDef, queryClient, entityRefs, preloadedEntities);
   }
 
   return parseObjectEntities(
@@ -323,6 +306,6 @@ export function parseEntities(
     def as ObjectDef | EntityDef,
     queryClient,
     entityRefs,
-    fromCache,
+    preloadedEntities,
   );
 }

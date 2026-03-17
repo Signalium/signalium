@@ -9,6 +9,6 @@ export type { MutationDefinition } from './mutation.js';
 export { draft } from './utils.js';
 export type { Draft } from './utils.js';
 export { NetworkManager, NoOpNetworkManager, defaultNetworkManager, NetworkManagerContext } from './NetworkManager.js';
-export { MemoryEvictionManager, NoOpMemoryEvictionManager } from './MemoryEvictionManager.js';
+export { GcManager, NoOpGcManager } from './GcManager.js';
 export { RefetchManager, NoOpRefetchManager } from './RefetchManager.js';
 export { Entity } from './proxy.js';

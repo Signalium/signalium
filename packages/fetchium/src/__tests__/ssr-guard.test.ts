@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { NoOpRefetchManager } from '../RefetchManager.js';
-import { NoOpMemoryEvictionManager } from '../MemoryEvictionManager.js';
+import { NoOpGcManager } from '../GcManager.js';
 import { createMockFetch } from './utils.js';
 
 /**
@@ -27,30 +27,29 @@ describe('SSR Guard', () => {
     const mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any });
 
-    // In Node (unit tests), typeof window === 'undefined', so isServer is true
     expect(client.isServer).toBe(true);
     expect(client.refetchManager).toBeInstanceOf(NoOpRefetchManager);
   });
 
-  it('should use NoOpMemoryEvictionManager on the server by default', () => {
+  it('should use NoOpGcManager on the server by default', () => {
     const store = new SyncQueryStore(new MemoryPersistentStore());
     const mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any });
 
     expect(client.isServer).toBe(true);
-    expect(client.memoryEvictionManager).toBeInstanceOf(NoOpMemoryEvictionManager);
+    expect(client.gcManager).toBeInstanceOf(NoOpGcManager);
   });
 
   it('should allow overriding managers even on the server', () => {
     const store = new SyncQueryStore(new MemoryPersistentStore());
     const mockFetch = createMockFetch();
     const customRefetch = new NoOpRefetchManager();
-    const customEviction = new NoOpMemoryEvictionManager();
+    const customGc = new NoOpGcManager();
 
-    client = new QueryClient(store, { fetch: mockFetch as any }, undefined, customEviction, customRefetch);
+    client = new QueryClient(store, { fetch: mockFetch as any }, undefined, customGc, customRefetch);
 
     expect(client.refetchManager).toBe(customRefetch);
-    expect(client.memoryEvictionManager).toBe(customEviction);
+    expect(client.gcManager).toBe(customGc);
   });
 
   it('should call destroy() safely on no-op managers', () => {
@@ -58,7 +57,6 @@ describe('SSR Guard', () => {
     const mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any });
 
-    // Should not throw
     expect(() => client.destroy()).not.toThrow();
   });
 });
