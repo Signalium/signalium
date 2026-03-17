@@ -1,5 +1,13 @@
 # signalium
 
+## 2.2.3
+
+### Patch Changes
+
+- 6c19cdc: Add `skipInitial` option to `watcher.addListener()` to skip the notification fired on initial activation
+
+  Fix: Reset `listeners.updatedAt` when all listeners are removed, so re-subscribing correctly fires the initial notification. Previously, stale `updatedAt` state could cause missed notifications after unsubscribing and re-subscribing.
+
 ## 2.2.2
 
 ### Patch Changes
