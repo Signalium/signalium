@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  DEFAULT_CACHE_TIME,
   DEFAULT_GC_TIME,
   DEFAULT_MAX_COUNT,
   queueKeyFor,
@@ -19,8 +20,12 @@ describe('Shared store constants', () => {
     expect(DEFAULT_MAX_COUNT).toBe(50);
   });
 
-  it('DEFAULT_GC_TIME should be 24 hours in milliseconds', () => {
-    expect(DEFAULT_GC_TIME).toBe(1000 * 60 * 60 * 24);
+  it('DEFAULT_CACHE_TIME should be 24 hours in minutes', () => {
+    expect(DEFAULT_CACHE_TIME).toBe(60 * 24);
+  });
+
+  it('DEFAULT_GC_TIME should be 5 minutes', () => {
+    expect(DEFAULT_GC_TIME).toBe(5);
   });
 });
 

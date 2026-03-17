@@ -1,8 +1,7 @@
-import { EntityStore } from '../EntityMap.js';
-import { CachedQuery, QueryStore } from '../QueryClient.js';
+import { CachedQuery, QueryStore, type PreloadedEntityMap } from '../QueryClient.js';
 import { QueryDefinition } from '../query.js';
 import {
-  DEFAULT_GC_TIME,
+  DEFAULT_CACHE_TIME,
   DEFAULT_MAX_COUNT,
   queueKeyFor,
   refCountKeyFor,
@@ -67,14 +66,11 @@ export class SyncQueryStore implements QueryStore {
 
   constructor(private readonly kv: SyncPersistentStore) {}
 
-  loadQuery(
-    queryDef: QueryDefinition<any, any, any>,
-    queryKey: number,
-    entityMap: EntityStore,
-  ): CachedQuery | undefined {
+  loadQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): CachedQuery | undefined {
     const updatedAt = this.kv.getNumber(updatedAtKeyFor(queryKey));
 
-    if (updatedAt === undefined || updatedAt < Date.now() - (queryDef.cache?.gcTime ?? DEFAULT_GC_TIME)) {
+    const cacheTimeMs = (queryDef.cache?.cacheTime ?? DEFAULT_CACHE_TIME) * 60 * 1000;
+    if (updatedAt === undefined || updatedAt < Date.now() - cacheTimeMs) {
       return;
     }
 
@@ -86,8 +82,10 @@ export class SyncQueryStore implements QueryStore {
 
     const entityIds = this.kv.getBuffer(refIdsKeyFor(queryKey));
 
+    let preloadedEntities: PreloadedEntityMap | undefined;
     if (entityIds !== undefined) {
-      this.preloadEntities(entityIds, entityMap);
+      preloadedEntities = new Map();
+      this.preloadEntities(entityIds, preloadedEntities);
     }
 
     this.activateQuery(queryDef, queryKey);
@@ -96,10 +94,11 @@ export class SyncQueryStore implements QueryStore {
       value: JSON.parse(valueStr) as Record<string, unknown>,
       refIds: entityIds === undefined ? undefined : new Set(entityIds ?? []),
       updatedAt,
+      preloadedEntities,
     };
   }
 
-  private preloadEntities(entityIds: Uint32Array, entityMap: EntityStore): void {
+  private preloadEntities(entityIds: Uint32Array, preloaded: PreloadedEntityMap): void {
     for (const entityId of entityIds) {
       const entityValue = this.kv.getString(valueKeyFor(entityId));
 
@@ -107,8 +106,7 @@ export class SyncQueryStore implements QueryStore {
         continue;
       }
 
-      const entity = JSON.parse(entityValue) as Record<string, unknown>;
-      entityMap.setPreloadedEntity(entityId, entity);
+      preloaded.set(entityId, JSON.parse(entityValue) as Record<string, unknown>);
 
       const childIds = this.kv.getBuffer(refIdsKeyFor(entityId));
 
@@ -116,7 +114,7 @@ export class SyncQueryStore implements QueryStore {
         continue;
       }
 
-      this.preloadEntities(childIds, entityMap);
+      this.preloadEntities(childIds, preloaded);
     }
   }
 

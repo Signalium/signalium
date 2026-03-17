@@ -27,17 +27,20 @@ import {
   TypeDef,
   InternalTypeDef,
 } from './types.js';
-import { EntityRecord, EntityStore } from './EntityMap.js';
+import { EntityStore } from './EntityMap.js';
+import { EntityInstance } from './EntityInstance.js';
 import { NetworkManager } from './NetworkManager.js';
 import { QueryInstance } from './QueryResult.js';
 import { MutationResultImpl } from './MutationResult.js';
 import { MutationDefinition } from './mutation.js';
 import { RefetchManager, NoOpRefetchManager } from './RefetchManager.js';
-import { MemoryEvictionManager, NoOpMemoryEvictionManager } from './MemoryEvictionManager.js';
+import { GcManager, NoOpGcManager, GcKeyType } from './GcManager.js';
+import { DEFAULT_GC_TIME } from './stores/shared.js';
 import { type Signal } from 'signalium';
 import { Query, QueryDefinition } from './query.js';
 import { parseEntities } from './parseEntities.js';
 import { parseValue } from './proxy.js';
+import { ValidatorDef } from './typeDefs.js';
 
 // -----------------------------------------------------------------------------
 // Query Types
@@ -69,8 +72,9 @@ export function resolveBaseUrl(baseUrl: BaseUrlValue | undefined): string | unde
 
 export interface QueryCacheOptions {
   maxCount?: number;
-  gcTime?: number; // milliseconds - only applies to on-disk/persistent storage cleanup
-  staleTime?: number;
+  cacheTime?: number; // minutes - on-disk/persistent storage expiration. Default: 1440 (24 hours)
+  gcTime?: number; // minutes - in-memory eviction time. Default: 5. Use 0 for next-tick, Infinity to never GC.
+  staleTime?: number; // milliseconds - how long data is considered fresh. Default: 0 (always stale)
   refetchInterval?: RefetchInterval;
   networkMode?: NetworkMode; // default: NetworkMode.Online
   retry?: RetryConfig | number | false; // default: 3 on client, 0 on server
@@ -93,22 +97,21 @@ export type QueryParams = Record<
 // QueryStore Interface
 // -----------------------------------------------------------------------------
 
+export type PreloadedEntityMap = Map<number, Record<string, unknown>>;
+
 export interface CachedQuery {
   value: unknown;
   refIds: Set<number> | undefined;
   updatedAt: number;
+  preloadedEntities?: PreloadedEntityMap;
 }
 
 export interface QueryStore {
   /**
    * Asynchronously retrieves a document by key.
-   * May return undefined if the document is not in the store.
+   * Returns a CachedQuery with preloaded entity data if entities are referenced.
    */
-  loadQuery(
-    queryDef: QueryDefinition<any, any, any>,
-    queryKey: number,
-    entityMap: EntityStore,
-  ): MaybePromise<CachedQuery | undefined>;
+  loadQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): MaybePromise<CachedQuery | undefined>;
 
   /**
    * Synchronously stores a document with optional reference IDs.
@@ -189,7 +192,7 @@ export class QueryClient {
   private entityMap: EntityStore;
   queryInstances = new Map<number, QueryInstance<any>>();
   mutationInstances = new Map<string, MutationResultImpl<unknown, unknown>>();
-  memoryEvictionManager: MemoryEvictionManager | NoOpMemoryEvictionManager;
+  gcManager: GcManager | NoOpGcManager;
   refetchManager: RefetchManager | NoOpRefetchManager;
   networkManager: NetworkManager;
   isServer: boolean;
@@ -200,19 +203,17 @@ export class QueryClient {
     private store: QueryStore,
     private context: QueryContext = { fetch, log: console },
     networkManager?: NetworkManager,
-    memoryEvictionManager?: MemoryEvictionManager | NoOpMemoryEvictionManager,
+    gcManager?: GcManager | NoOpGcManager,
     refetchManager?: RefetchManager | NoOpRefetchManager,
   ) {
     this.isServer = typeof window === 'undefined';
-    this.memoryEvictionManager =
-      memoryEvictionManager ??
-      (this.isServer
-        ? new NoOpMemoryEvictionManager()
-        : new MemoryEvictionManager(this, this.context.evictionMultiplier));
+    this.entityMap = new EntityStore(this);
+    this.gcManager =
+      gcManager ??
+      (this.isServer ? new NoOpGcManager() : new GcManager(this.handleEviction, this.context.evictionMultiplier));
     this.refetchManager =
       refetchManager ?? (this.isServer ? new NoOpRefetchManager() : new RefetchManager(this.context.refetchMultiplier));
     this.networkManager = networkManager ?? new NetworkManager();
-    this.entityMap = new EntityStore(this);
   }
 
   getContext(): QueryContext {
@@ -234,18 +235,18 @@ export class QueryClient {
 
   activateQuery(queryInstance: QueryInstance<any>): void {
     const { def, queryKey, storageKey } = queryInstance;
-    // Use storageKey for cache operations (store.activateQuery)
     this.store.activateQuery(def as any, storageKey);
 
     if (def.cache?.refetchInterval) {
       this.refetchManager.addQuery(queryInstance);
     }
-    // Use queryKey for instance eviction (memoryEvictionManager)
-    this.memoryEvictionManager.cancelEviction(queryKey);
+
+    const gcTime = def.cache?.gcTime ?? DEFAULT_GC_TIME;
+    this.gcManager.cancel(queryKey, gcTime);
   }
 
   loadCachedQuery(queryDef: QueryDefinition<QueryParams | undefined, unknown, unknown>, queryKey: number) {
-    return this.store.loadQuery(queryDef as any, queryKey, this.entityMap);
+    return this.store.loadQuery(queryDef as any, queryKey);
   }
 
   deleteCachedQuery(queryKey: number): void {
@@ -297,41 +298,23 @@ export class QueryClient {
     return mutationInstance.task;
   }
 
-  // ======================================================
-  // Optimistic Update Management
-  // ======================================================
+  // TODO: Optimistic update methods will be re-added later
+  registerOptimisticUpdate(_entityKey: number, _fields: Record<string, unknown>): void {}
+  clearOptimisticUpdates(_entityKey: number): void {}
+  revertOptimisticUpdate(_entityKey: number): void {}
 
-  /**
-   * Register pending optimistic updates for an entity.
-   * Called by MutationResult when applying optimistic updates.
-   */
-  registerOptimisticUpdate(entityKey: number, fields: Record<string, unknown>): void {
-    this.entityMap.registerOptimisticUpdate(entityKey, fields);
-  }
-
-  /**
-   * Clear pending optimistic updates for an entity without reverting.
-   * Called by MutationResult when mutation succeeds.
-   */
-  clearOptimisticUpdates(entityKey: number): void {
-    this.entityMap.clearOptimisticUpdates(entityKey);
-  }
-
-  /**
-   * Revert pending optimistic updates for an entity, restoring its snapshot.
-   * Called by MutationResult when mutation fails.
-   */
-  revertOptimisticUpdate(entityKey: number): void {
-    this.entityMap.revertOptimisticUpdate(entityKey);
-  }
-
-  getEntity(key: number) {
+  getEntity(key: number): EntityInstance | undefined {
     return this.entityMap.getEntity(key);
   }
 
-  parseEntities(obj: unknown, shape: InternalTypeDef, entityRefs?: Set<number>, fromCache?: boolean): unknown {
+  parseEntities(
+    obj: unknown,
+    shape: InternalTypeDef,
+    entityRefs?: Set<number>,
+    preloadedEntities?: PreloadedEntityMap,
+  ): unknown {
     this.currentParseId++;
-    const result = parseEntities(obj, shape as unknown as ComplexTypeDef, this, entityRefs, fromCache);
+    const result = parseEntities(obj, shape as unknown as ComplexTypeDef, this, entityRefs, preloadedEntities);
     return parseValue(result, shape as unknown as TypeDef, '', false);
   }
 
@@ -341,19 +324,114 @@ export class QueryClient {
     shape: EntityDef,
     entityRefs?: Set<number>,
     persist?: boolean,
-  ): EntityRecord {
-    const record = this.entityMap.setEntity(key, obj, shape, entityRefs);
+  ): EntityInstance {
+    const instance = this.entityMap.getOrCreateEntity(key, obj, shape);
+
+    // Diff old vs new child entity refs
+    const oldRefs = instance.entityRefs;
+    if (entityRefs !== undefined && entityRefs.size > 0) {
+      for (const childKey of entityRefs) {
+        if (oldRefs === undefined || !oldRefs.has(childKey)) {
+          this.entityMap.incrementRefCount(childKey);
+        }
+      }
+    }
+    if (oldRefs !== undefined && oldRefs.size > 0) {
+      for (const childKey of oldRefs) {
+        if (entityRefs === undefined || !entityRefs.has(childKey)) {
+          this.decrementEntityRef(childKey);
+        }
+      }
+    }
+    instance.entityRefs = entityRefs;
 
     if (persist) {
       this.store.saveEntity(key, obj, entityRefs);
     }
 
-    return record;
+    return instance;
   }
+
+  // ======================================================
+  // In-Memory GC
+  // ======================================================
+
+  scheduleQueryEviction(queryInstance: QueryInstance<any>): void {
+    const gcTime = queryInstance.def.cache?.gcTime ?? DEFAULT_GC_TIME;
+    this.gcManager.schedule(queryInstance.queryKey, gcTime, GcKeyType.Query);
+  }
+
+  /**
+   * Diff old vs new entity refs and update in-memory ref counts accordingly.
+   */
+  updateEntityRefs(oldRefs: Set<number> | undefined, newRefs: Set<number>): void {
+    if (oldRefs !== undefined) {
+      for (const key of oldRefs) {
+        if (!newRefs.has(key)) {
+          this.decrementEntityRef(key);
+        }
+      }
+    }
+    for (const key of newRefs) {
+      if (oldRefs === undefined || !oldRefs.has(key)) {
+        this.entityMap.incrementRefCount(key);
+
+        const entityGcTime = this.getEntityShapeDef(key)?._entityCache?.gcTime;
+        if (entityGcTime !== undefined) {
+          this.gcManager.cancel(key, entityGcTime);
+        }
+      }
+    }
+  }
+
+  private decrementEntityRef(entityKey: number): void {
+    const reachedZero = this.entityMap.decrementRefCount(entityKey);
+    if (!reachedZero) return;
+
+    const shapeDef = this.getEntityShapeDef(entityKey);
+    const entityGcTime = shapeDef?._entityCache?.gcTime;
+
+    if (entityGcTime !== undefined) {
+      this.gcManager.schedule(entityKey, entityGcTime, GcKeyType.Entity);
+    } else {
+      this.evictEntity(entityKey);
+    }
+  }
+
+  private evictEntity(entityKey: number): void {
+    const childRefs = this.entityMap.removeEntity(entityKey);
+    if (childRefs !== undefined) {
+      for (const childKey of childRefs) {
+        this.decrementEntityRef(childKey);
+      }
+    }
+  }
+
+  private getEntityShapeDef(entityKey: number): ValidatorDef<unknown> | undefined {
+    return this.entityMap.getEntity(entityKey)?.shapeDef;
+  }
+
+  private handleEviction = (key: number, type: GcKeyType): void => {
+    if (type === GcKeyType.Query) {
+      const instance = this.queryInstances.get(key);
+      if (instance === undefined) return;
+
+      this.queryInstances.delete(key);
+
+      if (instance.entityRefs !== undefined) {
+        for (const entityKey of instance.entityRefs) {
+          this.decrementEntityRef(entityKey);
+        }
+      }
+      return;
+    }
+
+    this.evictEntity(key);
+  };
 
   destroy(): void {
     this.refetchManager.destroy();
-    this.memoryEvictionManager.destroy();
+    this.gcManager.destroy();
     this.networkManager.destroy();
   }
 }

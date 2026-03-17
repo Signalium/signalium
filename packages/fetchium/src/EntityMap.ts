@@ -1,233 +1,87 @@
-import { relay, DiscriminatedReactivePromise, Notifier, notifier } from 'signalium';
 import { EntityDef } from './types.js';
-import { createEntityProxy, mergeValues } from './proxy.js';
 import type { QueryClient } from './QueryClient.js';
-import { ValidatorDef } from './typeDefs.js';
-
-/**
- * Deep clone an object, handling nested objects and arrays.
- * Used for snapshotting entity data before optimistic updates.
- */
-function deepClone<T>(value: T): T {
-  if (value === null || typeof value !== 'object') {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(item => deepClone(item)) as T;
-  }
-
-  if (value instanceof Date) {
-    return new Date(value.getTime()) as T;
-  }
-
-  // For plain objects, create a shallow copy and recursively clone values
-  const cloned = {} as Record<string, unknown>;
-  for (const key of Object.keys(value)) {
-    cloned[key] = deepClone((value as Record<string, unknown>)[key]);
-  }
-  return cloned as T;
-}
-
-export interface PreloadedEntityRecord {
-  key: number;
-  data: Record<string, unknown>;
-  notifier: Notifier;
-  cache: Map<PropertyKey, any>;
-  id?: string | number;
-  proxy?: Record<string, unknown>;
-  entityRefs?: Set<number>;
-  parseId: number;
-}
-
-export type EntityRecord = Required<PreloadedEntityRecord>;
-
-/**
- * Tracks pending optimistic updates for an entity.
- * Includes the snapshot of original data for rollback.
- */
-interface PendingOptimisticUpdate {
-  snapshot: Record<string, unknown>; // Original data before optimistic update
-}
+import { EntityInstance } from './EntityInstance.js';
 
 export class EntityStore {
-  private map = new Map<number, PreloadedEntityRecord | EntityRecord>();
+  private instances = new Map<number, EntityInstance>();
   private queryClient: QueryClient;
 
   /**
-   * Tracks pending optimistic updates by entity key.
-   * Each entity can only have one pending update at a time (throws if concurrent).
+   * In-memory reference counts for entities. Tracks how many queries (and
+   * parent entities) reference a given entity key. When the count reaches 0
+   * the entity is eligible for GC.
    */
-  private pendingOptimisticUpdates = new Map<number, PendingOptimisticUpdate>();
+  private refCounts = new Map<number, number>();
 
   constructor(queryClient: QueryClient) {
     this.queryClient = queryClient;
   }
 
   hasEntity(key: number): boolean {
-    return this.map.has(key);
+    return this.instances.has(key);
   }
 
-  getEntity(key: number): PreloadedEntityRecord | EntityRecord | undefined {
-    return this.map.get(key);
+  getEntity(key: number): EntityInstance | undefined {
+    return this.instances.get(key);
   }
 
-  setPreloadedEntity(key: number, data: Record<string, unknown>): PreloadedEntityRecord {
-    const record: PreloadedEntityRecord = {
-      key,
-      data,
-      notifier: notifier(),
-      cache: new Map(),
-      id: undefined,
-      proxy: undefined,
-      entityRefs: undefined,
-      parseId: -1,
-    };
+  getOrCreateEntity(key: number, data: Record<string, unknown>, shape: EntityDef): EntityInstance {
+    let instance = this.instances.get(key);
 
-    this.map.set(key, record);
-
-    return record;
-  }
-
-  setEntity(key: number, obj: Record<string, unknown>, shape: EntityDef, entityRefs?: Set<number>): EntityRecord {
-    let record = this.map.get(key);
-
-    if (record === undefined) {
-      record = this.setPreloadedEntity(key, obj);
-
-      record.proxy = this.createEntityProxy(record, shape);
+    if (instance === undefined) {
+      instance = new EntityInstance(key, data, shape, this.queryClient);
+      this.instances.set(key, instance);
     } else {
-      record.data = mergeValues(record.data, obj);
-      record.notifier.notify();
-      record.cache.clear();
-
-      // Create proxy if it doesn't exist (for preloaded entities from cache)
-      if (record.proxy === undefined) {
-        record.proxy = this.createEntityProxy(record, shape);
-      }
+      instance.update(data);
     }
 
-    record.entityRefs = entityRefs;
-    record.parseId = this.queryClient.currentParseId;
+    instance.parseId = this.queryClient.currentParseId;
 
-    return record as EntityRecord;
+    return instance;
   }
 
   // ======================================================
-  // Optimistic Update Tracking
+  // In-Memory Reference Counting
   // ======================================================
 
-  /**
-   * Register a pending optimistic update for an entity.
-   * Snapshots the current state and applies the optimistic update.
-   *
-   * @throws Error if the entity already has a pending optimistic update
-   */
-  registerOptimisticUpdate(entityKey: number, fields: Record<string, unknown>): void {
-    // Throw if entity already has pending optimistic updates
-    if (this.pendingOptimisticUpdates.has(entityKey)) {
-      throw new Error(
-        `Cannot apply optimistic update: entity ${entityKey} already has a pending optimistic update from another mutation.`,
-      );
-    }
-
-    const record = this.map.get(entityKey);
-    if (!record) {
-      // Entity doesn't exist yet - nothing to snapshot, just track
-      this.pendingOptimisticUpdates.set(entityKey, { snapshot: {} });
-      return;
-    }
-
-    // Deep snapshot the current data BEFORE applying the update
-    const snapshot = deepClone(record.data);
-
-    // Store the pending update with snapshot
-    this.pendingOptimisticUpdates.set(entityKey, { snapshot });
-
-    // Apply the optimistic update to the entity
-    record.data = mergeValues(record.data, fields);
-    record.cache.clear();
-
-    // Defer notification to avoid dirtying signal within reactive context
-    queueMicrotask(() => {
-      record.notifier.notify();
-    });
+  incrementRefCount(entityKey: number): void {
+    const current = this.refCounts.get(entityKey) ?? 0;
+    this.refCounts.set(entityKey, current + 1);
   }
 
   /**
-   * Revert the optimistic update for an entity, restoring its snapshot.
-   * Called when a mutation fails.
+   * Decrement the ref count for an entity. Returns `true` if the count
+   * reached zero (caller should schedule or immediately evict the entity).
    */
-  revertOptimisticUpdate(entityKey: number): void {
-    const pending = this.pendingOptimisticUpdates.get(entityKey);
-    if (!pending) {
-      return; // No pending update to revert
+  decrementRefCount(entityKey: number): boolean {
+    const current = this.refCounts.get(entityKey);
+    if (current === undefined) return false;
+
+    const next = current - 1;
+    if (next <= 0) {
+      this.refCounts.delete(entityKey);
+      return true;
     }
 
-    const record = this.map.get(entityKey);
-    if (record && Object.keys(pending.snapshot).length > 0) {
-      // Restore the snapshot
-      record.data = pending.snapshot;
-      record.cache.clear();
+    this.refCounts.set(entityKey, next);
+    return false;
+  }
 
-      // Defer notification to avoid dirtying signal within reactive context
-      queueMicrotask(() => {
-        record.notifier.notify();
-      });
-    }
-
-    // Clear the pending update
-    this.pendingOptimisticUpdates.delete(entityKey);
+  getRefCount(entityKey: number): number {
+    return this.refCounts.get(entityKey) ?? 0;
   }
 
   /**
-   * Clear the optimistic update for an entity without reverting.
-   * Called when a mutation succeeds (the optimistic update is now confirmed).
+   * Remove an entity from the in-memory store. Returns the entity's child
+   * `entityRefs` so the caller can cascade decrements.
    */
-  clearOptimisticUpdates(entityKey: number): void {
-    this.pendingOptimisticUpdates.delete(entityKey);
-  }
+  removeEntity(key: number): Set<number> | undefined {
+    const instance = this.instances.get(key);
+    if (!instance) return undefined;
 
-  private createEntityProxy(record: PreloadedEntityRecord, shape: EntityDef): Record<string, unknown> {
-    const idField = shape.idField;
-    if (idField === undefined) {
-      throw new Error(`Entity id field is required ${shape.typenameValue}`);
-    }
-
-    const id = record.data[idField];
-
-    if (typeof id !== 'string' && typeof id !== 'number') {
-      throw new Error(`Entity id must be string or number: ${shape.typenameValue}`);
-    }
-
-    record.id = id;
-
-    let entityRelay: DiscriminatedReactivePromise<Record<string, unknown>> | undefined;
-    const entityConfig = (shape as unknown as ValidatorDef<unknown>)._entityConfig;
-
-    if (entityConfig?.stream) {
-      entityRelay = relay(state => {
-        const context = this.queryClient.getContext();
-        const onUpdate = (update: Partial<Record<string, unknown>>) => {
-          const currentValue = record.data;
-          const merged = mergeValues(currentValue, update);
-          record.data = merged;
-          record.notifier.notify();
-          record.cache.clear();
-        };
-
-        const unsubscribe = entityConfig.stream.subscribe(context, id as string | number, onUpdate as any);
-
-        // Set initial value to the proxy - this resolves the relay promise
-        // Proxy should always exist at this point since it's created before relay access
-        state.value = record.proxy!;
-
-        return unsubscribe;
-      });
-    }
-
-    const warn = this.queryClient.getContext().log?.warn;
-    const desc = `${shape.typenameValue}:${id}`;
-    return createEntityProxy(record.key, record, shape, entityRelay, this.queryClient, warn, desc);
+    const childRefs = instance.entityRefs;
+    this.instances.delete(key);
+    this.refCounts.delete(key);
+    return childRefs;
   }
 }

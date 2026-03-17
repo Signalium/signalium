@@ -49,6 +49,9 @@ export class QueryInstance<T extends Query> {
   /** The persistent proxy that is set as the relay value once and never changes (only for object types). */
   private _proxy: QueryResult<T> | undefined;
 
+  /** Root entity keys referenced by the most recent query result. */
+  entityRefs: Set<number> | undefined = undefined;
+
   private get relayState(): RelayState<QueryResult<T>> {
     const relayState = this._relayState;
 
@@ -81,12 +84,9 @@ export class QueryInstance<T extends Query> {
       this.queryClient.activateQuery(this);
 
       const deactivate = () => {
-        // Clear debounce timer if active
         clearTimeout(this.debounceTimer);
         this.debounceTimer = undefined;
 
-        // Last subscriber left, deactivate refetch and schedule memory eviction
-        // Unsubscribe from any active streams
         this.unsubscribe?.();
         this.unsubscribe = undefined;
 
@@ -94,11 +94,7 @@ export class QueryInstance<T extends Query> {
           this.queryClient.refetchManager.removeQuery(this);
         }
 
-        // Schedule removal from memory using the global eviction manager
-        // This allows quick reactivation from memory if needed again soon
-        // Disk cache (if configured) will still be available after eviction
-        // Use queryKey for instance eviction, storageKey for cache eviction
-        this.queryClient.memoryEvictionManager.scheduleEviction(this.queryKey);
+        this.queryClient.scheduleQueryEviction(this);
       };
 
       const update = (activating: boolean = false) => {
@@ -169,12 +165,19 @@ export class QueryInstance<T extends Query> {
       cached = await this.queryClient.loadCachedQuery(this.def, this.storageKey);
 
       if (cached !== undefined) {
-        // Set the cached timestamp
         this.updatedAt = cached.updatedAt;
 
-        this._data = this.queryClient.parseEntities(cached.value, this.def.shape, undefined, true) as QueryResult<T>;
+        const entityRefs = cached.refIds ?? new Set<number>();
+        this._data = this.queryClient.parseEntities(
+          cached.value,
+          this.def.shape,
+          undefined,
+          cached.preloadedEntities,
+        ) as QueryResult<T>;
 
-        // Resolve the relay with the persistent proxy (object types) or raw data
+        this.queryClient.updateEntityRefs(this.entityRefs, entityRefs);
+        this.entityRefs = entityRefs.size > 0 ? entityRefs : undefined;
+
         state.value = this._useProxy ? this._proxy! : (this._data as QueryResult<T>);
       }
     } catch (error) {
@@ -247,7 +250,9 @@ export class QueryInstance<T extends Query> {
 
         this.queryClient.saveQueryData(this.def, this.storageKey, parsedData, updatedAt, entityRefs);
 
-        // Update the underlying data and notify consumers
+        this.queryClient.updateEntityRefs(this.entityRefs, entityRefs);
+        this.entityRefs = entityRefs.size > 0 ? entityRefs : undefined;
+
         this._data = parsedData as QueryResult<T>;
 
         if (this._useProxy) {

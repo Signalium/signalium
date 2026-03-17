@@ -48,6 +48,11 @@ export class ValidatorDef<T> {
    */
   public _entityClass: (new () => any) | undefined = undefined;
 
+  /**
+   * Entity cache options (e.g. gcTime for in-memory eviction).
+   */
+  public _entityCache: { gcTime?: number } | undefined = undefined;
+
   constructor(
     mask: Mask,
     shape: InternalTypeDef | InternalObjectShape | UnionTypeDefs | ComplexTypeDef[] | undefined,
@@ -82,6 +87,7 @@ export class ValidatorDef<T> {
     newDef._methods = def._methods;
     newDef._entityConfig = def._entityConfig;
     newDef._entityClass = def._entityClass;
+    newDef._entityCache = def._entityCache;
     return newDef;
   }
 }
@@ -628,6 +634,10 @@ export function getEntityDef(cls: new () => Entity): ValidatorDef<any> {
     const staticCls = cls as typeof Entity;
     if (staticCls.stream) {
       def._entityConfig = { stream: staticCls.stream } as any;
+    }
+
+    if (staticCls.cache) {
+      def._entityCache = staticCls.cache;
     }
 
     entityDefCache.set(cls, def);
