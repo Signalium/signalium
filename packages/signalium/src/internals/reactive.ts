@@ -50,7 +50,7 @@ let ID = 0;
 
 interface ListenerMeta {
   updatedAt: number;
-  current: Set<() => void>;
+  current: Map<() => void, () => void>;
 
   // Cached bound add method to avoid creating a new one on each call, this is
   // specifically for React hooks where useSyncExternalStore will resubscribe each
@@ -192,7 +192,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       this._listeners ??
       (this._listeners = {
         updatedAt: 0,
-        current: new Set(),
+        current: new Map(),
         cachedBoundAdd: this.addListener.bind(this),
       })
     );
@@ -202,10 +202,23 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     return getSignal(this);
   }
 
-  addListener(listener: () => void) {
+  addListener(listener: () => void, opts?: { skipInitial?: boolean }) {
     const { current } = this.listeners;
 
     if (!current.has(listener)) {
+      let effective = listener;
+
+      if (opts?.skipInitial) {
+        let initial = true;
+        effective = () => {
+          if (initial) {
+            initial = false;
+            return;
+          }
+          listener();
+        };
+      }
+
       if (!this._isListener) {
         watchSignal(this, this._isSuspended);
         this.flags |= ReactiveFnFlags.isListener;
@@ -213,7 +226,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
       schedulePull(this);
 
-      current.add(listener);
+      current.set(listener, effective);
     }
 
     return () => {
@@ -224,6 +237,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
           cancelPull(this);
           unwatchSignal(this, this._isSuspended);
           this.flags &= ~ReactiveFnFlags.isListener;
+          this.listeners.updatedAt = 0;
         }
       }
     };
@@ -282,7 +296,7 @@ export const runListeners = (signal: ReactiveSignal<any, any>) => {
 
   const { current } = listeners;
 
-  for (const listener of current) {
+  for (const listener of current.values()) {
     listener();
   }
 };
