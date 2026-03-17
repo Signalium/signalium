@@ -8,9 +8,12 @@ describe('addListener with skipInitial', () => {
     const w = watcher(() => s.value);
 
     let calls = 0;
-    const stop = w.addListener(() => {
-      calls++;
-    }, { skipInitial: true });
+    const stop = w.addListener(
+      () => {
+        calls++;
+      },
+      { skipInitial: true },
+    );
 
     await nextTick();
     expect(calls).toBe(0);
@@ -51,9 +54,12 @@ describe('addListener with skipInitial', () => {
     const stop1 = w.addListener(() => {
       normalCalls++;
     });
-    const stop2 = w.addListener(() => {
-      skipCalls++;
-    }, { skipInitial: true });
+    const stop2 = w.addListener(
+      () => {
+        skipCalls++;
+      },
+      { skipInitial: true },
+    );
 
     await nextTick();
     expect(normalCalls).toBe(1);
@@ -73,7 +79,9 @@ describe('addListener with skipInitial', () => {
     const w = watcher(() => s.value);
 
     let calls = 0;
-    const cb = () => { calls++; };
+    const cb = () => {
+      calls++;
+    };
 
     const stop1 = w.addListener(cb, { skipInitial: true });
     const stop2 = w.addListener(cb, { skipInitial: true });
@@ -94,7 +102,9 @@ describe('addListener with skipInitial', () => {
     const w = watcher(() => s.value);
 
     let calls = 0;
-    const cb = () => { calls++; };
+    const cb = () => {
+      calls++;
+    };
 
     const stop1 = w.addListener(cb);
     const stop2 = w.addListener(cb, { skipInitial: true });
@@ -115,7 +125,9 @@ describe('addListener with skipInitial', () => {
     const w = watcher(() => s.value);
 
     let calls = 0;
-    const cb = () => { calls++; };
+    const cb = () => {
+      calls++;
+    };
 
     const stop1 = w.addListener(cb, { skipInitial: true });
     await nextTick();
