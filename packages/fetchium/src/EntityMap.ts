@@ -37,6 +37,7 @@ export interface PreloadedEntityRecord {
   id?: string | number;
   proxy?: Record<string, unknown>;
   entityRefs?: Set<number>;
+  parseId: number;
 }
 
 export type EntityRecord = Required<PreloadedEntityRecord>;
@@ -71,17 +72,6 @@ export class EntityStore {
     return this.map.get(key);
   }
 
-  hydratePreloadedEntity(key: number, shape: EntityDef): EntityRecord {
-    const record = this.getEntity(key);
-    if (record === undefined) {
-      throw new Error(`Entity ${key} not found`);
-    }
-
-    record.proxy = this.createEntityProxy(record, shape);
-
-    return record as EntityRecord;
-  }
-
   setPreloadedEntity(key: number, data: Record<string, unknown>): PreloadedEntityRecord {
     const record: PreloadedEntityRecord = {
       key,
@@ -91,6 +81,7 @@ export class EntityStore {
       id: undefined,
       proxy: undefined,
       entityRefs: undefined,
+      parseId: -1,
     };
 
     this.map.set(key, record);
@@ -117,6 +108,7 @@ export class EntityStore {
     }
 
     record.entityRefs = entityRefs;
+    record.parseId = this.queryClient.currentParseId;
 
     return record as EntityRecord;
   }
