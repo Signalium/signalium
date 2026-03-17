@@ -36,7 +36,7 @@ function propagateDirty(signal: ReactiveSignal<any, any>) {
     }
 
     dirtySignalConsumers(signal.subs);
-    signal.subs = new Map();
+    signal.subs.clear();
   }
 }
 

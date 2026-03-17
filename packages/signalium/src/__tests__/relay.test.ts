@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { signal, forwardRelay } from '../index.js';
+import { signal, forwardRelay, watcher, relay as _relay } from '../index.js';
 import { reactive, relay } from './utils/instrumented-hooks.js';
-import { nextTick } from './utils/async.js';
+import { nextTick, sleep } from './utils/async.js';
 
 describe('relays', () => {
   test('Relay can set initial value', () => {
@@ -730,5 +730,34 @@ describe('relays', () => {
       await nextTick();
       expect(forwardedRelay.value).toBe(1); // Should still be 1, not 99, since it's deactivated
     });
+  });
+
+  test('deactivating a relay while its async value is pending does not cause errors', async () => {
+    let deactivated = false;
+
+    const r = _relay<number>(state => {
+      state.setPromise(new Promise(resolve => setTimeout(() => resolve(42), 200)));
+
+      return {
+        deactivate: () => {
+          deactivated = true;
+        },
+      };
+    });
+
+    const w = watcher(() => r.value);
+    const unsub = w.addListener(() => {});
+
+    await nextTick();
+    expect(r.isPending).toBe(true);
+
+    unsub();
+
+    await sleep(50);
+    await nextTick();
+    await sleep(50);
+    await nextTick();
+
+    expect(deactivated).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { signal } from '../index.js';
+import { signal, reactive as _reactive, reactiveSignal } from '../index.js';
 import { reactive } from './utils/instrumented-hooks.js';
 
 describe('reactive (sync)', () => {
@@ -126,5 +126,39 @@ describe('reactive (sync)', () => {
 
       expect(getOuter.withParams(1, 4)).toHaveValueAndCounts(16, { compute: 1, get: 2 });
     });
+  });
+
+  test('reactive(fn) returns the same function for the same fn reference', () => {
+    const fn = (a: number) => a + 1;
+    const r1 = _reactive(fn);
+    const r2 = _reactive(fn);
+
+    expect(r1).toBe(r2);
+  });
+
+  test('reactive(fn) returns different functions for different fn references', () => {
+    const fn1 = (a: number) => a + 1;
+    const fn2 = (a: number) => a + 1;
+    const r1 = _reactive(fn1);
+    const r2 = _reactive(fn2);
+
+    expect(r1).not.toBe(r2);
+  });
+
+  test('dirtying state consumed by the current function during computation is silently absorbed', () => {
+    const s = signal(0);
+    let computeCount = 0;
+
+    const selfMutator = reactiveSignal(() => {
+      computeCount++;
+      const v = s.value;
+      if (v === 0) {
+        s.value = 1;
+      }
+      return v;
+    });
+
+    expect(selfMutator.value).toBe(0);
+    expect(computeCount).toBe(1);
   });
 });

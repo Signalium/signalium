@@ -7,6 +7,7 @@
     "url": "git+https://github.com/Signalium/signalium.git"
   },
   "description": "Scalable signals, effortless async. Reactivity at critical mass.",
+  "sideEffects": false,
   "main": "./dist/cjs/production/index.js",
   "module": "./dist/esm/production/index.js",
   "exports": {
@@ -126,11 +127,12 @@
     "test:transform": "vitest run --project transform",
     "test:react": "vitest run --project react",
     "check-types": "tsc --noEmit",
-    "build": "npm run build:clean && npm run build:types && npm run build:dev && npm run build:prod && node scripts/generate-legacy-entries.cjs",
-    "build:clean": "rm -rf dist",
+    "build": "npm run build:clean && npm run build:types && npm run build:tsc && npm run build:dev && npm run build:prod && node scripts/generate-legacy-entries.cjs",
+    "build:clean": "rm -rf dist .tsc-out",
     "build:types": "tsc --emitDeclarationOnly --outDir dist/esm",
-    "build:dev": "BUILD_MODE=development vite build",
-    "build:prod": "BUILD_MODE=production vite build"
+    "build:tsc": "tsc -p tsconfig.build.json",
+    "build:dev": "npm run build:tsc && BUILD_MODE=development vite build",
+    "build:prod": "npm run build:tsc && BUILD_MODE=production vite build"
   },
   "author": "Kristen Hewell Garrett <me@pzuraq.com>",
   "license": "ISC",

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { signal, reactiveSignal, watcher, context, getContext, withContexts } from '../index.js';
+import { batch, settled } from '../internals/scheduling.js';
 import { reactive } from './utils/instrumented-hooks.js';
 import { nextTick } from './utils/async.js';
 
@@ -129,6 +130,45 @@ describe('reactiveSignal', () => {
 
       unsub();
     });
+
+    test('diamond dependency graph recomputes bottom node exactly once', async () => {
+      const a = signal(1);
+      let bCount = 0,
+        cCount = 0,
+        dCount = 0;
+
+      const b = reactiveSignal(() => {
+        bCount++;
+        return a.value * 2;
+      });
+
+      const c = reactiveSignal(() => {
+        cCount++;
+        return a.value * 3;
+      });
+
+      const d = reactiveSignal(() => {
+        dCount++;
+        return b.value + c.value;
+      });
+
+      const unsub = (d as any).addListener(() => {});
+
+      expect(d.value).toBe(5);
+      expect(dCount).toBe(1);
+      expect(bCount).toBe(1);
+      expect(cCount).toBe(1);
+
+      a.value = 2;
+      await nextTick();
+
+      expect(d.value).toBe(10);
+      expect(bCount).toBe(2);
+      expect(cCount).toBe(2);
+      expect(dCount).toBe(2);
+
+      unsub();
+    });
   });
 
   describe('memoization / caching', () => {
@@ -230,6 +270,35 @@ describe('reactiveSignal', () => {
       expect(computed.value).toBe('constant');
       // Note: compute only happens if the dependency is tracked
       // Since state is not tracked (not used in compute), no recomputation
+
+      unsub();
+    });
+
+    test('equals always returning true suppresses listener calls after initial notification', async () => {
+      const s = signal(0);
+      let computeCount = 0;
+      let listenerCalls = 0;
+
+      const derived = reactiveSignal(
+        () => {
+          computeCount++;
+          return s.value;
+        },
+        { equals: () => true },
+      );
+
+      const unsub = (derived as any).addListener(() => {
+        listenerCalls++;
+      });
+
+      await nextTick();
+      const initialCalls = listenerCalls;
+
+      s.value = 1;
+      await nextTick();
+
+      expect(computeCount).toBeGreaterThanOrEqual(2);
+      expect(listenerCalls).toBe(initialCalls);
 
       unsub();
     });
@@ -477,6 +546,53 @@ describe('reactiveSignal', () => {
 
       unsub();
     });
+
+    test('mutating state inside a listener callback triggers further updates', async () => {
+      const a = signal(0);
+      const b = signal(0);
+
+      const derivedA = reactiveSignal(() => a.value);
+      const derivedB = reactiveSignal(() => b.value);
+
+      const unsub1 = (derivedA as any).addListener(() => {
+        b.value = a.value * 10;
+      });
+      const unsub2 = (derivedB as any).addListener(() => {});
+
+      expect(derivedA.value).toBe(0);
+      expect(derivedB.value).toBe(0);
+
+      a.value = 1;
+      await nextTick();
+      await nextTick();
+
+      expect(derivedA.value).toBe(1);
+      expect(derivedB.value).toBe(10);
+
+      unsub1();
+      unsub2();
+    });
+
+    test('removing listener before flush prevents recomputation', async () => {
+      const s = signal(0);
+      let computeCount = 0;
+
+      const derived = reactiveSignal(() => {
+        computeCount++;
+        return s.value;
+      });
+
+      const unsub = (derived as any).addListener(() => {});
+      expect(derived.value).toBe(0);
+      expect(computeCount).toBe(1);
+
+      s.value = 1;
+      unsub();
+
+      await nextTick();
+
+      expect(computeCount).toBe(1);
+    });
   });
 
   describe('options', () => {
@@ -572,6 +688,80 @@ describe('reactiveSignal', () => {
       result = computed.value;
       expect(result.isRejected).toBe(true);
       expect(result.error).toBeInstanceOf(Error);
+
+      unsub();
+    });
+  });
+
+  describe('batch', () => {
+    test('batch() does not hang settled() when called during an active flush', async () => {
+      const s = signal(0);
+      const w = watcher(() => s.value);
+      const unsub = w.addListener(() => {});
+
+      s.value = 1;
+
+      batch(() => {
+        s.value = 2;
+      });
+
+      const timeout = new Promise<string>((_, reject) => setTimeout(() => reject(new Error('settled() hung')), 500));
+      await Promise.race([settled(), timeout]);
+
+      expect(w.value).toBe(2);
+      unsub();
+    });
+
+    test('batch() coalesces multiple updates into one flush', async () => {
+      const a = signal(0);
+      const b = signal(0);
+      let computeCount = 0;
+
+      const sum = reactiveSignal(() => {
+        computeCount++;
+        return a.value + b.value;
+      });
+
+      const unsub = (sum as any).addListener(() => {});
+
+      expect(sum.value).toBe(0);
+      expect(computeCount).toBe(1);
+
+      batch(() => {
+        a.value = 1;
+        b.value = 2;
+      });
+
+      await nextTick();
+
+      expect(sum.value).toBe(3);
+      expect(computeCount).toBe(2);
+
+      unsub();
+    });
+
+    test('batch prevents intermediate listener notifications', async () => {
+      const s = signal(0);
+      let listenerCalls = 0;
+
+      const derived = reactiveSignal(() => s.value);
+      const unsub = (derived as any).addListener(() => {
+        listenerCalls++;
+      });
+
+      await nextTick();
+      listenerCalls = 0;
+
+      batch(() => {
+        s.value = 1;
+        s.value = 2;
+        s.value = 3;
+      });
+
+      await nextTick();
+
+      expect(derived.value).toBe(3);
+      expect(listenerCalls).toBe(1);
 
       unsub();
     });

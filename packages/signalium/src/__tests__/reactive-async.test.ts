@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { signal } from 'signalium';
+import { signal, reactive as _reactive, watcher } from 'signalium';
+import { asyncSettled } from '../internals/scheduling.js';
 import { reactive, relay } from './utils/instrumented-hooks.js';
 import { nextTick, sleep } from './utils/async.js';
 
@@ -874,6 +875,47 @@ describe('async computeds', () => {
       expect(dep1Count).toBe(1);
       expect(dep2Count).toBe(1);
       expect(dep3Count).toBe(1);
+    });
+
+    test('stale deps do not cause unnecessary recomputation after promise resolves', async () => {
+      const depX = signal('x1');
+      const depY = signal('y1');
+      let computeCount = 0;
+      let readX = true;
+
+      const asyncFn = _reactive(async () => {
+        computeCount++;
+        const y = depY.value;
+
+        if (readX) {
+          void depX.value;
+        }
+
+        return y;
+      });
+
+      const consumer = watcher(() => {
+        const result = asyncFn();
+        return result.value;
+      });
+      const unsub = consumer.addListener(() => {});
+
+      await asyncSettled();
+      expect(consumer.value).toBe('y1');
+      expect(computeCount).toBe(1);
+
+      readX = false;
+      depY.value = 'y2';
+      await asyncSettled();
+      expect(consumer.value).toBe('y2');
+      expect(computeCount).toBe(2);
+
+      const countBefore = computeCount;
+      depX.value = 'x2';
+      await asyncSettled();
+      expect(computeCount).toBe(countBefore);
+
+      unsub();
     });
 
     describe('relay lifecycle during async rerun', () => {

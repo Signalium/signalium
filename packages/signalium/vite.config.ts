@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react';
 const isProduction = process.env.BUILD_MODE === 'production';
 const outputSubdir = isProduction ? 'production' : 'development';
 
+const srcDir = resolve(__dirname, '.tsc-out');
+
 export default defineConfig({
   plugins: [react()],
   define: {
@@ -14,12 +16,12 @@ export default defineConfig({
   build: {
     lib: {
       entry: {
-        index: resolve(__dirname, 'src/index.ts'),
-        config: resolve(__dirname, 'src/config.ts'),
-        utils: resolve(__dirname, 'src/utils.ts'),
-        debug: resolve(__dirname, 'src/debug.ts'),
-        'react/index': resolve(__dirname, 'src/react/index.ts'),
-        'transform/index': resolve(__dirname, 'src/transform/index.ts'),
+        index: resolve(srcDir, 'index.js'),
+        config: resolve(srcDir, 'config.js'),
+        utils: resolve(srcDir, 'utils.js'),
+        debug: resolve(srcDir, 'debug.js'),
+        'react/index': resolve(srcDir, 'react/index.js'),
+        'transform/index': resolve(srcDir, 'transform/index.js'),
       },
       formats: ['es', 'cjs'],
     },

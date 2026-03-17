@@ -85,7 +85,9 @@ export const scheduleGcSweep = (scope: SignalScope) => {
 };
 
 const flushWatchers = async () => {
-  const flush = currentFlush!;
+  const flush = currentFlush;
+
+  if (!flush) return;
 
   // Flush all auto-pulled signals recursively, clearing
   // the microtask queue until they are all settled
@@ -200,6 +202,8 @@ export const asyncSettled = async (timeout = 100) => {
 };
 
 export const batch = (fn: () => void) => {
+  const prevFlush = currentFlush;
+
   let resolve: () => void;
   const promise = new Promise<void>(r => (resolve = r));
 
@@ -207,4 +211,8 @@ export const batch = (fn: () => void) => {
 
   fn();
   flushWatchers();
+
+  if (prevFlush) {
+    promise.then(prevFlush.resolve);
+  }
 };

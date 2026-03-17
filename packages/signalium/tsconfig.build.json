@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": ".tsc-out",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  }
+}
