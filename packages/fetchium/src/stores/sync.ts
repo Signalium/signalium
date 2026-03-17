@@ -1,8 +1,11 @@
 import { CachedQuery, QueryStore, type PreloadedEntityMap } from '../QueryClient.js';
 import { QueryDefinition } from '../query.js';
 import {
+  cacheTimeKeyFor,
   DEFAULT_CACHE_TIME,
   DEFAULT_MAX_COUNT,
+  LAST_USED_PREFIX,
+  lastUsedKeyFor,
   queueKeyFor,
   refCountKeyFor,
   refIdsKeyFor,
@@ -23,6 +26,8 @@ export interface SyncPersistentStore {
   setBuffer(key: string, value: Uint32Array): void;
 
   delete(key: string): void;
+
+  getAllKeys(): string[];
 }
 
 export class MemoryPersistentStore implements SyncPersistentStore {
@@ -58,6 +63,10 @@ export class MemoryPersistentStore implements SyncPersistentStore {
 
   delete(key: string): void {
     delete this.kv[key];
+  }
+
+  getAllKeys(): string[] {
+    return Object.keys(this.kv);
   }
 }
 
@@ -136,43 +145,41 @@ export class SyncQueryStore implements QueryStore {
 
   activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void {
     if (!this.kv.has(valueKeyFor(queryKey))) {
-      // Query not in store, nothing to do. This can happen if the query has
-      // been evicted from the cache, but is still active in memory.
       return;
     }
 
-    let queue = this.queues.get(queryDef.id);
+    const queryDefId = queryDef.id;
+    let queue = this.queues.get(queryDefId);
 
     if (queue === undefined) {
       const maxCount = queryDef.cache?.maxCount ?? DEFAULT_MAX_COUNT;
-      queue = this.kv.getBuffer(queueKeyFor(queryDef.id));
+      queue = this.kv.getBuffer(queueKeyFor(queryDefId));
 
       if (queue === undefined) {
         queue = new Uint32Array(maxCount);
-        this.kv.setBuffer(queueKeyFor(queryDef.id), queue);
+        this.kv.setBuffer(queueKeyFor(queryDefId), queue);
       } else if (queue.length !== maxCount) {
         queue = new Uint32Array(queue.buffer, 0, maxCount);
-        this.kv.setBuffer(queueKeyFor(queryDef.id), queue);
+        this.kv.setBuffer(queueKeyFor(queryDefId), queue);
       }
 
-      this.queues.set(queryDef.id, queue);
+      this.queues.set(queryDefId, queue);
     }
+
+    this.kv.setNumber(lastUsedKeyFor(queryDefId), Date.now());
+    this.kv.setNumber(cacheTimeKeyFor(queryDefId), queryDef.cache?.cacheTime ?? DEFAULT_CACHE_TIME);
 
     const indexOfKey = queue.indexOf(queryKey);
 
-    // Item already in queue, move to front
     if (indexOfKey >= 0) {
       if (indexOfKey === 0) {
-        // Already at front, nothing to do
         return;
       }
-      // Shift items right to make space at front
       queue.copyWithin(1, 0, indexOfKey);
       queue[0] = queryKey;
       return;
     }
 
-    // Item not in queue, add to front and evict tail
     const evicted = queue[queue.length - 1];
     queue.copyWithin(1, 0, queue.length - 1);
     queue[0] = queryKey;
@@ -180,6 +187,38 @@ export class SyncQueryStore implements QueryStore {
     if (evicted !== 0) {
       this.deleteQuery(evicted);
       this.kv.delete(updatedAtKeyFor(evicted));
+    }
+  }
+
+  purgeStaleQueries(): void {
+    const allKeys = this.kv.getAllKeys();
+    const now = Date.now();
+
+    for (const key of allKeys) {
+      if (!key.startsWith(LAST_USED_PREFIX)) continue;
+
+      const queryDefId = key.slice(LAST_USED_PREFIX.length);
+      const lastUsedAt = this.kv.getNumber(key);
+      const cacheTime = this.kv.getNumber(cacheTimeKeyFor(queryDefId)) ?? DEFAULT_CACHE_TIME;
+      const cacheTimeMs = cacheTime * 60 * 1000;
+
+      if (lastUsedAt === undefined || now - lastUsedAt > cacheTimeMs) {
+        const queue = this.kv.getBuffer(queueKeyFor(queryDefId));
+
+        if (queue !== undefined) {
+          for (const queryKey of queue) {
+            if (queryKey !== 0) {
+              this.deleteQuery(queryKey);
+              this.kv.delete(updatedAtKeyFor(queryKey));
+            }
+          }
+        }
+
+        this.kv.delete(queueKeyFor(queryDefId));
+        this.kv.delete(key);
+        this.kv.delete(cacheTimeKeyFor(queryDefId));
+        this.queues.delete(queryDefId);
+      }
     }
   }
 

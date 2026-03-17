@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { t, defineObject, defineArray, defineRecord, getShapeKey } from '../typeDefs.js';
+import { t, defineObject, defineArray, defineRecord, defineParseResult, getShapeKey } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
 import { Query, queryKeyForClass } from '../query.js';
 
@@ -221,6 +221,22 @@ describe('shapeKey consistency', () => {
       });
 
       const Config2 = defineObject({
+        apiKey: t.string,
+        timeout: t.number,
+      });
+
+      expect(getShapeKey(Config1)).toBe(getShapeKey(Config2));
+    });
+
+    it('should produce consistent shapeKeys regardless of field order', () => {
+      const Config1 = defineObject({
+        apiKey: t.string,
+        timeout: t.number,
+        retries: t.number,
+      });
+
+      const Config2 = defineObject({
+        retries: t.number,
         apiKey: t.string,
         timeout: t.number,
       });
@@ -591,6 +607,198 @@ describe('shapeKey consistency', () => {
 
       // Query keys should be the same even though the definitions were created separately
       expect(queryKeyForClass(GetUser1, params)).toBe(queryKeyForClass(GetUser2, params));
+    });
+  });
+
+  describe('Hash collision resistance', () => {
+    it('should distinguish CaseInsensitiveSet from regular Set with the same values', () => {
+      class Item1 extends Entity {
+        __typename = t.typename('Item');
+        id = t.id;
+        status = t.enum('active', 'inactive');
+      }
+
+      class Item2 extends Entity {
+        __typename = t.typename('Item');
+        id = t.id;
+        status = t.enum.caseInsensitive('active', 'inactive');
+      }
+
+      expect(getShapeKey(t.entity(Item1))).not.toBe(getShapeKey(t.entity(Item2)));
+    });
+
+    it('should produce order-independent shapeKeys for CaseInsensitiveSet', () => {
+      class Item1 extends Entity {
+        __typename = t.typename('CIOrder');
+        id = t.id;
+        status = t.enum.caseInsensitive('active', 'inactive', 'pending');
+      }
+
+      class Item2 extends Entity {
+        __typename = t.typename('CIOrder');
+        id = t.id;
+        status = t.enum.caseInsensitive('pending', 'active', 'inactive');
+      }
+
+      expect(getShapeKey(t.entity(Item1))).toBe(getShapeKey(t.entity(Item2)));
+    });
+
+    it('should not cancel out when multiple enum fields are present', () => {
+      const StatusEnum = t.enum('active', 'inactive');
+      const RoleEnum = t.enum('admin', 'user');
+
+      class WithBothEnums extends Entity {
+        __typename = t.typename('Multi');
+        id = t.id;
+        status = StatusEnum;
+        role = RoleEnum;
+      }
+
+      class WithOnlyStatus extends Entity {
+        __typename = t.typename('Multi');
+        id = t.id;
+        status = StatusEnum;
+      }
+
+      class WithOnlyRole extends Entity {
+        __typename = t.typename('Multi');
+        id = t.id;
+        role = RoleEnum;
+      }
+
+      const bothKey = getShapeKey(t.entity(WithBothEnums));
+      const statusKey = getShapeKey(t.entity(WithOnlyStatus));
+      const roleKey = getShapeKey(t.entity(WithOnlyRole));
+
+      expect(bothKey).not.toBe(statusKey);
+      expect(bothKey).not.toBe(roleKey);
+      expect(statusKey).not.toBe(roleKey);
+    });
+
+    it('should not cancel out when multiple case-insensitive enum fields are present', () => {
+      const ColorsEnum = t.enum.caseInsensitive('red', 'blue');
+      const SizesEnum = t.enum.caseInsensitive('small', 'large');
+
+      class WithBoth extends Entity {
+        __typename = t.typename('MultiCI');
+        id = t.id;
+        color = ColorsEnum;
+        size = SizesEnum;
+      }
+
+      class WithOnlyColor extends Entity {
+        __typename = t.typename('MultiCI');
+        id = t.id;
+        color = ColorsEnum;
+      }
+
+      class WithOnlySize extends Entity {
+        __typename = t.typename('MultiCI');
+        id = t.id;
+        size = SizesEnum;
+      }
+
+      const bothKey = getShapeKey(t.entity(WithBoth));
+      const colorKey = getShapeKey(t.entity(WithOnlyColor));
+      const sizeKey = getShapeKey(t.entity(WithOnlySize));
+
+      expect(bothKey).not.toBe(colorKey);
+      expect(bothKey).not.toBe(sizeKey);
+      expect(colorKey).not.toBe(sizeKey);
+    });
+
+    it('should distinguish array, record, and parseResult wrappers of the same inner type', () => {
+      const arrayDef = defineArray(t.string);
+      const recordDef = defineRecord(t.string);
+      const resultDef = defineParseResult(t.string);
+
+      const arrayKey = getShapeKey(arrayDef);
+      const recordKey = getShapeKey(recordDef);
+      const resultKey = getShapeKey(resultDef);
+
+      expect(arrayKey).not.toBe(recordKey);
+      expect(arrayKey).not.toBe(resultKey);
+      expect(recordKey).not.toBe(resultKey);
+    });
+
+    it('should distinguish objects from entities with the same shape', () => {
+      class AnEntity extends Entity {
+        __typename = t.typename('Thing');
+        id = t.id;
+        name = t.string;
+      }
+
+      const anObject = defineObject({
+        __typename: t.typename('Thing'),
+        id: t.id,
+        name: t.string,
+      });
+
+      expect(getShapeKey(t.entity(AnEntity))).not.toBe(getShapeKey(anObject));
+    });
+
+    it('should produce different shapeKeys for unions in any member order', () => {
+      class Alpha extends Entity {
+        __typename = t.typename('Alpha');
+        id = t.id;
+        a = t.string;
+      }
+
+      class Beta extends Entity {
+        __typename = t.typename('Beta');
+        id = t.id;
+        b = t.number;
+      }
+
+      const union1 = t.union(t.entity(Alpha), t.entity(Beta));
+      const union2 = t.union(t.entity(Beta), t.entity(Alpha));
+
+      expect(getShapeKey(union1)).toBe(getShapeKey(union2));
+    });
+
+    it('should distinguish unions that differ only in value types from those with defs', () => {
+      class OnlyDef extends Entity {
+        __typename = t.typename('OnlyDef');
+        id = t.id;
+        x = t.string;
+      }
+
+      const unionWithValues = t.union(t.string, t.number);
+      const unionWithDef = t.union(t.string, t.entity(OnlyDef));
+
+      expect(getShapeKey(unionWithDef)).not.toBe(getShapeKey(unionWithValues));
+    });
+
+    it('should produce distinct keys for objects with same field names but different enum values', () => {
+      class Item1 extends Entity {
+        __typename = t.typename('EnumDiff');
+        id = t.id;
+        color = t.enum('red', 'blue');
+      }
+
+      class Item2 extends Entity {
+        __typename = t.typename('EnumDiff');
+        id = t.id;
+        color = t.enum('green', 'yellow');
+      }
+
+      expect(getShapeKey(t.entity(Item1))).not.toBe(getShapeKey(t.entity(Item2)));
+    });
+
+    it('should produce distinct keys for nested arrays vs nested records', () => {
+      class Item1 extends Entity {
+        __typename = t.typename('Nested');
+        id = t.id;
+        data = t.array(t.number);
+      }
+
+      class Item2 extends Entity {
+        __typename = t.typename('Nested');
+        id = t.id;
+        data = t.record(t.number);
+      }
+
+      expect(getShapeKey(t.entity(Item1))).not.toBe(getShapeKey(t.entity(Item2)));
     });
   });
 });

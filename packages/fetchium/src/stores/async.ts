@@ -1,8 +1,11 @@
 import { QueryDefinition } from '../query.js';
 import { CachedQuery, QueryStore, type PreloadedEntityMap } from '../QueryClient.js';
 import {
+  cacheTimeKeyFor,
   DEFAULT_CACHE_TIME,
   DEFAULT_MAX_COUNT,
+  LAST_USED_PREFIX,
+  lastUsedKeyFor,
   queueKeyFor,
   refCountKeyFor,
   refIdsKeyFor,
@@ -27,6 +30,8 @@ export interface AsyncPersistentStore {
   setBuffer(key: string, value: Uint32Array): Promise<void>;
 
   delete(key: string): Promise<void>;
+
+  getAllKeys(): Promise<string[]>;
 }
 
 export type StoreMessage =
@@ -36,10 +41,11 @@ export type StoreMessage =
       queryKey: number;
       value: unknown;
       updatedAt: number;
+      cacheTime: number;
       refIds?: number[];
     }
   | { type: 'saveEntity'; entityKey: number; value: unknown; refIds?: number[] }
-  | { type: 'activateQuery'; queryDefId: string; queryKey: number }
+  | { type: 'activateQuery'; queryDefId: string; queryKey: number; cacheTime: number }
   | { type: 'deleteQuery'; queryKey: number };
 
 export interface AsyncQueryStoreConfig {
@@ -123,13 +129,13 @@ export class AsyncQueryStore implements QueryStore {
   private async processMessage(msg: StoreMessage): Promise<void> {
     switch (msg.type) {
       case 'saveQuery':
-        await this.writerSaveQuery(msg.queryDefId, msg.queryKey, msg.value, msg.updatedAt, msg.refIds);
+        await this.writerSaveQuery(msg.queryDefId, msg.queryKey, msg.value, msg.updatedAt, msg.cacheTime, msg.refIds);
         break;
       case 'saveEntity':
         await this.writerSaveEntity(msg.entityKey, msg.value, msg.refIds);
         break;
       case 'activateQuery':
-        await this.writerActivateQuery(msg.queryDefId, msg.queryKey);
+        await this.writerActivateQuery(msg.queryDefId, msg.queryKey, msg.cacheTime);
         break;
       case 'deleteQuery':
         await this.writerDeleteValue(msg.queryKey);
@@ -210,6 +216,7 @@ export class AsyncQueryStore implements QueryStore {
       queryKey,
       value,
       updatedAt,
+      cacheTime: queryDef.cache?.cacheTime ?? DEFAULT_CACHE_TIME,
       refIds: refIds ? Array.from(refIds) : undefined,
     };
 
@@ -240,6 +247,7 @@ export class AsyncQueryStore implements QueryStore {
       type: 'activateQuery',
       queryDefId: queryDef.id,
       queryKey,
+      cacheTime: queryDef.cache?.cacheTime ?? DEFAULT_CACHE_TIME,
     };
 
     if (this.isWriter) {
@@ -269,28 +277,26 @@ export class AsyncQueryStore implements QueryStore {
     queryKey: number,
     value: unknown,
     updatedAt: number,
+    cacheTime: number,
     refIds?: number[],
   ): Promise<void> {
     await this.setValue(queryKey, value, refIds ? new Set(refIds) : undefined);
     await this.delegate!.setNumber(updatedAtKeyFor(queryKey), updatedAt);
-    await this.writerActivateQuery(queryDefId, queryKey);
+    await this.writerActivateQuery(queryDefId, queryKey, cacheTime);
   }
 
   private async writerSaveEntity(entityKey: number, value: unknown, refIds?: number[]): Promise<void> {
     await this.setValue(entityKey, value, refIds ? new Set(refIds) : undefined);
   }
 
-  private async writerActivateQuery(queryDefId: string, queryKey: number): Promise<void> {
+  private async writerActivateQuery(queryDefId: string, queryKey: number, cacheTime: number): Promise<void> {
     if (!(await this.delegate!.has(valueKeyFor(queryKey)))) {
-      // Query not in store, nothing to do
       return;
     }
 
     let queue = this.queues.get(queryDefId);
 
     if (queue === undefined) {
-      // For now, use default max count. In a real implementation,
-      // we'd need to pass queryDef or maxCount through the message
       const maxCount = DEFAULT_MAX_COUNT;
       queue = await this.delegate!.getBuffer(queueKeyFor(queryDefId));
 
@@ -305,21 +311,20 @@ export class AsyncQueryStore implements QueryStore {
       this.queues.set(queryDefId, queue);
     }
 
+    await this.delegate!.setNumber(lastUsedKeyFor(queryDefId), Date.now());
+    await this.delegate!.setNumber(cacheTimeKeyFor(queryDefId), cacheTime);
+
     const indexOfKey = queue.indexOf(queryKey);
 
-    // Item already in queue, move to front
     if (indexOfKey >= 0) {
       if (indexOfKey === 0) {
-        // Already at front, nothing to do
         return;
       }
-      // Shift items right to make space at front
       queue.copyWithin(1, 0, indexOfKey);
       queue[0] = queryKey;
       return;
     }
 
-    // Item not in queue, add to front and evict tail
     const evicted = queue[queue.length - 1];
     queue.copyWithin(1, 0, queue.length - 1);
     queue[0] = queryKey;
@@ -327,6 +332,40 @@ export class AsyncQueryStore implements QueryStore {
     if (evicted !== 0) {
       await this.writerDeleteValue(evicted);
       await this.delegate!.delete(updatedAtKeyFor(evicted));
+    }
+  }
+
+  async purgeStaleQueries(): Promise<void> {
+    if (!this.delegate) return;
+
+    const allKeys = await this.delegate.getAllKeys();
+    const now = Date.now();
+
+    for (const key of allKeys) {
+      if (!key.startsWith(LAST_USED_PREFIX)) continue;
+
+      const queryDefId = key.slice(LAST_USED_PREFIX.length);
+      const lastUsedAt = await this.delegate.getNumber(key);
+      const cacheTime = (await this.delegate.getNumber(cacheTimeKeyFor(queryDefId))) ?? DEFAULT_CACHE_TIME;
+      const cacheTimeMs = cacheTime * 60 * 1000;
+
+      if (lastUsedAt === undefined || now - lastUsedAt > cacheTimeMs) {
+        const queue = await this.delegate.getBuffer(queueKeyFor(queryDefId));
+
+        if (queue !== undefined) {
+          for (const queryKey of queue) {
+            if (queryKey !== 0) {
+              await this.writerDeleteValue(queryKey);
+              await this.delegate.delete(updatedAtKeyFor(queryKey));
+            }
+          }
+        }
+
+        await this.delegate.delete(queueKeyFor(queryDefId));
+        await this.delegate.delete(key);
+        await this.delegate.delete(cacheTimeKeyFor(queryDefId));
+        this.queues.delete(queryDefId);
+      }
     }
   }
 

@@ -16,10 +16,26 @@ import {
   UnionTypeDefs,
 } from './types.js';
 import { Prettify } from './type-utils.js';
-import { hashValue } from 'signalium/utils';
+import { hashValue, registerCustomHash } from 'signalium/utils';
 
 const entries = Object.entries;
 const isArray = Array.isArray;
+const { imul } = Math;
+
+/**
+ * Combines two 32-bit hashes using one MurmurHash3 block round.
+ * Non-commutative (a and b play different roles), provides avalanche,
+ * and avoids the XOR-cancellation that occurs with plain `a ^ b`.
+ */
+function mixHashes(a: number, b: number): number {
+  let k = imul(b, 0xcc9e2d51);
+  k = (k << 15) | (k >>> 17);
+  k = imul(k, 0x1b873593);
+  let h = a;
+  h ^= k;
+  h = (h << 13) | (h >>> 19);
+  return (imul(h, 5) + 0xe6546b64) >>> 0;
+}
 
 export class ValidatorDef<T> {
   public mask: Mask;
@@ -152,26 +168,35 @@ export class CaseInsensitiveSet<T extends string | boolean | number> extends Set
   }
 }
 
+const CASE_INSENSITIVE_SET_SEED = 0x43494553;
+
+registerCustomHash(CaseInsensitiveSet, set => {
+  let sum = CASE_INSENSITIVE_SET_SEED;
+  for (const value of set) {
+    sum += hashValue(value);
+  }
+  return sum >>> 0;
+});
+
 // -----------------------------------------------------------------------------
 // Complex Type Definitions
 // -----------------------------------------------------------------------------
 
 function defineWrapperType(kindTag: number, mask: Mask, shape: InternalTypeDef): ValidatorDef<any> {
-  let shapeKey;
+  let innerShapeKey;
 
   if (shape instanceof ValidatorDef) {
-    shapeKey = shape.shapeKey;
+    innerShapeKey = shape.shapeKey;
 
     if (shape.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
       mask |= Mask.HAS_SUB_ENTITY;
     }
-  } else if (shape instanceof CaseInsensitiveSet) {
-    shapeKey = hashValue(Array.from(shape));
   } else {
-    shapeKey = hashValue(shape);
+    innerShapeKey = hashValue(shape);
   }
 
-  return new ValidatorDef(mask, shape, hashValue([kindTag, mask, undefined, shapeKey]) >>> 0);
+  const shapeKey = mixHashes(mixHashes(hashValue(kindTag), hashValue(mask)), innerShapeKey);
+  return new ValidatorDef(mask, shape, shapeKey);
 }
 
 export function defineArray<T extends TypeDef>(shape: T): TypeDef<ExtractType<T>[]> {
@@ -193,16 +218,16 @@ export function defineParseResult<T extends TypeDef>(
 }
 
 function defineObjectOrEntity(baseMask: Mask, shape: InternalObjectShape): ValidatorDef<any> {
-  // create a hash of the shape, starting with the object mask as the base
   let mask = baseMask;
-
-  let shapeKey = hashValue([mask, undefined]);
+  let shapeKey = hashValue(mask);
   let idField: string | undefined = undefined;
   let typenameField: string | undefined = undefined;
   let typenameValue: string | undefined = undefined;
   let subEntityPaths: undefined | string | string[] = undefined;
 
   for (const [key, value] of entries(shape)) {
+    const keyHash = hashValue(key);
+
     switch (typeof value) {
       case 'number':
         if ((value & Mask.ID) !== 0) {
@@ -213,11 +238,9 @@ function defineObjectOrEntity(baseMask: Mask, shape: InternalObjectShape): Valid
           idField = key;
         }
 
-        // Add to shape key (order independent operation)
-        shapeKey += hashValue(key) ^ value;
+        shapeKey += mixHashes(keyHash, hashValue(value));
         break;
       case 'string':
-        // This is a typename field (plain string value)
         if (typenameField !== undefined && typenameField !== key) {
           throw new Error(`Duplicate typename field: ${key}`);
         }
@@ -225,22 +248,15 @@ function defineObjectOrEntity(baseMask: Mask, shape: InternalObjectShape): Valid
         typenameField = key;
         typenameValue = value;
 
-        // Add to shape key (order independent operation)
-        shapeKey += hashValue(key) ^ hashValue(value);
+        shapeKey += mixHashes(keyHash, hashValue(value));
         break;
       case 'object':
-        if (value instanceof CaseInsensitiveSet) {
-          shapeKey ^= hashValue(key) ^ hashValue(Array.from(value));
+        if (value instanceof CaseInsensitiveSet || value instanceof Set) {
+          shapeKey += mixHashes(keyHash, hashValue(value));
           break;
         }
 
-        if (value instanceof Set) {
-          shapeKey ^= hashValue(key) ^ hashValue(value);
-          break;
-        }
-
-        // Add to shape key (order independent operation)
-        shapeKey += hashValue(key) ^ value.shapeKey;
+        shapeKey += mixHashes(keyHash, value.shapeKey);
 
         if (value.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
           mask |= Mask.HAS_SUB_ENTITY;
@@ -256,7 +272,6 @@ function defineObjectOrEntity(baseMask: Mask, shape: InternalObjectShape): Valid
     }
   }
 
-  // Convert to unsigned 32-bit integer
   shapeKey = shapeKey >>> 0;
 
   return new ValidatorDef(mask, shape, shapeKey, undefined, typenameField, typenameValue, idField, subEntityPaths);
@@ -408,7 +423,7 @@ function defineUnion<T extends readonly TypeDef[]>(...types: T): TypeDef<Extract
   return new ValidatorDef(
     finalMask,
     unionShape!,
-    (hashValue([mask | Mask.UNION, values]) + defShapeKeys) >>> 0,
+    mixHashes(hashValue([mask | Mask.UNION, values]), defShapeKeys >>> 0),
     values,
     unionTypenameField,
   ) as unknown as R;

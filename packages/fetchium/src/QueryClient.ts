@@ -138,6 +138,13 @@ export interface QueryStore {
   activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void;
 
   deleteQuery(queryKey: number): void;
+
+  /**
+   * Scans all persisted query types and purges those whose data has expired
+   * based on their cacheTime. Called on startup to clean up stale entries
+   * from previous sessions (e.g., after shapeKey changes or removed queries).
+   */
+  purgeStaleQueries?(): MaybePromise<void>;
 }
 
 export type MaybePromise<T> = T | Promise<T>;
@@ -214,6 +221,8 @@ export class QueryClient {
     this.refetchManager =
       refetchManager ?? (this.isServer ? new NoOpRefetchManager() : new RefetchManager(this.context.refetchMultiplier));
     this.networkManager = networkManager ?? new NetworkManager();
+
+    this.store.purgeStaleQueries?.();
   }
 
   getContext(): QueryContext {

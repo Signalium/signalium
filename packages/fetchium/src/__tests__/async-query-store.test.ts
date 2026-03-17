@@ -50,8 +50,7 @@ class MockAsyncPersistentStore implements AsyncPersistentStore {
     delete this.kv[key];
   }
 
-  // Test helper: get all keys
-  getAllKeys(): string[] {
+  async getAllKeys(): Promise<string[]> {
     return Object.keys(this.kv);
   }
 
