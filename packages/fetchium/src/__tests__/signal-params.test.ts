@@ -3,7 +3,7 @@ import { signal } from 'signalium';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { Query, fetchQuery } from '../query.js';
+import { JsonQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient } from './utils.js';
 
 /**
@@ -32,9 +32,10 @@ describe('Signal Parameters', () => {
       const idSignal = signal('123');
       mockFetch.get('/users/[id]', { id: 123, name: 'Test User' });
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = {
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = {
           id: t.number,
           name: t.string,
         };
@@ -53,13 +54,11 @@ describe('Signal Parameters', () => {
       const limitSignal = signal(10);
       mockFetch.get('/users', { users: [], page: 1, total: 0 });
 
-      class ListUsers extends Query {
+      class ListUsers extends JsonQuery {
+        params = { page: t.number, limit: t.number };
         path = '/users';
-        searchParams = {
-          page: t.number,
-          limit: t.number,
-        };
-        response = {
+        searchParams = { page: this.params.page, limit: this.params.limit };
+        result = {
           users: t.array(
             t.object({
               id: t.number,
@@ -83,12 +82,11 @@ describe('Signal Parameters', () => {
       const idSignal = signal('456');
       mockFetch.get('/users/[id]/posts', { posts: [] });
 
-      class GetUserPosts extends Query {
-        path = '/users/[id]/posts';
-        searchParams = {
-          status: t.string,
-        };
-        response = {
+      class GetUserPosts extends JsonQuery {
+        params = { id: t.id, status: t.string };
+        path = `/users/${this.params.id}/posts`;
+        searchParams = { status: this.params.status };
+        result = {
           posts: t.array(
             t.object({
               id: t.number,
@@ -112,9 +110,10 @@ describe('Signal Parameters', () => {
       mockFetch.get('/users/[id]', { id: 123, name: 'User 123' });
       mockFetch.get('/users/[id]', { id: 456, name: 'User 456' });
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = {
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = {
           id: t.number,
           name: t.string,
         };
@@ -151,13 +150,11 @@ describe('Signal Parameters', () => {
       mockFetch.get('/users', { users: [], page: 1, total: 0 });
       mockFetch.get('/users', { users: [], page: 2, total: 0 });
 
-      class ListUsers extends Query {
+      class ListUsers extends JsonQuery {
+        params = { page: t.number, limit: t.number };
         path = '/users';
-        searchParams = {
-          page: t.number,
-          limit: t.number,
-        };
-        response = {
+        searchParams = { page: this.params.page, limit: this.params.limit };
+        result = {
           users: t.array(t.object({ id: t.number })),
           page: t.number,
           total: t.number,
@@ -193,9 +190,10 @@ describe('Signal Parameters', () => {
       const idSignal2 = signal('123');
       mockFetch.get('/users/[id]', { id: 123, name: 'Test User' });
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = {
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = {
           id: t.number,
           name: t.string,
         };
@@ -218,9 +216,10 @@ describe('Signal Parameters', () => {
       mockFetch.get('/users/[id]', { id: 123, name: 'User 123' });
       mockFetch.get('/users/[id]', { id: 456, name: 'User 456' });
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = {
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = {
           id: t.number,
           name: t.string,
         };
@@ -243,12 +242,11 @@ describe('Signal Parameters', () => {
       const idSignal = signal<number | undefined>(undefined);
       mockFetch.get('/users', { id: null, name: 'No User' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
+        params = { id: t.optional(t.number) };
         path = '/users';
-        searchParams = {
-          id: t.optional(t.number),
-        };
-        response = {
+        searchParams = { id: this.params.id };
+        result = {
           id: t.nullable(t.number),
           name: t.string,
         };
@@ -265,12 +263,11 @@ describe('Signal Parameters', () => {
       const idSignal = signal<number | null>(null);
       mockFetch.get('/users', { id: null, name: 'No User' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
+        params = { id: t.nullable(t.number) };
         path = '/users';
-        searchParams = {
-          id: t.nullable(t.number),
-        };
-        response = {
+        searchParams = { id: this.params.id };
+        result = {
           id: t.nullable(t.number),
           name: t.string,
         };

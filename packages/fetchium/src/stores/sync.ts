@@ -78,7 +78,7 @@ export class SyncQueryStore implements QueryStore {
   loadQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): CachedQuery | undefined {
     const updatedAt = this.kv.getNumber(updatedAtKeyFor(queryKey));
 
-    const cacheTimeMs = (queryDef.cache?.cacheTime ?? DEFAULT_CACHE_TIME) * 60 * 1000;
+    const cacheTimeMs = (queryDef.statics.cache?.cacheTime ?? DEFAULT_CACHE_TIME) * 60 * 1000;
     if (updatedAt === undefined || updatedAt < Date.now() - cacheTimeMs) {
       return;
     }
@@ -148,11 +148,11 @@ export class SyncQueryStore implements QueryStore {
       return;
     }
 
-    const queryDefId = queryDef.id;
+    const queryDefId = queryDef.statics.id;
     let queue = this.queues.get(queryDefId);
 
     if (queue === undefined) {
-      const maxCount = queryDef.cache?.maxCount ?? DEFAULT_MAX_COUNT;
+      const maxCount = queryDef.statics.cache?.maxCount ?? DEFAULT_MAX_COUNT;
       queue = this.kv.getBuffer(queueKeyFor(queryDefId));
 
       if (queue === undefined) {
@@ -167,7 +167,7 @@ export class SyncQueryStore implements QueryStore {
     }
 
     this.kv.setNumber(lastUsedKeyFor(queryDefId), Date.now());
-    this.kv.setNumber(cacheTimeKeyFor(queryDefId), queryDef.cache?.cacheTime ?? DEFAULT_CACHE_TIME);
+    this.kv.setNumber(cacheTimeKeyFor(queryDefId), queryDef.statics.cache?.cacheTime ?? DEFAULT_CACHE_TIME);
 
     const indexOfKey = queue.indexOf(queryKey);
 

@@ -4,6 +4,7 @@ import { ValidatorDef } from './typeDefs.js';
 import { type QueryClient } from './QueryClient.js';
 import { MutationDefinition } from './mutation.js';
 import { resolveRetryConfig } from './query.js';
+import { createExecutionContext } from './fieldRef.js';
 
 // ======================================================
 // MutationResultImpl
@@ -49,10 +50,6 @@ export class MutationResultImpl<Request, Response> {
     });
   }
 
-  /**
-   * Apply request entities to the store (non-optimistic, on success).
-   * Uses parseEntities which calls saveEntity for each entity found.
-   */
   private applyRequestEntities(request: Request): void {
     const requestShape = this.def.requestShape;
 
@@ -81,13 +78,18 @@ export class MutationResultImpl<Request, Response> {
   // ======================================================
 
   private async executeWithRetry(request: Request): Promise<Response> {
-    // Mutations default to 0 retries (isServer=true forces 0 in resolveRetryConfig)
-    const { retries, retryDelay } = resolveRetryConfig(this.def.cache?.retry, true);
+    const { retries, retryDelay } = resolveRetryConfig(this.def.config?.retry, true);
     let lastError: unknown;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        return await this.def.mutateFn(this.queryClient.getContext(), request);
+        const ctx = createExecutionContext(
+          this.def.captured,
+          (request ?? {}) as Record<string, unknown>,
+          this.queryClient.getContext(),
+        );
+
+        return (await this.def.captured.methods.send.call(ctx)) as Response;
       } catch (error) {
         lastError = error;
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -134,9 +134,9 @@ describe('t.nullish', () => {
         mockFetch.get('/item', { value: null });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { value: t.nullish(t.string) };
+            result = { value: t.nullish(t.string) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -151,9 +151,9 @@ describe('t.nullish', () => {
         mockFetch.get('/item', { value: undefined });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { value: t.nullish(t.string) };
+            result = { value: t.nullish(t.string) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -168,9 +168,9 @@ describe('t.nullish', () => {
         mockFetch.get('/item', { value: 'present' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { value: t.nullish(t.string) };
+            result = { value: t.nullish(t.string) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -189,9 +189,9 @@ describe('t.nullish', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = {
+            result = {
               user: t.object({
                 name: t.string,
                 deletedAt: t.nullish(t.string),
@@ -216,9 +216,9 @@ describe('t.nullish', () => {
         mockFetch.get('/items', { items: ['a', null, null, 'b'] });
 
         await testWithClient(client, async () => {
-          class GetItems extends Query {
+          class GetItems extends JsonQuery {
             path = '/items';
-            response = { items: t.array(t.nullish(t.string)) };
+            result = { items: t.array(t.nullish(t.string)) };
           }
 
           const relay = fetchQuery(GetItems);
@@ -237,9 +237,9 @@ describe('t.nullish', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetData extends Query {
+          class GetData extends JsonQuery {
             path = '/data';
-            response = { values: t.record(t.nullish(t.string)) };
+            result = { values: t.record(t.nullish(t.string)) };
           }
 
           const relay = fetchQuery(GetData);
@@ -478,9 +478,9 @@ describe('t.nullish', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = {
+            result = {
               name: t.string,
               value: t.nullish(t.number),
             };

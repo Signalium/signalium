@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientContext } from '../QueryClient.js';
 import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
-import { Query, fetchQuery } from '../query.js';
+import { JsonQuery, fetchQuery } from '../query.js';
 import { NetworkManager } from '../NetworkManager.js';
 import { NetworkMode } from '../types.js';
 import { createMockFetch, testWithClient, sleep, createTestWatcher } from './utils.js';
@@ -30,9 +30,9 @@ describe('Network Mode', () => {
     it('should fetch when online', async () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
+        result = t.object({ id: t.string, name: t.string });
       }
 
       await testWithClient(client, async () => {
@@ -48,10 +48,10 @@ describe('Network Mode', () => {
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = { networkMode: NetworkMode.Online };
+        result = t.object({ id: t.string, name: t.string });
+        config = { networkMode: NetworkMode.Online };
       }
 
       await testWithClient(client, async () => {
@@ -68,10 +68,10 @@ describe('Network Mode', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
       mockFetch.get('/users/1', { id: '1', name: 'Alice Updated' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = {
+        result = t.object({ id: t.string, name: t.string });
+        config = {
           networkMode: NetworkMode.Online,
           staleTime: 0, // Always stale
           refreshStaleOnReconnect: true,
@@ -112,10 +112,10 @@ describe('Network Mode', () => {
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = { networkMode: NetworkMode.Always };
+        result = t.object({ id: t.string, name: t.string });
+        config = { networkMode: NetworkMode.Always };
       }
 
       await testWithClient(client, async () => {
@@ -130,10 +130,10 @@ describe('Network Mode', () => {
     it('should never be paused', async () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = { networkMode: NetworkMode.Always };
+        result = t.object({ id: t.string, name: t.string });
+        config = { networkMode: NetworkMode.Always };
       }
 
       await testWithClient(client, async () => {
@@ -153,10 +153,10 @@ describe('Network Mode', () => {
     it('should fetch when online and no cache', async () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = { networkMode: NetworkMode.OfflineFirst };
+        result = t.object({ id: t.string, name: t.string });
+        config = { networkMode: NetworkMode.OfflineFirst };
       }
 
       await testWithClient(client, async () => {
@@ -174,10 +174,10 @@ describe('Network Mode', () => {
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = { networkMode: NetworkMode.OfflineFirst };
+        result = t.object({ id: t.string, name: t.string });
+        config = { networkMode: NetworkMode.OfflineFirst };
       }
 
       await testWithClient(client, async () => {
@@ -192,10 +192,10 @@ describe('Network Mode', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
       mockFetch.get('/users/1', { id: '1', name: 'Alice Updated' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = {
+        result = t.object({ id: t.string, name: t.string });
+        config = {
           networkMode: NetworkMode.OfflineFirst,
           staleTime: 0, // Always stale so we try to refetch
         };
@@ -224,10 +224,10 @@ describe('Network Mode', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
       mockFetch.get('/users/1', { id: '1', name: 'Alice Updated' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = {
+        result = t.object({ id: t.string, name: t.string });
+        config = {
           staleTime: 0, // Always stale
           // refreshStaleOnReconnect defaults to true
         };
@@ -259,10 +259,10 @@ describe('Network Mode', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
       mockFetch.get('/users/1', { id: '1', name: 'Alice Updated' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = {
+        result = t.object({ id: t.string, name: t.string });
+        config = {
           staleTime: 0, // Always stale
           refreshStaleOnReconnect: false,
         };
@@ -293,10 +293,10 @@ describe('Network Mode', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
       mockFetch.get('/users/1', { id: '1', name: 'Alice Updated' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = {
+        result = t.object({ id: t.string, name: t.string });
+        config = {
           staleTime: 60000, // 1 minute - won't be stale
           refreshStaleOnReconnect: true,
         };
@@ -340,10 +340,10 @@ describe('Network Mode', () => {
         return { id: '1', name: 'Alice' };
       });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = {
+        result = t.object({ id: t.string, name: t.string });
+        config = {
           retry: {
             retries: 3,
             retryDelay: () => 10, // Short delay for faster tests
@@ -380,9 +380,9 @@ describe('Network Mode', () => {
         throw new Error('Network error');
       });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
+        result = t.object({ id: t.string, name: t.string });
       }
 
       await testWithClient(serverClient, async () => {
@@ -418,10 +418,10 @@ describe('Network Mode', () => {
         return { id: '1', name: 'Alice' };
       });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = {
+        result = t.object({ id: t.string, name: t.string });
+        config = {
           retry: {
             retries: 5,
             retryDelay: () => 10, // Short delay for faster tests
@@ -446,10 +446,10 @@ describe('Network Mode', () => {
         throw new Error('Network error');
       });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = { retry: false as const };
+        result = t.object({ id: t.string, name: t.string });
+        config = { retry: false as const };
       }
 
       await testWithClient(client, async () => {
@@ -478,10 +478,10 @@ describe('Network Mode', () => {
         return { id: '1', name: 'Alice' };
       });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = {
+        result = t.object({ id: t.string, name: t.string });
+        config = {
           retry: {
             retries: 2,
             retryDelay: (attempt: number) => {
@@ -514,10 +514,10 @@ describe('Network Mode', () => {
         throw new Error('Network error');
       });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = {
+        result = t.object({ id: t.string, name: t.string });
+        config = {
           retry: {
             retries: 5,
             retryDelay: () => 10, // Short delay for faster test
@@ -553,10 +553,10 @@ describe('Network Mode', () => {
         return { id: '1', name: 'Alice' };
       });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/users/1';
-        response = t.object({ id: t.string, name: t.string });
-        cache = {
+        result = t.object({ id: t.string, name: t.string });
+        config = {
           retry: {
             retries: 3,
             retryDelay: () => 10,

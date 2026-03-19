@@ -6,7 +6,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { createRenderCounter } from './utils.js';
 import { useQuery } from '../use-query.js';
@@ -41,9 +41,9 @@ describe('useQuery Hook', () => {
 
       mockFetch.get('/user', { __typename: 'User', id: '1', name: 'Alice' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/user';
-        response = t.entity(User);
+        result = t.entity(User);
       }
 
       let directQueryResult: any;
@@ -99,9 +99,10 @@ describe('useQuery Hook', () => {
 
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice' });
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = t.entity(User);
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = t.entity(User);
       }
 
       const Counter = createRenderCounter(({ name }: { name: string }) => <div data-testid="name">{name}</div>);
@@ -158,9 +159,10 @@ describe('useQuery Hook', () => {
         author: { __typename: 'User', id: '5', name: 'Alice' },
       });
 
-      class GetPost extends Query {
-        path = '/post/[id]';
-        response = t.entity(Post);
+      class GetPost extends JsonQuery {
+        params = { id: t.id };
+        path = `/post/${this.params.id}`;
+        result = t.entity(Post);
       }
 
       let postQuery: QueryPromise<GetPost>;
@@ -209,9 +211,9 @@ describe('useQuery Hook', () => {
     it('should verify cloned values are independent', async () => {
       mockFetch.get('/data', { count: 1, nested: { value: 'original' } });
 
-      class GetData extends Query {
+      class GetData extends JsonQuery {
         path = '/data';
-        response = {
+        result = {
           count: t.number,
           nested: t.object({ value: t.string }),
         };
@@ -261,9 +263,9 @@ describe('useQuery Hook', () => {
 
       mockFetch.get('/user', { __typename: 'User', id: '1', name: 'Alice', email: 'alice@example.com' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/user';
-        response = t.entity(User);
+        result = t.entity(User);
       }
 
       let memoRenderCount = 0;
@@ -325,9 +327,9 @@ describe('useQuery Hook', () => {
 
       mockFetch.get('/user', { __typename: 'User', id: '1', name: 'Alice' });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/user';
-        response = t.entity(User);
+        result = t.entity(User);
       }
 
       let memoRenderCount = 0;
@@ -376,9 +378,9 @@ describe('useQuery Hook', () => {
         ],
       });
 
-      class GetItems extends Query {
+      class GetItems extends JsonQuery {
         path = '/items';
-        response = {
+        result = {
           items: t.array(t.object({ id: t.number, price: t.number })),
         };
       }
@@ -448,9 +450,9 @@ describe('useQuery Hook', () => {
         },
       });
 
-      class GetUser extends Query {
+      class GetUser extends JsonQuery {
         path = '/user';
-        response = t.entity(User);
+        result = t.entity(User);
       }
 
       let memoRenderCount = 0;
@@ -528,9 +530,10 @@ describe('useQuery Hook', () => {
         },
       });
 
-      class GetPost extends Query {
-        path = '/posts/[id]';
-        response = t.entity(Post);
+      class GetPost extends JsonQuery {
+        params = { id: t.id };
+        path = `/posts/${this.params.id}`;
+        result = t.entity(Post);
       }
 
       let authorCardRenderCount = 0;
@@ -660,9 +663,10 @@ describe('useQuery Hook', () => {
         author: { __typename: 'User', id: '1', name: 'Alice', email: 'alice@example.com' },
       });
 
-      class GetPost extends Query {
-        path = '/posts/[postId]';
-        response = t.entity(Post);
+      class GetPost extends JsonQuery {
+        params = { postId: t.id };
+        path = `/posts/${this.params.postId}`;
+        result = t.entity(Post);
       }
 
       let postQueryResult: QueryPromise<GetPost>;
@@ -717,9 +721,10 @@ describe('useQuery Hook', () => {
 
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice' });
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = t.entity(User);
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = t.entity(User);
       }
 
       let userQueryA: QueryPromise<GetUser>;
@@ -797,9 +802,10 @@ describe('useQuery Hook', () => {
         ],
       });
 
-      class GetPost extends Query {
-        path = '/post/[id]';
-        response = t.entity(Post);
+      class GetPost extends JsonQuery {
+        params = { id: t.id };
+        path = `/post/${this.params.id}`;
+        result = t.entity(Post);
       }
 
       let postQuery: QueryPromise<GetPost>;
@@ -856,9 +862,9 @@ describe('useQuery Hook', () => {
       const now = new Date('2024-01-01T00:00:00.000Z');
       mockFetch.get('/event', { id: 1, date: now.toISOString() });
 
-      class GetEvent extends Query {
+      class GetEvent extends JsonQuery {
         path = '/event';
-        response = {
+        result = {
           id: t.number,
           date: t.string,
         };
@@ -898,9 +904,9 @@ describe('useQuery Hook', () => {
         },
       });
 
-      class GetNested extends Query {
+      class GetNested extends JsonQuery {
         path = '/nested';
-        response = {
+        result = {
           level1: t.object({
             level2: t.object({
               level3: t.object({
@@ -954,9 +960,9 @@ describe('useQuery Hook', () => {
         nested: { empty: {} },
       });
 
-      class GetEmpty extends Query {
+      class GetEmpty extends JsonQuery {
         path = '/empty';
-        response = {
+        result = {
           emptyObj: t.object({}),
           emptyArray: t.array(t.number),
           nested: t.object({ empty: t.object({}) }),
@@ -1005,9 +1011,9 @@ describe('useQuery Hook', () => {
         ],
       });
 
-      class GetUsers extends Query {
+      class GetUsers extends JsonQuery {
         path = '/users';
-        response = {
+        result = {
           users: t.array(t.entity(User)),
         };
       }
@@ -1053,9 +1059,9 @@ describe('useQuery Hook', () => {
     it('should work with standard queries', async () => {
       mockFetch.get('/item', { id: 1, name: 'Test' });
 
-      class GetItem extends Query {
+      class GetItem extends JsonQuery {
         path = '/item';
-        response = { id: t.number, name: t.string };
+        result = { id: t.number, name: t.string };
       }
 
       function Component(): React.ReactNode {
@@ -1075,9 +1081,9 @@ describe('useQuery Hook', () => {
     it('should handle refetch behavior', async () => {
       mockFetch.get('/counter', { count: 0 });
 
-      class GetCounter extends Query {
+      class GetCounter extends JsonQuery {
         path = '/counter';
-        response = { count: t.number };
+        result = { count: t.number };
       }
 
       let counterQuery: QueryPromise<GetCounter>;
@@ -1111,9 +1117,9 @@ describe('useQuery Hook', () => {
     it('should work with queries returning primitive values', async () => {
       mockFetch.get('/count', { value: 42 });
 
-      class GetCount extends Query {
+      class GetCount extends JsonQuery {
         path = '/count';
-        response = { value: t.number };
+        result = { value: t.number };
       }
 
       function Component(): React.ReactNode {
@@ -1135,9 +1141,9 @@ describe('useQuery Hook', () => {
     it('should handle null values in results', async () => {
       mockFetch.get('/data', { value: null, name: 'Test' });
 
-      class GetData extends Query {
+      class GetData extends JsonQuery {
         path = '/data';
-        response = {
+        result = {
           value: t.union(t.string, t.null),
           name: t.string,
         };
@@ -1171,9 +1177,9 @@ describe('useQuery Hook', () => {
     it('should handle undefined optional fields', async () => {
       mockFetch.get('/data', { required: 'yes' });
 
-      class GetData extends Query {
+      class GetData extends JsonQuery {
         path = '/data';
-        response = {
+        result = {
           required: t.string,
           optional: t.union(t.string, t.undefined),
         };
@@ -1209,9 +1215,9 @@ describe('useQuery Hook', () => {
     it('should handle multiple useQuery calls with same underlying query', async () => {
       mockFetch.get('/shared', { data: 'shared' });
 
-      class GetShared extends Query {
+      class GetShared extends JsonQuery {
         path = '/shared';
-        response = { data: t.string };
+        result = { data: t.string };
       }
 
       function Component(): React.ReactNode {
@@ -1242,9 +1248,9 @@ describe('useQuery Hook', () => {
     it('should maintain cloning after multiple refetches', async () => {
       mockFetch.get('/data', { count: 0 });
 
-      class GetData extends Query {
+      class GetData extends JsonQuery {
         path = '/data';
-        response = { count: t.number };
+        result = { count: t.number };
       }
 
       let queryResult: QueryPromise<GetData>;
@@ -1283,9 +1289,9 @@ describe('useQuery Hook', () => {
     it('should handle boolean values correctly', async () => {
       mockFetch.get('/flags', { isActive: true, isDisabled: false });
 
-      class GetFlags extends Query {
+      class GetFlags extends JsonQuery {
         path = '/flags';
-        response = {
+        result = {
           isActive: t.boolean,
           isDisabled: t.boolean,
         };
@@ -1319,9 +1325,9 @@ describe('useQuery Hook', () => {
     it('should handle number edge cases (0, negative, float)', async () => {
       mockFetch.get('/numbers', { zero: 0, negative: -42, float: 3.14 });
 
-      class GetNumbers extends Query {
+      class GetNumbers extends JsonQuery {
         path = '/numbers';
-        response = {
+        result = {
           zero: t.number,
           negative: t.number,
           float: t.number,

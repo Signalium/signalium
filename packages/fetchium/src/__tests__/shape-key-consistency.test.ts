@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t, defineObject, defineArray, defineRecord, defineParseResult, getShapeKey } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, queryKeyForClass } from '../query.js';
+import { JsonQuery, queryKeyForClass } from '../query.js';
 
 /**
  * Test suite to verify that shapeKey is consistent and deterministic.
@@ -344,32 +344,36 @@ describe('shapeKey consistency', () => {
         name = t.string;
       }
 
-      class GetUser1 extends Query {
-        path = '/users/[id]';
-        response = t.entity(User);
+      class GetUser1 extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User);
       }
 
-      class GetUser2 extends Query {
-        path = '/users/[id]';
-        response = t.entity(User);
+      class GetUser2 extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User);
       }
 
       expect(queryKeyForClass(GetUser1, { id: '123' })).toBe(queryKeyForClass(GetUser2, { id: '123' }));
     });
 
     it('should produce the same shapeKey for queries with identical inline response shapes', () => {
-      class GetUser1 extends Query {
-        path = '/users/[id]';
-        response = {
+      class GetUser1 extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = {
           id: t.id,
           name: t.string,
           email: t.string,
         };
       }
 
-      class GetUser2 extends Query {
-        path = '/users/[id]';
-        response = {
+      class GetUser2 extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = {
           id: t.id,
           name: t.string,
           email: t.string,
@@ -396,17 +400,19 @@ describe('shapeKey consistency', () => {
       expect(getShapeKey(shape1)).not.toBe(getShapeKey(shape2));
 
       // Now verify that queries using these shapes produce different query keys
-      class GetUser1 extends Query {
-        path = '/users/[id]';
-        response = {
+      class GetUser1 extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = {
           id: t.id,
           name: t.string,
         };
       }
 
-      class GetUser2 extends Query {
-        path = '/users/[id]';
-        response = {
+      class GetUser2 extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = {
           id: t.id,
           name: t.string,
           email: t.string, // Different field
@@ -427,9 +433,10 @@ describe('shapeKey consistency', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = t.entity(User);
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User);
       }
 
       const params = { id: '123' };
@@ -456,14 +463,16 @@ describe('shapeKey consistency', () => {
         name = t.string;
       }
 
-      class GetUser1 extends Query {
-        path = '/users/[id]';
-        response = t.entity(User1);
+      class GetUser1 extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User1);
       }
 
-      class GetUser2 extends Query {
-        path = '/users/[id]';
-        response = t.entity(User2);
+      class GetUser2 extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User2);
       }
 
       const params = { id: '123' };
@@ -487,14 +496,16 @@ describe('shapeKey consistency', () => {
         email = t.string; // Different shape
       }
 
-      class GetUser1 extends Query {
-        path = '/users/[id]';
-        response = t.entity(User1);
+      class GetUser1 extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User1);
       }
 
-      class GetUser2 extends Query {
-        path = '/users/[id]';
-        response = t.entity(User2);
+      class GetUser2 extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User2);
       }
 
       const params = { id: '123' };
@@ -592,9 +603,10 @@ describe('shapeKey consistency', () => {
           name = t.string;
         }
 
-        class GetUser extends Query {
-          path = '/users/[id]';
-          response = t.entity(User);
+        class GetUser extends JsonQuery {
+          params = { id: t.id };
+          path = `/users/${this.params.id}`;
+          result = t.entity(User);
         }
 
         return GetUser;

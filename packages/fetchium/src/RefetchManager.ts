@@ -17,7 +17,7 @@ export class RefetchManager {
   }
 
   addQuery(instance: QueryInstance<any>) {
-    const interval = instance.def.cache?.refetchInterval;
+    const interval = instance.config?.refetchInterval;
 
     if (!interval) {
       return;
@@ -34,7 +34,7 @@ export class RefetchManager {
   }
 
   removeQuery(query: QueryInstance<any>) {
-    const interval = query.def.cache?.refetchInterval;
+    const interval = query.config?.refetchInterval;
 
     if (!interval) {
       return;

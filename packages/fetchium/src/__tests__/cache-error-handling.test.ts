@@ -4,7 +4,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t, ValidatorDef } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, fetchQuery } from '../query.js';
+import { JsonQuery, fetchQuery } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import { valueKeyFor, refIdsKeyFor, updatedAtKeyFor } from '../stores/shared.js';
@@ -21,7 +21,7 @@ import type { QueryStore } from '../QueryClient.js';
  * Compute a query key from a Query class without needing the class to be registered
  * via fetchQuery(). This mirrors the internal logic of getQueryDefinition + queryKeyFor.
  */
-function computeQueryKey(QueryClass: new () => Query, params: unknown): number {
+function computeQueryKey(QueryClass: new () => JsonQuery, params: unknown): number {
   const instance = new QueryClass();
   const { path, method, response } = instance as any;
   const id = `${method ?? 'GET'}:${path}`;
@@ -61,9 +61,10 @@ describe('Cache Error Handling', () => {
 
   describe('loadCachedQuery errors', () => {
     it('should continue query execution if loadCachedQuery throws an error', async () => {
-      class GetItem extends Query {
-        path = '/items/[id]';
-        response = { id: t.number, name: t.string };
+      class GetItem extends JsonQuery {
+        params = { id: t.id };
+        path = `/items/${this.params.id}`;
+        result = { id: t.number, name: t.string };
       }
 
       // Create a store that throws when loading
@@ -97,9 +98,10 @@ describe('Cache Error Handling', () => {
     });
 
     it('should continue query execution if loadCachedQuery returns a rejected promise', async () => {
-      class GetItem extends Query {
-        path = '/items/[id]';
-        response = { id: t.number, name: t.string };
+      class GetItem extends JsonQuery {
+        params = { id: t.id };
+        path = `/items/${this.params.id}`;
+        result = { id: t.number, name: t.string };
       }
 
       // Create a store that rejects when loading
@@ -133,9 +135,10 @@ describe('Cache Error Handling', () => {
 
   describe('Cached data parsing errors', () => {
     it('should continue query execution if cached value JSON parsing fails', async () => {
-      class GetItem extends Query {
-        path = '/items/[id]';
-        response = { id: t.number, name: t.string };
+      class GetItem extends JsonQuery {
+        params = { id: t.id };
+        path = `/items/${this.params.id}`;
+        result = { id: t.number, name: t.string };
       }
 
       const queryKey = computeQueryKey(GetItem, { id: '1' });
@@ -165,10 +168,11 @@ describe('Cache Error Handling', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
-        cache = {
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
+        config = {
           staleTime: 0, // Always stale to force refetch
         };
       }
@@ -209,9 +213,10 @@ describe('Cache Error Handling', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const queryKey = computeQueryKey(GetUser, { id: '1' });
@@ -251,9 +256,10 @@ describe('Cache Error Handling', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const queryKey = computeQueryKey(GetUser, { id: '1' });
@@ -295,9 +301,10 @@ describe('Cache Error Handling', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
         stream = {
           type: t.entity(User) as any,
           subscribe: (context: any, params: any, onUpdate: any) => {
@@ -336,9 +343,10 @@ describe('Cache Error Handling', () => {
 
   describe('Cache deletion on error', () => {
     it('should delete corrupted cache entry when loading fails', async () => {
-      class GetItem extends Query {
-        path = '/items/[id]';
-        response = { id: t.number, name: t.string };
+      class GetItem extends JsonQuery {
+        params = { id: t.id };
+        path = `/items/${this.params.id}`;
+        result = { id: t.number, name: t.string };
       }
 
       const queryKey = computeQueryKey(GetItem, { id: '1' });
@@ -370,10 +378,11 @@ describe('Cache Error Handling', () => {
 
   describe('Background refetch after cache error', () => {
     it('should still perform background refetch if cache is stale after error', async () => {
-      class GetItem extends Query {
-        path = '/items/[id]';
-        response = { id: t.number, name: t.string };
-        cache = {
+      class GetItem extends JsonQuery {
+        params = { id: t.id };
+        path = `/items/${this.params.id}`;
+        result = { id: t.number, name: t.string };
+        config = {
           staleTime: 0, // Always stale
         };
       }
@@ -437,9 +446,10 @@ describe('Cache Error Handling', () => {
       });
 
       await testWithClient(errorClient, async () => {
-        class GetUser extends Query {
-          path = '/users/[id]';
-          response = { user: t.entity(User) };
+        class GetUser extends JsonQuery {
+          params = { id: t.id };
+          path = `/users/${this.params.id}`;
+          result = { user: t.entity(User) };
           stream = {
             type: t.entity(User) as any,
             subscribe: (context: any, params: any, onUpdate: any) => {
@@ -493,9 +503,10 @@ describe('Cache Error Handling', () => {
       let subscribeCallCount = 0;
       let updateCallback: ((update: any) => void) | undefined;
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
         stream = {
           type: t.entity(User) as any,
           subscribe: (context: any, params: any, onUpdate: any) => {
@@ -515,7 +526,7 @@ describe('Cache Error Handling', () => {
             return () => {};
           },
         };
-        cache = {
+        config = {
           staleTime: 0, // Always stale to force refetch
         };
       }
@@ -559,9 +570,10 @@ describe('Cache Error Handling', () => {
       let subscribeCallCount = 0;
       let updateCallback: ((update: any) => void) | undefined;
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
         stream = {
           type: t.entity(User) as any,
           subscribe: (context: any, params: any, onUpdate: any) => {
@@ -581,7 +593,7 @@ describe('Cache Error Handling', () => {
             return () => {};
           },
         };
-        cache = {
+        config = {
           staleTime: 0, // Always stale to force refetch
         };
       }

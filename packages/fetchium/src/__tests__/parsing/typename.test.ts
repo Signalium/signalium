@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import {
   setupParsingTests,
@@ -317,9 +317,9 @@ describe('t.typename', () => {
             name = t.string;
           }
 
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = { user: t.entity(User) };
+            result = { user: t.entity(User) };
           }
 
           const relay = fetchQuery(GetUser);
@@ -353,9 +353,9 @@ describe('t.typename', () => {
 
           const PetUnion = t.union(t.entity(Dog), t.entity(Cat));
 
-          class GetPet extends Query {
+          class GetPet extends JsonQuery {
             path = '/pet';
-            response = { pet: PetUnion };
+            result = { pet: PetUnion };
           }
 
           const relay = fetchQuery(GetPet);
@@ -390,9 +390,9 @@ describe('t.typename', () => {
 
           const PetUnion = t.union(t.entity(Dog), t.entity(Cat));
 
-          class GetPets extends Query {
+          class GetPets extends JsonQuery {
             path = '/pets';
-            response = { pets: t.array(PetUnion) };
+            result = { pets: t.array(PetUnion) };
           }
 
           const relay = fetchQuery(GetPets);
@@ -422,9 +422,9 @@ describe('t.typename', () => {
             name = t.string;
           }
 
-          class GetItems extends Query {
+          class GetItems extends JsonQuery {
             path = '/items';
-            response = { items: t.array(t.entity(Item)) };
+            result = { items: t.array(t.entity(Item)) };
           }
 
           const relay = fetchQuery(GetItems);
@@ -454,9 +454,9 @@ describe('t.typename', () => {
             value = t.string;
           }
 
-          class GetConfigs extends Query {
+          class GetConfigs extends JsonQuery {
             path = '/configs';
-            response = { configs: t.record(t.entity(Config)) };
+            result = { configs: t.record(t.entity(Config)) };
           }
 
           const relay = fetchQuery(GetConfigs);

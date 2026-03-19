@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -95,9 +95,9 @@ describe('t.undefined', () => {
         mockFetch.get('/item', { value: undefined });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { value: t.union(t.string, t.undefined) };
+            result = { value: t.union(t.string, t.undefined) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -116,9 +116,9 @@ describe('t.undefined', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetData extends Query {
+          class GetData extends JsonQuery {
             path = '/data';
-            response = {
+            result = {
               data: t.object({
                 nested: t.object({
                   value: t.union(t.string, t.undefined),
@@ -141,9 +141,9 @@ describe('t.undefined', () => {
         mockFetch.get('/items', { items: ['a', undefined, 'b', undefined] });
 
         await testWithClient(client, async () => {
-          class GetItems extends Query {
+          class GetItems extends JsonQuery {
             path = '/items';
-            response = { items: t.array(t.union(t.string, t.undefined)) };
+            result = { items: t.array(t.union(t.string, t.undefined)) };
           }
 
           const relay = fetchQuery(GetItems);
@@ -162,9 +162,9 @@ describe('t.undefined', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetData extends Query {
+          class GetData extends JsonQuery {
             path = '/data';
-            response = { values: t.record(t.union(t.string, t.undefined)) };
+            result = { values: t.record(t.union(t.string, t.undefined)) };
           }
 
           const relay = fetchQuery(GetData);
@@ -184,14 +184,14 @@ describe('t.undefined', () => {
         mockFetch.get('/value2', { value: 'text' });
 
         await testWithClient(client, async () => {
-          class GetValue1 extends Query {
+          class GetValue1 extends JsonQuery {
             path = '/value1';
-            response = { value: t.union(t.string, t.undefined) };
+            result = { value: t.union(t.string, t.undefined) };
           }
 
-          class GetValue2 extends Query {
+          class GetValue2 extends JsonQuery {
             path = '/value2';
-            response = { value: t.union(t.string, t.undefined) };
+            result = { value: t.union(t.string, t.undefined) };
           }
 
           const relay1 = fetchQuery(GetValue1);

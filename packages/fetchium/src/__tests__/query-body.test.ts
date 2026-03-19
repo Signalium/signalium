@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { Query, fetchQuery } from '../query.js';
+import { JsonQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 
 /**
@@ -36,13 +36,12 @@ describe('Query Body Support', () => {
         ],
       });
 
-      class GetPrices extends Query {
+      class GetPrices extends JsonQuery {
+        params = { tokens: t.array(t.string) };
         path = '/prices';
         method = 'POST' as const;
-        body = {
-          tokens: t.array(t.string),
-        };
-        response = {
+        body = { tokens: this.params.tokens };
+        result = {
           prices: t.array(
             t.object({
               token: t.string,
@@ -73,13 +72,12 @@ describe('Query Body Support', () => {
     it('should automatically set Content-Type header to application/json', async () => {
       mockFetch.post('/data', { received: true });
 
-      class PostData extends Query {
+      class PostData extends JsonQuery {
+        params = { value: t.string };
         path = '/data';
         method = 'POST' as const;
-        body = {
-          value: t.string,
-        };
-        response = {
+        body = { value: this.params.value };
+        result = {
           received: t.boolean,
         };
       }
@@ -97,17 +95,18 @@ describe('Query Body Support', () => {
     it('should properly JSON stringify body with nested objects', async () => {
       mockFetch.post('/complex', { id: 1 });
 
-      class PostComplex extends Query {
-        path = '/complex';
-        method = 'POST' as const;
-        body = {
+      class PostComplex extends JsonQuery {
+        params = {
           user: t.object({
             name: t.string,
             age: t.number,
           }),
           tags: t.array(t.string),
         };
-        response = {
+        path = '/complex';
+        method = 'POST' as const;
+        body = { user: this.params.user, tags: this.params.tags };
+        result = {
           id: t.number,
         };
       }
@@ -128,19 +127,16 @@ describe('Query Body Support', () => {
     it('should allow custom Content-Type header in requestOptions to override default', async () => {
       mockFetch.post('/custom', { ok: true });
 
-      class PostCustom extends Query {
+      class PostCustom extends JsonQuery {
+        params = { data: t.string };
         path = '/custom';
         method = 'POST' as const;
-        body = {
-          data: t.string,
+        body = { data: this.params.data };
+        headers = {
+          'Content-Type': 'application/x-custom-json',
+          'X-Custom': 'value',
         };
-        requestOptions = {
-          headers: {
-            'Content-Type': 'application/x-custom-json',
-            'X-Custom': 'value',
-          },
-        };
-        response = {
+        result = {
           ok: t.boolean,
         };
       }
@@ -162,14 +158,12 @@ describe('Query Body Support', () => {
     it('should correctly route path params to URL and body fields to request body', async () => {
       mockFetch.post('/users/[id]/preferences', { success: true });
 
-      class UpdateUserPreferences extends Query {
-        path = '/users/[id]/preferences';
+      class UpdateUserPreferences extends JsonQuery {
+        params = { id: t.id, theme: t.string, language: t.string };
+        path = `/users/${this.params.id}/preferences`;
         method = 'POST' as const;
-        body = {
-          theme: t.string,
-          language: t.string,
-        };
-        response = {
+        body = { theme: this.params.theme, language: this.params.language };
+        result = {
           success: t.boolean,
         };
       }
@@ -200,14 +194,12 @@ describe('Query Body Support', () => {
     it('should handle multiple path params with body', async () => {
       mockFetch.post('/orgs/[orgId]/teams/[teamId]/settings', { updated: true });
 
-      class UpdateTeamSettings extends Query {
-        path = '/orgs/[orgId]/teams/[teamId]/settings';
+      class UpdateTeamSettings extends JsonQuery {
+        params = { orgId: t.id, teamId: t.id, name: t.string, visibility: t.string };
+        path = `/orgs/${this.params.orgId}/teams/${this.params.teamId}/settings`;
         method = 'POST' as const;
-        body = {
-          name: t.string,
-          visibility: t.string,
-        };
-        response = {
+        body = { name: this.params.name, visibility: this.params.visibility };
+        result = {
           updated: t.boolean,
         };
       }
@@ -241,18 +233,18 @@ describe('Query Body Support', () => {
         total: 1,
       });
 
-      class SearchItems extends Query {
-        path = '/search';
-        method = 'POST' as const;
-        searchParams = {
+      class SearchItems extends JsonQuery {
+        params = {
           page: t.number,
           limit: t.number,
-        };
-        body = {
           query: t.string,
           filters: t.array(t.string),
         };
-        response = {
+        path = '/search';
+        method = 'POST' as const;
+        searchParams = { page: this.params.page, limit: this.params.limit };
+        body = { query: this.params.query, filters: this.params.filters };
+        result = {
           results: t.array(
             t.object({
               id: t.number,
@@ -302,19 +294,20 @@ describe('Query Body Support', () => {
         title: 'New Post',
       });
 
-      class CreateUserPost extends Query {
-        path = '/users/[userId]/posts';
-        method = 'POST' as const;
-        searchParams = {
+      class CreateUserPost extends JsonQuery {
+        params = {
+          userId: t.id,
           draft: t.boolean,
           notify: t.boolean,
-        };
-        body = {
           title: t.string,
           content: t.string,
           tags: t.array(t.string),
         };
-        response = {
+        path = `/users/${this.params.userId}/posts`;
+        method = 'POST' as const;
+        searchParams = { draft: this.params.draft, notify: this.params.notify };
+        body = { title: this.params.title, content: this.params.content, tags: this.params.tags };
+        result = {
           postId: t.number,
           title: t.string,
         };
@@ -366,13 +359,12 @@ describe('Query Body Support', () => {
         prices: [{ token: 'ETH', price: 2000 }],
       });
 
-      class GetPrices extends Query {
+      class GetPrices extends JsonQuery {
+        params = { tokens: t.array(t.string) };
         path = '/prices';
         method = 'POST' as const;
-        body = {
-          tokens: t.array(t.string),
-        };
-        response = {
+        body = { tokens: this.params.tokens };
+        result = {
           prices: t.array(
             t.object({
               token: t.string,
@@ -402,13 +394,12 @@ describe('Query Body Support', () => {
       mockFetch.post('/prices', { prices: [{ token: 'ETH', price: 2000 }] });
       mockFetch.post('/prices', { prices: [{ token: 'BTC', price: 50000 }] });
 
-      class GetPrices extends Query {
+      class GetPrices extends JsonQuery {
+        params = { tokens: t.array(t.string) };
         path = '/prices';
         method = 'POST' as const;
-        body = {
-          tokens: t.array(t.string),
-        };
-        response = {
+        body = { tokens: this.params.tokens };
+        result = {
           prices: t.array(
             t.object({
               token: t.string,
@@ -439,13 +430,12 @@ describe('Query Body Support', () => {
       mockFetch.post('/prices', { prices: [{ token: 'ETH', price: 2000 }] });
       mockFetch.post('/prices', { prices: [{ token: 'ETH', price: 2100 }] });
 
-      class GetPrices extends Query {
+      class GetPrices extends JsonQuery {
+        params = { tokens: t.array(t.string) };
         path = '/prices';
         method = 'POST' as const;
-        body = {
-          tokens: t.array(t.string),
-        };
-        response = {
+        body = { tokens: this.params.tokens };
+        result = {
           prices: t.array(
             t.object({
               token: t.string,
@@ -453,7 +443,7 @@ describe('Query Body Support', () => {
             }),
           ),
         };
-        cache = {
+        config = {
           staleTime: 100,
         };
       }
@@ -475,13 +465,12 @@ describe('Query Body Support', () => {
     it('should deduplicate identical concurrent body queries', async () => {
       mockFetch.post('/prices', { prices: [{ token: 'ETH', price: 2000 }] });
 
-      class GetPrices extends Query {
+      class GetPrices extends JsonQuery {
+        params = { tokens: t.array(t.string) };
         path = '/prices';
         method = 'POST' as const;
-        body = {
-          tokens: t.array(t.string),
-        };
-        response = {
+        body = { tokens: this.params.tokens };
+        result = {
           prices: t.array(
             t.object({
               token: t.string,
@@ -513,11 +502,11 @@ describe('Query Body Support', () => {
     it('should work with empty body object', async () => {
       mockFetch.post('/trigger', { triggered: true });
 
-      class TriggerAction extends Query {
+      class TriggerAction extends JsonQuery {
         path = '/trigger';
         method = 'POST' as const;
         body = {};
-        response = {
+        result = {
           triggered: t.boolean,
         };
       }
@@ -537,9 +526,9 @@ describe('Query Body Support', () => {
     it('should handle queries without body (backward compatibility)', async () => {
       mockFetch.get('/users', { users: [] });
 
-      class ListUsers extends Query {
+      class ListUsers extends JsonQuery {
         path = '/users';
-        response = {
+        result = {
           users: t.array(t.object({ id: t.number, name: t.string })),
         };
       }
@@ -560,10 +549,8 @@ describe('Query Body Support', () => {
     it('should handle body with array as root type', async () => {
       mockFetch.post('/bulk-create', { created: 3 });
 
-      class BulkCreate extends Query {
-        path = '/bulk-create';
-        method = 'POST' as const;
-        body = {
+      class BulkCreate extends JsonQuery {
+        params = {
           items: t.array(
             t.object({
               name: t.string,
@@ -571,7 +558,10 @@ describe('Query Body Support', () => {
             }),
           ),
         };
-        response = {
+        path = '/bulk-create';
+        method = 'POST' as const;
+        body = { items: this.params.items };
+        result = {
           created: t.number,
         };
       }
@@ -593,107 +583,7 @@ describe('Query Body Support', () => {
       });
     });
 
-    it('should throw error when body field name conflicts with path param name', async () => {
-      class ConflictingQuery extends Query {
-        path = '/users/[id]/update';
-        method = 'POST' as const;
-        body = {
-          id: t.string,
-          name: t.string,
-        };
-        response = {
-          success: t.boolean,
-        };
-      }
-
-      await testWithClient(client, async () => {
-        expect(() => {
-          fetchQuery(ConflictingQuery, { id: '123', name: 'test' });
-        }).toThrow(/Body field\(s\) \[id\] conflict with path parameter\(s\)/);
-      });
-    });
-
-    it('should throw error listing all conflicting param names', async () => {
-      class MultiConflictQuery extends Query {
-        path = '/orgs/[orgId]/teams/[teamId]';
-        method = 'POST' as const;
-        body = {
-          orgId: t.string,
-          teamId: t.string,
-          name: t.string,
-        };
-        response = {
-          success: t.boolean,
-        };
-      }
-
-      await testWithClient(client, async () => {
-        expect(() => {
-          fetchQuery(MultiConflictQuery, { orgId: 'org1', teamId: 'team1', name: 'test' });
-        }).toThrow(/Body field\(s\) \[orgId, teamId\] conflict with path parameter\(s\)/);
-      });
-    });
-
-    it('should throw error when search param name conflicts with path param name', async () => {
-      class ConflictingQuery extends Query {
-        path = '/users/[id]';
-        searchParams = {
-          id: t.string,
-          filter: t.string,
-        };
-        response = {
-          success: t.boolean,
-        };
-      }
-
-      await testWithClient(client, async () => {
-        expect(() => {
-          fetchQuery(ConflictingQuery, { id: '123', filter: 'active' });
-        }).toThrow(/Search param\(s\) \[id\] conflict with path parameter\(s\)/);
-      });
-    });
-
-    it('should throw error when body field name conflicts with search param name', async () => {
-      class ConflictingQuery extends Query {
-        path = '/users';
-        method = 'POST' as const;
-        searchParams = {
-          version: t.string,
-        };
-        body = {
-          version: t.string,
-          name: t.string,
-        };
-        response = {
-          success: t.boolean,
-        };
-      }
-
-      await testWithClient(client, async () => {
-        expect(() => {
-          fetchQuery(ConflictingQuery, { version: '1.0', name: 'test' });
-        }).toThrow(/Body field\(s\) \[version\] conflict with search param\(s\)/);
-      });
-    });
-
-    it('should throw error listing all conflicting search param and path param names', async () => {
-      class MultiConflictQuery extends Query {
-        path = '/orgs/[orgId]/teams/[teamId]';
-        searchParams = {
-          orgId: t.string,
-          teamId: t.string,
-          filter: t.string,
-        };
-        response = {
-          success: t.boolean,
-        };
-      }
-
-      await testWithClient(client, async () => {
-        expect(() => {
-          fetchQuery(MultiConflictQuery, { orgId: 'org1', teamId: 'team1', filter: 'active' });
-        }).toThrow(/Search param\(s\) \[orgId, teamId\] conflict with path parameter\(s\)/);
-      });
-    });
+    // Note: JsonQuery API prevents param conflicts by design - params are defined once
+    // and body/searchParams use refs (this.params.x). No separate conflict validation needed.
   });
 });

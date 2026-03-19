@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -136,9 +136,9 @@ describe('t.const', () => {
         mockFetch.get('/item', { type: 'user', status: 'active' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = {
+            result = {
               type: t.const('user'),
               status: t.const('active'),
             };
@@ -157,9 +157,9 @@ describe('t.const', () => {
         mockFetch.get('/version', { version: 1 });
 
         await testWithClient(client, async () => {
-          class GetVersion extends Query {
+          class GetVersion extends JsonQuery {
             path = '/version';
-            response = { version: t.const(1) };
+            result = { version: t.const(1) };
           }
 
           const relay = fetchQuery(GetVersion);
@@ -178,9 +178,9 @@ describe('t.const', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetData extends Query {
+          class GetData extends JsonQuery {
             path = '/data';
-            response = {
+            result = {
               config: t.object({
                 mode: t.const('production'),
               }),
@@ -201,9 +201,9 @@ describe('t.const', () => {
         mockFetch.get('/flags', { flags: ['enabled', 'enabled', 'enabled'] });
 
         await testWithClient(client, async () => {
-          class GetFlags extends Query {
+          class GetFlags extends JsonQuery {
             path = '/flags';
-            response = { flags: t.array(t.const('enabled')) };
+            result = { flags: t.array(t.const('enabled')) };
           }
 
           const relay = fetchQuery(GetFlags);
@@ -222,9 +222,9 @@ describe('t.const', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetStatuses extends Query {
+          class GetStatuses extends JsonQuery {
             path = '/statuses';
-            response = { statuses: t.record(t.const('ok')) };
+            result = { statuses: t.record(t.const('ok')) };
           }
 
           const relay = fetchQuery(GetStatuses);
@@ -242,9 +242,9 @@ describe('t.const', () => {
         mockFetch.get('/status', { status: 'pending' });
 
         await testWithClient(client, async () => {
-          class GetStatus extends Query {
+          class GetStatus extends JsonQuery {
             path = '/status';
-            response = {
+            result = {
               status: t.union(t.const('active'), t.const('inactive'), t.const('pending')),
             };
           }

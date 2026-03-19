@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { ParseError, ParseResult, ParseSuccess } from '../../types.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
@@ -220,9 +220,9 @@ describe('t.result', () => {
         mockFetch.get('/item', { value: 42 });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { value: t.result(t.number) };
+            result = { value: t.result(t.number) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -237,9 +237,9 @@ describe('t.result', () => {
         mockFetch.get('/item', { value: 'not a number' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { value: t.result(t.number) };
+            result = { value: t.result(t.number) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -259,9 +259,9 @@ describe('t.result', () => {
         await testWithClient(client, async () => {
           const Status = t.enum('active', 'inactive', 'pending');
 
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { status: t.result(Status) };
+            result = { status: t.result(Status) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -278,9 +278,9 @@ describe('t.result', () => {
         await testWithClient(client, async () => {
           const Status = t.enum('active', 'inactive', 'pending');
 
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { status: t.result(Status) };
+            result = { status: t.result(Status) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -297,9 +297,9 @@ describe('t.result', () => {
         mockFetch.get('/items', { items: [1, 'invalid', 3] });
 
         await testWithClient(client, async () => {
-          class GetItems extends Query {
+          class GetItems extends JsonQuery {
             path = '/items';
-            response = { items: t.array(t.result(t.number)) };
+            result = { items: t.array(t.result(t.number)) };
           }
 
           const relay = fetchQuery(GetItems);
@@ -319,9 +319,9 @@ describe('t.result', () => {
         mockFetch.get('/item', { date: '2024-01-15T10:30:00.000Z' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { date: t.result(t.format('date-time')) };
+            result = { date: t.result(t.format('date-time')) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -337,9 +337,9 @@ describe('t.result', () => {
         mockFetch.get('/item', { date: 'not-a-date' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { date: t.result(t.format('date-time')) };
+            result = { date: t.result(t.format('date-time')) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -358,9 +358,9 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetData extends Query {
+          class GetData extends JsonQuery {
             path = '/data';
-            response = {
+            result = {
               data: t.object({
                 name: t.string,
                 value: t.number,
@@ -399,9 +399,9 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = { user: t.result(t.entity(UserEntity)) };
+            result = { user: t.result(t.entity(UserEntity)) };
           }
 
           const relay = fetchQuery(GetUser);
@@ -427,9 +427,9 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = { user: t.result(t.entity(UserEntity)) };
+            result = { user: t.result(t.entity(UserEntity)) };
           }
 
           const relay = fetchQuery(GetUser);
@@ -458,9 +458,9 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUsers extends Query {
+          class GetUsers extends JsonQuery {
             path = '/users';
-            response = { users: t.array(t.result(t.entity(UserEntity))) };
+            result = { users: t.array(t.result(t.entity(UserEntity))) };
           }
 
           const relay = fetchQuery(GetUsers);
@@ -497,9 +497,9 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetPet extends Query {
+          class GetPet extends JsonQuery {
             path = '/pet';
-            response = { pet: t.result(PetUnion) };
+            result = { pet: t.result(PetUnion) };
           }
 
           const relay = fetchQuery(GetPet);
@@ -532,9 +532,9 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetPet extends Query {
+          class GetPet extends JsonQuery {
             path = '/pet';
-            response = { pet: t.result(PetUnion) };
+            result = { pet: t.result(PetUnion) };
           }
 
           const relay = fetchQuery(GetPet);
@@ -585,9 +585,9 @@ describe('t.result', () => {
       mockFetch.get('/item', { value: 'not a number' });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { value: t.result(t.optional(t.number)) };
+          result = { value: t.result(t.optional(t.number)) };
         }
 
         const relay = fetchQuery(GetItem);
@@ -603,9 +603,9 @@ describe('t.result', () => {
       mockFetch.get('/item', { date: 'not-a-date' });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { date: t.result(t.optional(t.format('date-time'))) };
+          result = { date: t.result(t.optional(t.format('date-time'))) };
         }
 
         const relay = fetchQuery(GetItem);
@@ -623,9 +623,9 @@ describe('t.result', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetItems extends Query {
+        class GetItems extends JsonQuery {
           path = '/items';
-          response = { items: t.array(t.result(t.number)) };
+          result = { items: t.array(t.result(t.number)) };
         }
 
         const relay = fetchQuery(GetItems);
@@ -643,9 +643,9 @@ describe('t.result', () => {
       mockFetch.get('/item', { value: undefined });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { value: t.result(t.optional(t.number)) };
+          result = { value: t.result(t.optional(t.number)) };
         }
 
         const relay = fetchQuery(GetItem);
@@ -666,9 +666,9 @@ describe('t.result', () => {
       mockFetch.get('/item', { value: 42 });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { value: t.result(t.number) };
+          result = { value: t.result(t.number) };
         }
 
         const relay = fetchQuery(GetItem);

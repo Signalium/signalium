@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { Query, queryKeyForClass } from '../query.js';
-import { Mutation, mutationKeyForClass, getMutation } from '../mutation.js';
+import { JsonQuery, queryKeyForClass } from '../query.js';
+import { JsonMutation, mutationKeyForClass, getMutation } from '../mutation.js';
 import { createMockFetch, testWithClient } from './utils.js';
 
 /**
@@ -25,9 +25,10 @@ describe('queryKeyForClass', () => {
   });
 
   it('should return a stable key for the same class and params', () => {
-    class GetUser extends Query {
-      readonly path = '/users/[id]';
-      readonly response = { name: t.string };
+    class GetUser extends JsonQuery {
+      readonly params = { id: t.id };
+      readonly path = `/users/${this.params.id}`;
+      readonly result = { name: t.string };
     }
 
     const key1 = queryKeyForClass(GetUser, { id: '1' });
@@ -38,9 +39,10 @@ describe('queryKeyForClass', () => {
   });
 
   it('should return different keys for different params', () => {
-    class GetUser extends Query {
-      readonly path = '/users/[id]';
-      readonly response = { name: t.string };
+    class GetUser extends JsonQuery {
+      readonly params = { id: t.id };
+      readonly path = `/users/${this.params.id}`;
+      readonly result = { name: t.string };
     }
 
     const key1 = queryKeyForClass(GetUser, { id: '1' });
@@ -50,14 +52,16 @@ describe('queryKeyForClass', () => {
   });
 
   it('should return different keys for different query classes', () => {
-    class GetUser extends Query {
-      readonly path = '/users/[id]';
-      readonly response = { name: t.string };
+    class GetUser extends JsonQuery {
+      readonly params = { id: t.id };
+      readonly path = `/users/${this.params.id}`;
+      readonly result = { name: t.string };
     }
 
-    class GetPost extends Query {
-      readonly path = '/posts/[id]';
-      readonly response = { title: t.string };
+    class GetPost extends JsonQuery {
+      readonly params = { id: t.id };
+      readonly path = `/posts/${this.params.id}`;
+      readonly result = { title: t.string };
     }
 
     const key1 = queryKeyForClass(GetUser, { id: '1' });
@@ -67,9 +71,9 @@ describe('queryKeyForClass', () => {
   });
 
   it('should return a consistent key for undefined params', () => {
-    class GetItems extends Query {
+    class GetItems extends JsonQuery {
       readonly path = '/items';
-      readonly response = { items: t.array(t.string) };
+      readonly result = { items: t.array(t.string) };
     }
 
     const key1 = queryKeyForClass(GetItems, undefined);
@@ -94,22 +98,24 @@ describe('mutationKeyForClass', () => {
   });
 
   it('should throw for unregistered mutation class', () => {
-    class UnusedMutation extends Mutation {
+    class UnusedMutation extends JsonMutation {
+      readonly params = { name: t.string };
       readonly path = '/unused';
       readonly method = 'POST' as const;
-      readonly request = { name: t.string };
-      readonly response = { id: t.number };
+      readonly body = { name: this.params.name };
+      readonly result = { id: t.number };
     }
 
     expect(() => mutationKeyForClass(UnusedMutation)).toThrow('Mutation definition not found');
   });
 
   it('should return a stable ID after the mutation is registered via getMutation', async () => {
-    class CreateUser extends Mutation {
+    class CreateUser extends JsonMutation {
+      readonly params = { name: t.string };
       readonly path = '/users';
       readonly method = 'POST' as const;
-      readonly request = { name: t.string };
-      readonly response = { id: t.number, name: t.string };
+      readonly body = { name: this.params.name };
+      readonly result = { id: t.number, name: t.string };
     }
 
     mockFetch.post('/users', { id: 1, name: 'Alice' });
@@ -128,18 +134,20 @@ describe('mutationKeyForClass', () => {
   });
 
   it('should return different IDs for different mutation classes', async () => {
-    class CreateUser extends Mutation {
+    class CreateUser extends JsonMutation {
+      readonly params = { name: t.string };
       readonly path = '/users';
       readonly method = 'POST' as const;
-      readonly request = { name: t.string };
-      readonly response = { id: t.number };
+      readonly body = { name: this.params.name };
+      readonly result = { id: t.number };
     }
 
-    class DeleteUser extends Mutation {
-      readonly path = '/users/[id]';
+    class DeleteUser extends JsonMutation {
+      readonly params = { id: t.id };
+      readonly path = `/users/${this.params.id}`;
       readonly method = 'DELETE' as const;
-      readonly request = { id: t.number };
-      readonly response = { success: t.boolean };
+      readonly body = {};
+      readonly result = { success: t.boolean };
     }
 
     mockFetch.post('/users', { id: 1 });

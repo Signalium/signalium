@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import {
   setupParsingTests,
@@ -145,9 +145,9 @@ describe('t.array', () => {
         mockFetch.get('/items', { items: [1, 2, 3, 4, 5] });
 
         await testWithClient(client, async () => {
-          class GetItems extends Query {
+          class GetItems extends JsonQuery {
             path = '/items';
-            response = { items: t.array(t.number) };
+            result = { items: t.array(t.number) };
           }
 
           const relay = fetchQuery(GetItems);
@@ -162,9 +162,9 @@ describe('t.array', () => {
         mockFetch.get('/items', { items: [] });
 
         await testWithClient(client, async () => {
-          class GetItems extends Query {
+          class GetItems extends JsonQuery {
             path = '/items';
-            response = { items: t.array(t.number) };
+            result = { items: t.array(t.number) };
           }
 
           const relay = fetchQuery(GetItems);
@@ -184,9 +184,9 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = {
+            result = {
               user: t.object({
                 profile: t.object({
                   skills: t.array(t.string),
@@ -214,9 +214,9 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetMatrix extends Query {
+          class GetMatrix extends JsonQuery {
             path = '/matrix';
-            response = { matrix: t.array(t.array(t.number)) };
+            result = { matrix: t.array(t.array(t.number)) };
           }
 
           const relay = fetchQuery(GetMatrix);
@@ -241,9 +241,9 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetItems extends Query {
+          class GetItems extends JsonQuery {
             path = '/items';
-            response = {
+            result = {
               items: t.array(t.object({ id: t.number, name: t.string })),
             };
           }
@@ -269,9 +269,9 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetTags extends Query {
+          class GetTags extends JsonQuery {
             path = '/tags';
-            response = { tagsByCategory: t.record(t.array(t.string)) };
+            result = { tagsByCategory: t.record(t.array(t.string)) };
           }
 
           const relay = fetchQuery(GetTags);
@@ -593,9 +593,9 @@ describe('t.array', () => {
         mockFetch.get('/numbers', { numbers: [1, 2, 'not a number', 4] });
 
         await testWithClient(client, async () => {
-          class GetNumbers extends Query {
+          class GetNumbers extends JsonQuery {
             path = '/numbers';
-            response = { numbers: t.array(t.number) };
+            result = { numbers: t.array(t.number) };
           }
 
           const relay = fetchQuery(GetNumbers);
@@ -623,9 +623,9 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUsers extends Query {
+          class GetUsers extends JsonQuery {
             path = '/users';
-            response = { users: t.array(t.entity(User)) };
+            result = { users: t.array(t.entity(User)) };
           }
 
           const relay = fetchQuery(GetUsers);
@@ -661,9 +661,9 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetPosts extends Query {
+          class GetPosts extends JsonQuery {
             path = '/posts';
-            response = { posts: t.array(t.union(t.entity(TextPost), t.entity(ImagePost))) };
+            result = { posts: t.array(t.union(t.entity(TextPost), t.entity(ImagePost))) };
           }
 
           const relay = fetchQuery(GetPosts);

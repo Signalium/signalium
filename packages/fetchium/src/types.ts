@@ -27,7 +27,6 @@ export interface QueryRequestInit extends RequestInit {
  */
 export interface QueryRequestOptions {
   baseUrl?: BaseUrlValue;
-  headers?: HeadersInit;
   credentials?: RequestCredentials;
   mode?: RequestMode;
   cache?: RequestCache;
@@ -299,10 +298,6 @@ export type ExtractTypesFromShape<S extends Record<string, TypeDef>> = {
 
 export type ResponseTypeDef = Record<string, TypeDef> | TypeDef;
 
-export type ParamsOrUndefined<Params extends Record<string, unknown>> =
-  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-  {} extends Params ? undefined : Params;
-
 export type ExtractTypesFromObjectOrEntity<S extends ResponseTypeDef> =
   S extends TypeDef<infer T>
     ? T
@@ -318,7 +313,7 @@ export type ExtractTypesFromEntityOrUndefined<S extends TypeDef | undefined = un
 // Query Types
 // ================================
 
-export type QueryResult<T extends Query> = ExtractTypesFromObjectOrEntity<T['response']> & {
+export type QueryResult<T extends Query> = ExtractTypesFromObjectOrEntity<T['result']> & {
   __refetch(): Promise<QueryResult<T>>;
 };
 

@@ -8,31 +8,18 @@ import {
   TypeDef,
   RetryConfig,
   ResponseTypeDef,
+  QueryRequestOptions,
 } from './types.js';
-import { QueryClientContext, QueryContext } from './QueryClient.js';
-import { createPathInterpolator } from './pathInterpolator.js';
+import { QueryClientContext, QueryContext, resolveBaseUrl } from './QueryClient.js';
 import { Prettify } from './type-utils.js';
 import { resolveTypeDef } from './resolveTypeDef.js';
-
-// ================================
-// Path param extraction types
-// ================================
-
-type IsParameter<Part> = Part extends `[${infer ParamName}]` ? ParamName : never;
-type FilteredParts<Path> = Path extends `${infer PartA}/${infer PartB}`
-  ? IsParameter<PartA> | FilteredParts<PartB>
-  : IsParameter<Path>;
-type ParamValue<Key> = Key extends `...${infer _Anything}` ? (string | number)[] : string | number;
-type RemovePrefixDots<Key> = Key extends `...${infer Name}` ? Name : Key;
-type PathParams<Path> = {
-  [Key in FilteredParts<Path> as RemovePrefixDots<Key>]: ParamValue<Key>;
-};
+import { createDefinitionProxy, extractDefinition, type CapturedDefinition } from './fieldRef.js';
 
 // ================================
 // Mutation Definition Types
 // ================================
 
-export interface MutationCacheOptions {
+export interface MutationConfigOptions {
   retry?: RetryConfig | number | false;
 }
 
@@ -40,12 +27,12 @@ export interface MutationDefinition<Request, Response> {
   id: string;
   requestShape: InternalTypeDef;
   requestShapeKey: number;
-  responseShape: InternalTypeDef;
-  responseShapeKey: number;
-  mutateFn: (context: QueryContext, request: Request) => Promise<Response>;
+  responseShape: InternalTypeDef | undefined;
+  responseShapeKey: number | undefined;
+  captured: CapturedDefinition<Mutation>;
   optimisticUpdates: boolean;
   parseAndApply: ParseAndApply;
-  cache?: MutationCacheOptions;
+  config?: MutationConfigOptions;
 }
 
 // ================================
@@ -53,32 +40,105 @@ export interface MutationDefinition<Request, Response> {
 // ================================
 
 export abstract class Mutation {
-  abstract readonly path: string;
-  abstract readonly method: 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-  abstract readonly request: ResponseTypeDef;
-  abstract readonly response: ResponseTypeDef;
+  params?: ResponseTypeDef;
+  result?: ResponseTypeDef;
   optimisticUpdates?: boolean;
   parseAndApply?: ParseAndApply;
-  cache?: MutationCacheOptions;
+  config?: MutationConfigOptions;
+
+  declare context: QueryContext;
+  declare response: Response | undefined;
+
+  abstract send(): Promise<unknown>;
+  abstract getStorageKey(): unknown;
+
+  constructor() {
+    return createDefinitionProxy(this);
+  }
+}
+
+// ================================
+// JsonMutation
+// ================================
+
+export abstract class JsonMutation extends Mutation {
+  path?: string;
+  method: 'POST' | 'PUT' | 'DELETE' | 'PATCH' = 'POST';
+  body?: Record<string, unknown>;
+  headers?: HeadersInit;
+  requestOptions?: QueryRequestOptions;
+
+  getStorageKey(): string {
+    return `${this.method ?? 'POST'}:${this.path ?? ''}`;
+  }
+
+  getPath(): string | undefined {
+    return this.path;
+  }
+
+  getMethod(): string {
+    return this.method;
+  }
+
+  getBody(): Record<string, unknown> | undefined {
+    return this.body;
+  }
+
+  getRequestOptions(): QueryRequestOptions | undefined {
+    return this.requestOptions;
+  }
+
+  async send(): Promise<unknown> {
+    const path = this.getPath();
+    const method = this.getMethod();
+    const body = this.getBody();
+    const requestOptions = this.getRequestOptions();
+
+    if (!path) {
+      throw new Error('JsonMutation requires a path. Define `path` as a field or override `getPath()`.');
+    }
+
+    const bodyData = body ?? (this.params as Record<string, unknown>);
+
+    const baseUrl = resolveBaseUrl(requestOptions?.baseUrl) ?? resolveBaseUrl(this.context.baseUrl);
+    const fullUrl = baseUrl ? `${baseUrl}${path}` : path;
+
+    const { baseUrl: _baseUrl, ...fetchOptions } = requestOptions ?? {};
+
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...(this.headers as Record<string, string>),
+    };
+
+    const fetchResponse = await this.context.fetch(fullUrl, {
+      method,
+      headers,
+      body: JSON.stringify(bodyData),
+      ...fetchOptions,
+    });
+
+    this.response = fetchResponse;
+    return fetchResponse.json();
+  }
 }
 
 // ================================
 // Type extraction from Mutation classes
 // ================================
 
-type ExtractMutationRequest<T extends Mutation> =
-  T['request'] extends TypeDef<infer U>
-    ? PathParams<T['path']> & U
-    : T['request'] extends Record<string, TypeDef>
-      ? PathParams<T['path']> & Prettify<{ [K in keyof T['request']]: ExtractType<T['request'][K]> }>
+export type ExtractMutationParams<T extends Mutation> =
+  T['params'] extends TypeDef<infer U>
+    ? U
+    : T['params'] extends Record<string, TypeDef>
+      ? Prettify<{ [K in keyof T['params']]: ExtractType<T['params'][K]> }>
       : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
         {};
 
-type ExtractMutationResponse<T extends Mutation> =
-  T['response'] extends TypeDef<infer U>
+type ExtractMutationResult<T extends Mutation> =
+  T['result'] extends TypeDef<infer U>
     ? U
-    : T['response'] extends Record<string, TypeDef>
-      ? Prettify<{ [K in keyof T['response']]: ExtractType<T['response'][K]> }>
+    : T['result'] extends Record<string, TypeDef>
+      ? Prettify<{ [K in keyof T['result']]: ExtractType<T['result'][K]> }>
       : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
         {};
 
@@ -102,7 +162,7 @@ export const mutationKeyForClass = (cls: new () => Mutation): string => {
 // Internal: build mutation definition from class
 // ================================
 
-function getMutationDefinition(MutationClass: new () => Mutation): () => MutationDefinition<any, any> {
+function buildMutationDefinition(MutationClass: new () => Mutation): () => MutationDefinition<any, any> {
   let cached = mutationDefCache.get(MutationClass);
 
   if (cached !== undefined) {
@@ -117,44 +177,24 @@ function getMutationDefinition(MutationClass: new () => Mutation): () => Mutatio
     }
 
     const instance = new MutationClass();
+    const captured = extractDefinition(instance);
+    const { fields } = captured;
 
-    const { path, method, request, response, optimisticUpdates = false, parseAndApply = 'both', cache } = instance;
+    const id = `mutation:${String(captured.methods.getStorageKey.call(fields))}`;
 
-    const id = `mutation:${method}:${path}`;
-
-    const { shape: requestShape, shapeKey: requestShapeKey } = resolveTypeDef(request);
-    const { shape: responseShape, shapeKey: responseShapeKey } = resolveTypeDef(response);
-
-    const { interpolate: interpolatePath, pathParamNames } = createPathInterpolator(path);
-
-    const mutateFn = async (context: QueryContext, requestData: unknown): Promise<unknown> => {
-      const pathParams: Record<string, unknown> = {};
-      for (const paramName of pathParamNames) {
-        pathParams[paramName] = (requestData as Record<string, unknown>)[paramName];
-      }
-      const url = interpolatePath(pathParams);
-
-      const fetchResponse = await context.fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestData),
-      });
-
-      return fetchResponse.json();
-    };
+    const { shape: requestShape, shapeKey: requestShapeKey } = resolveTypeDef(fields.params ?? {});
+    const resolved = fields.result ? resolveTypeDef(fields.result) : undefined;
 
     mutationDefinition = {
       id,
       requestShape,
       requestShapeKey,
-      responseShape,
-      responseShapeKey,
-      mutateFn,
-      optimisticUpdates,
-      parseAndApply,
-      cache,
+      responseShape: resolved?.shape,
+      responseShapeKey: resolved?.shapeKey,
+      captured,
+      optimisticUpdates: fields.optimisticUpdates ?? false,
+      parseAndApply: fields.parseAndApply ?? 'both',
+      config: fields.config,
     };
 
     return mutationDefinition;
@@ -170,8 +210,8 @@ function getMutationDefinition(MutationClass: new () => Mutation): () => Mutatio
 
 export function getMutation<T extends Mutation>(
   MutationClass: new () => T,
-): ReactiveTask<MutationResultValue<Readonly<ExtractMutationResponse<T>>>, [ExtractMutationRequest<T>]> {
-  const getMutationDef = getMutationDefinition(MutationClass);
+): ReactiveTask<MutationResultValue<Readonly<ExtractMutationResult<T>>>, [ExtractMutationParams<T>]> {
+  const getMutationDef = buildMutationDefinition(MutationClass);
 
   const queryClient = getContext(QueryClientContext);
 

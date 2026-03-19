@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t, CaseInsensitiveSet } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { typeToString } from '../../errors.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
@@ -115,9 +115,9 @@ describe('t.enum', () => {
         mockFetch.get('/item', { status: 'active' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = {
+            result = {
               status: t.enum('active', 'inactive', 'pending'),
             };
           }
@@ -138,9 +138,9 @@ describe('t.enum', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = {
+            result = {
               user: t.object({
                 settings: t.object({
                   theme: t.enum('light', 'dark', 'system'),
@@ -163,9 +163,9 @@ describe('t.enum', () => {
         mockFetch.get('/statuses', { statuses: ['active', 'inactive', 'pending'] });
 
         await testWithClient(client, async () => {
-          class GetStatuses extends Query {
+          class GetStatuses extends JsonQuery {
             path = '/statuses';
-            response = { statuses: t.array(t.enum('active', 'inactive', 'pending')) };
+            result = { statuses: t.array(t.enum('active', 'inactive', 'pending')) };
           }
 
           const relay = fetchQuery(GetStatuses);
@@ -184,9 +184,9 @@ describe('t.enum', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUsers extends Query {
+          class GetUsers extends JsonQuery {
             path = '/users';
-            response = { userStatuses: t.record(t.enum('active', 'inactive')) };
+            result = { userStatuses: t.record(t.enum('active', 'inactive')) };
           }
 
           const relay = fetchQuery(GetUsers);
@@ -505,9 +505,9 @@ describe('t.enum.caseInsensitive', () => {
         mockFetch.get('/item', { status: 'active' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = {
+            result = {
               status: t.enum.caseInsensitive('Active', 'Inactive', 'Pending'),
             };
           }
@@ -524,9 +524,9 @@ describe('t.enum.caseInsensitive', () => {
         mockFetch.get('/item', { status: 'PENDING' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = {
+            result = {
               status: t.enum.caseInsensitive('Active', 'Inactive', 'Pending'),
             };
           }
@@ -550,9 +550,9 @@ describe('t.enum.caseInsensitive', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = {
+            result = {
               user: t.object({
                 name: t.string,
                 role: t.enum.caseInsensitive('Admin', 'User', 'Guest'),
@@ -576,9 +576,9 @@ describe('t.enum.caseInsensitive', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetTags extends Query {
+          class GetTags extends JsonQuery {
             path = '/tags';
-            response = {
+            result = {
               tags: t.array(t.enum.caseInsensitive('High', 'Medium', 'Low')),
             };
           }
@@ -597,9 +597,9 @@ describe('t.enum.caseInsensitive', () => {
         mockFetch.get('/item', { status: 'invalid' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = {
+            result = {
               status: t.enum.caseInsensitive('Active', 'Inactive'),
             };
           }
@@ -630,9 +630,9 @@ describe('t.enum.caseInsensitive', () => {
             role = t.enum.caseInsensitive('Admin', 'User', 'Guest');
           }
 
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = { user: t.entity(User) };
+            result = { user: t.entity(User) };
           }
 
           const relay = fetchQuery(GetUser);
@@ -662,9 +662,9 @@ describe('t.enum.caseInsensitive', () => {
             tags = t.array(t.enum.caseInsensitive('High', 'Medium', 'Low'));
           }
 
-          class GetTask extends Query {
+          class GetTask extends JsonQuery {
             path = '/task';
-            response = { task: t.entity(Task) };
+            result = { task: t.entity(Task) };
           }
 
           const relay = fetchQuery(GetTask);

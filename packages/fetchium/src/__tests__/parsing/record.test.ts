@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import {
   setupParsingTests,
@@ -203,9 +203,9 @@ describe('t.record', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetConfig extends Query {
+          class GetConfig extends JsonQuery {
             path = '/config';
-            response = { settings: t.record(t.string) };
+            result = { settings: t.record(t.string) };
           }
 
           const relay = fetchQuery(GetConfig);
@@ -221,9 +221,9 @@ describe('t.record', () => {
         mockFetch.get('/empty', { data: {} });
 
         await testWithClient(client, async () => {
-          class GetEmpty extends Query {
+          class GetEmpty extends JsonQuery {
             path = '/empty';
-            response = { data: t.record(t.string) };
+            result = { data: t.record(t.string) };
           }
 
           const relay = fetchQuery(GetEmpty);
@@ -246,9 +246,9 @@ describe('t.record', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUserMap extends Query {
+          class GetUserMap extends JsonQuery {
             path = '/users/map';
-            response = {
+            result = {
               users: t.record(t.object({ id: t.number, name: t.string, active: t.boolean })),
             };
           }
@@ -273,9 +273,9 @@ describe('t.record', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetPermissions extends Query {
+          class GetPermissions extends JsonQuery {
             path = '/permissions';
-            response = { permissions: t.record(t.record(t.boolean)) };
+            result = { permissions: t.record(t.record(t.boolean)) };
           }
 
           const relay = fetchQuery(GetPermissions);
@@ -298,9 +298,9 @@ describe('t.record', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetTags extends Query {
+          class GetTags extends JsonQuery {
             path = '/tags';
-            response = { tagsByCategory: t.record(t.array(t.string)) };
+            result = { tagsByCategory: t.record(t.array(t.string)) };
           }
 
           const relay = fetchQuery(GetTags);
@@ -323,9 +323,9 @@ describe('t.record', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetTimestamps extends Query {
+          class GetTimestamps extends JsonQuery {
             path = '/timestamps';
-            response = { events: t.record(t.format('date-time')) };
+            result = { events: t.record(t.format('date-time')) };
           }
 
           const relay = fetchQuery(GetTimestamps);

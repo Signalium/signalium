@@ -4,7 +4,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t, getShapeKey, ValidatorDef } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, fetchQuery, queryKeyForClass } from '../query.js';
+import { JsonQuery, fetchQuery, queryKeyForClass } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import {
@@ -130,7 +130,7 @@ function deleteDocument(kv: any, key: number) {
  * Compute a query key from a Query class without needing the class to be registered
  * via fetchQuery(). This mirrors the internal logic of getQueryDefinition + queryKeyFor.
  */
-function computeQueryKey(QueryClass: new () => Query, params: unknown): number {
+function computeQueryKey(QueryClass: new () => JsonQuery, params: unknown): number {
   const instance = new QueryClass();
   const { path, method, response } = instance as any;
   const id = `${method ?? 'GET'}:${path}`;
@@ -155,12 +155,12 @@ function computeQueryKey(QueryClass: new () => Query, params: unknown): number {
 }
 
 // Helper to set up a query result in the store
-function setQuery(kv: any, QueryClass: new () => Query, params: unknown, result: unknown, refIds?: Set<number>) {
+function setQuery(kv: any, QueryClass: new () => JsonQuery, params: unknown, result: unknown, refIds?: Set<number>) {
   if (typeof params === 'object' && params !== null && Object.keys(params as any).length === 0) {
     params = undefined;
   }
 
-  const queryKey = computeQueryKey(QueryClass, params);
+  const queryKey = queryKeyForClass(QueryClass, params);
   setDocument(kv, queryKey, result, refIds);
   kv.setNumber(updatedAtKeyFor(queryKey), Date.now());
 }
@@ -185,9 +185,10 @@ describe('Caching and Persistence', () => {
       mockFetch.get('/items/[id]', { id: 1, name: 'Test' });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
-          path = '/items/[id]';
-          response = { id: t.number, name: t.string };
+        class GetItem extends JsonQuery {
+          params = { id: t.id };
+          path = `/items/${this.params.id}`;
+          result = { id: t.number, name: t.string };
         }
 
         const relay = fetchQuery(GetItem, { id: '1' });
@@ -203,12 +204,13 @@ describe('Caching and Persistence', () => {
     });
 
     it('should load query results from cache', async () => {
-      class GetItem extends Query {
-        path = '/items/[id]';
-        response = { id: t.number, name: t.string };
+      class GetItem extends JsonQuery {
+        params = { id: t.id };
+        path = `/items/${this.params.id}`;
+        result = { id: t.number, name: t.string };
       }
 
-      const queryKey = computeQueryKey(GetItem, { id: '1' });
+      const queryKey = queryKeyForClass(GetItem, { id: '1' });
       const cachedData = { id: 1, name: 'Cached Data' };
 
       // Pre-populate cache
@@ -249,9 +251,9 @@ describe('Caching and Persistence', () => {
     it('should persist across QueryClient instances', async () => {
       mockFetch.get('/item', { id: 1, value: 'Persistent' });
 
-      class GetItem extends Query {
+      class GetItem extends JsonQuery {
         path = '/item';
-        response = { id: t.number, value: t.string };
+        result = { id: t.number, value: t.string };
       }
 
       await testWithClient(client, async () => {
@@ -303,9 +305,10 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends Query {
-          path = '/users/[id]';
-          response = { user: t.entity(User) };
+        class GetUser extends JsonQuery {
+          params = { id: t.id };
+          path = `/users/${this.params.id}`;
+          result = { user: t.entity(User) };
         }
 
         const relay = fetchQuery(GetUser, { id: '1' });
@@ -331,9 +334,9 @@ describe('Caching and Persistence', () => {
         name = t.string;
       }
 
-      class GetDocument extends Query {
+      class GetDocument extends JsonQuery {
         path = '/document';
-        response = { user: t.entity(User) };
+        result = { user: t.entity(User) };
       }
 
       // Pre-populate entity
@@ -393,9 +396,10 @@ describe('Caching and Persistence', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       // Pre-populate the entity in cache (simulating persistent storage preload)
@@ -455,9 +459,10 @@ describe('Caching and Persistence', () => {
         category = t.entity(Category);
       }
 
-      class GetArticle extends Query {
-        path = '/articles/[id]';
-        response = { article: t.entity(Article) };
+      class GetArticle extends JsonQuery {
+        params = { id: t.id };
+        path = `/articles/${this.params.id}`;
+        result = { article: t.entity(Article) };
       }
 
       // Pre-populate nested entity (Category) in cache
@@ -549,9 +554,10 @@ describe('Caching and Persistence', () => {
         latestPost = t.entity(Post);
       }
 
-      class GetAuthor extends Query {
-        path = '/authors/[id]';
-        response = { author: t.entity(Author) };
+      class GetAuthor extends JsonQuery {
+        params = { id: t.id };
+        path = `/authors/${this.params.id}`;
+        result = { author: t.entity(Author) };
       }
 
       // Pre-populate deeply nested entity (Tag) in cache
@@ -648,9 +654,10 @@ describe('Caching and Persistence', () => {
         items = t.array(t.entity(Item));
       }
 
-      class GetContainer extends Query {
-        path = '/containers/[id]';
-        response = { container: t.entity(Container) };
+      class GetContainer extends JsonQuery {
+        params = { id: t.id };
+        path = `/containers/${this.params.id}`;
+        result = { container: t.entity(Container) };
       }
 
       // Pre-populate array items in cache
@@ -716,9 +723,10 @@ describe('Caching and Persistence', () => {
         posts = t.array(t.entity(Post));
       }
 
-      class GetBlog extends Query {
-        path = '/blogs/[id]';
-        response = { blog: t.entity(Blog) };
+      class GetBlog extends JsonQuery {
+        params = { id: t.id };
+        path = `/blogs/${this.params.id}`;
+        result = { blog: t.entity(Blog) };
       }
 
       // Pre-populate authors
@@ -806,9 +814,10 @@ describe('Caching and Persistence', () => {
         threads = t.array(t.entity(Thread));
       }
 
-      class GetForum extends Query {
-        path = '/forums/[id]';
-        response = { forum: t.entity(Forum) };
+      class GetForum extends JsonQuery {
+        params = { id: t.id };
+        path = `/forums/${this.params.id}`;
+        result = { forum: t.entity(Forum) };
       }
 
       // Pre-populate tags
@@ -926,9 +935,10 @@ describe('Caching and Persistence', () => {
         favoritePost = t.entity(Post);
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/users/[id]', {
@@ -971,14 +981,14 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser1 extends Query {
+        class GetUser1 extends JsonQuery {
           path = '/user/profile';
-          response = { user: t.entity(User) };
+          result = { user: t.entity(User) };
         }
 
-        class GetUser2 extends Query {
+        class GetUser2 extends JsonQuery {
           path = '/user/details';
-          response = { user: t.entity(User) };
+          result = { user: t.entity(User) };
         }
 
         const relay1 = fetchQuery(GetUser1);
@@ -1009,9 +1019,10 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends Query {
-          path = '/users/[id]';
-          response = { user: t.entity(User) };
+        class GetUser extends JsonQuery {
+          params = { id: t.id };
+          path = `/users/${this.params.id}`;
+          result = { user: t.entity(User) };
         }
 
         const relay = fetchQuery(GetUser, { id: '1' });
@@ -1052,9 +1063,10 @@ describe('Caching and Persistence', () => {
         favoritePost = t.entity(Post);
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/users/[id]', {
@@ -1097,10 +1109,11 @@ describe('Caching and Persistence', () => {
       }
 
       // Set up a query cache with maxCount of 2
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
-        cache = { maxCount: 2 };
+      class GetUser extends JsonQuery {
+        static cache = { maxCount: 2 };
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/users/1', { user: { __typename: 'User', id: 1, name: 'User 1' } });
@@ -1154,15 +1167,17 @@ describe('Caching and Persistence', () => {
         name = t.string;
       }
 
-      class GetProfile extends Query {
-        path = '/user/profile/[id]';
-        response = { user: t.entity(User) };
-        cache = { maxCount: 1 };
+      class GetProfile extends JsonQuery {
+        static cache = { maxCount: 1 };
+        params = { id: t.id };
+        path = `/user/profile/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
-      class GetDetails extends Query {
-        path = '/user/details/[id]';
-        response = { user: t.entity(User) };
+      class GetDetails extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/details/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/profile/1', {
@@ -1238,10 +1253,11 @@ describe('Caching and Persistence', () => {
         },
       });
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
-        cache = { maxCount: 1 };
+      class GetUser extends JsonQuery {
+        static cache = { maxCount: 1 };
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       await testWithClient(client, async () => {
@@ -1302,9 +1318,10 @@ describe('Caching and Persistence', () => {
         favoritePost = t.entity(Post);
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       // First response with post 1
@@ -1389,9 +1406,9 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetPosts extends Query {
+        class GetPosts extends JsonQuery {
           path = '/posts';
-          response = { posts: t.array(t.entity(Post)) };
+          result = { posts: t.array(t.entity(Post)) };
         }
 
         const relay = fetchQuery(GetPosts);
@@ -1437,10 +1454,11 @@ describe('Caching and Persistence', () => {
         },
       });
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
-        cache = { maxCount: 1 };
+      class GetUser extends JsonQuery {
+        static cache = { maxCount: 1 };
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       await testWithClient(client, async () => {
@@ -1498,10 +1516,11 @@ describe('Caching and Persistence', () => {
         },
       });
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
-        cache = { maxCount: 1 };
+      class GetUser extends JsonQuery {
+        static cache = { maxCount: 1 };
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       await testWithClient(client, async () => {
@@ -1555,9 +1574,10 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetPositionV1 extends Query {
-          path = '/positions/[id]';
-          response = { position: t.entity(PositionV1) };
+        class GetPositionV1 extends JsonQuery {
+          params = { id: t.id };
+          path = `/positions/${this.params.id}`;
+          result = { position: t.entity(PositionV1) };
         }
 
         // Fetch with V1 schema
@@ -1595,9 +1615,10 @@ describe('Caching and Persistence', () => {
       const client2 = new QueryClient(store, { fetch: mockFetch as any });
 
       await testWithClient(client2, async () => {
-        class GetPositionV2 extends Query {
-          path = '/positions/[id]';
-          response = { position: t.entity(PositionV2) };
+        class GetPositionV2 extends JsonQuery {
+          params = { id: t.id };
+          path = `/positions/${this.params.id}`;
+          result = { position: t.entity(PositionV2) };
         }
 
         // Fetch with V2 schema - this should NOT throw a validation error
@@ -1632,9 +1653,9 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUserV1 extends Query {
+        class GetUserV1 extends JsonQuery {
           path = '/users/v1';
-          response = { user: t.entity(UserV1) };
+          result = { user: t.entity(UserV1) };
         }
 
         const relay1 = fetchQuery(GetUserV1);
@@ -1647,9 +1668,9 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUserV2 extends Query {
+        class GetUserV2 extends JsonQuery {
           path = '/users/v2';
-          response = { user: t.entity(UserV2) };
+          result = { user: t.entity(UserV2) };
         }
 
         const relay2 = fetchQuery(GetUserV2);
@@ -1680,15 +1701,16 @@ describe('Caching and Persistence', () => {
       mockFetch.get('/items/[id]', { id: 1, name: 'Test' });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
-          path = '/items/[id]';
-          response = { id: t.number, name: t.string };
+        class GetItem extends JsonQuery {
+          params = { id: t.id };
+          path = `/items/${this.params.id}`;
+          result = { id: t.number, name: t.string };
         }
 
         const relay = fetchQuery(GetItem, { id: '1' });
         await relay;
 
-        const queryDefId = 'GET:/items/[id]';
+        const queryDefId = 'GET:/items/[params.id]';
         const lastUsed = kv.getNumber(lastUsedKeyFor(queryDefId));
         const cacheTime = kv.getNumber(cacheTimeKeyFor(queryDefId));
 
@@ -1699,13 +1721,14 @@ describe('Caching and Persistence', () => {
     });
 
     it('should purge expired queries on purgeStaleQueries', () => {
-      class GetItem extends Query {
-        path = '/purge-items/[id]';
-        response = { id: t.number, name: t.string };
+      class GetItem extends JsonQuery {
+        params = { id: t.id };
+        path = `/purge-items/${this.params.id}`;
+        result = { id: t.number, name: t.string };
       }
 
-      const queryDefId = 'GET:/purge-items/[id]';
-      const queryKey = computeQueryKey(GetItem, { id: '1' });
+      const queryDefId = 'GET:/purge-items/[params.id]';
+      const queryKey = queryKeyForClass(GetItem, { id: '1' });
 
       setDocument(kv, queryKey, { id: 1, name: 'Old Data' });
       kv.setNumber(updatedAtKeyFor(queryKey), Date.now() - 100_000_000);
@@ -1729,13 +1752,14 @@ describe('Caching and Persistence', () => {
     });
 
     it('should not purge fresh queries', () => {
-      class GetItem extends Query {
-        path = '/fresh-items/[id]';
-        response = { id: t.number, name: t.string };
+      class GetItem extends JsonQuery {
+        params = { id: t.id };
+        path = `/fresh-items/${this.params.id}`;
+        result = { id: t.number, name: t.string };
       }
 
-      const queryDefId = 'GET:/fresh-items/[id]';
-      const queryKey = computeQueryKey(GetItem, { id: '1' });
+      const queryDefId = 'GET:/fresh-items/[params.id]';
+      const queryKey = queryKeyForClass(GetItem, { id: '1' });
 
       setDocument(kv, queryKey, { id: 1, name: 'Fresh Data' });
       kv.setNumber(updatedAtKeyFor(queryKey), Date.now());
@@ -1755,13 +1779,14 @@ describe('Caching and Persistence', () => {
     });
 
     it('should cascade-delete orphaned entities when purging stale queries', () => {
-      class GetUser extends Query {
-        path = '/purge-users/[id]';
-        response = { id: t.number, name: t.string };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/purge-users/${this.params.id}`;
+        result = { id: t.number, name: t.string };
       }
 
-      const queryDefId = 'GET:/purge-users/[id]';
-      const queryKey = computeQueryKey(GetUser, { id: '1' });
+      const queryDefId = 'GET:/purge-users/[params.id]';
+      const queryKey = queryKeyForClass(GetUser, { id: '1' });
       const entityKey = hashValue(['User:1', getShapeKey(t.object({ id: t.number, name: t.string }))]);
 
       // Set entity data (no manual ref count -- setDocument below handles it)
@@ -1789,14 +1814,15 @@ describe('Caching and Persistence', () => {
     });
 
     it('should respect custom cacheTime when purging', () => {
-      class GetLongLived extends Query {
-        path = '/long-lived/[id]';
-        response = { id: t.number };
-        cache = { cacheTime: 60 * 24 * 30 }; // 30 days
+      class GetLongLived extends JsonQuery {
+        static cache = { cacheTime: 60 * 24 * 30 }; // 30 days
+        params = { id: t.id };
+        path = `/long-lived/${this.params.id}`;
+        result = { id: t.number };
       }
 
-      const queryDefId = 'GET:/long-lived/[id]';
-      const queryKey = computeQueryKey(GetLongLived, { id: '1' });
+      const queryDefId = 'GET:/long-lived/[params.id]';
+      const queryKey = queryKeyForClass(GetLongLived, { id: '1' });
 
       setDocument(kv, queryKey, { id: 1 });
       kv.setNumber(updatedAtKeyFor(queryKey), Date.now());
@@ -1815,15 +1841,16 @@ describe('Caching and Persistence', () => {
     });
 
     it('should purge multiple entries from the same queue', () => {
-      class GetItem extends Query {
-        path = '/multi-purge/[id]';
-        response = { id: t.number, name: t.string };
+      class GetItem extends JsonQuery {
+        params = { id: t.id };
+        path = `/multi-purge/${this.params.id}`;
+        result = { id: t.number, name: t.string };
       }
 
-      const queryDefId = 'GET:/multi-purge/[id]';
-      const key1 = computeQueryKey(GetItem, { id: '1' });
-      const key2 = computeQueryKey(GetItem, { id: '2' });
-      const key3 = computeQueryKey(GetItem, { id: '3' });
+      const queryDefId = 'GET:/multi-purge/[params.id]';
+      const key1 = queryKeyForClass(GetItem, { id: '1' });
+      const key2 = queryKeyForClass(GetItem, { id: '2' });
+      const key3 = queryKeyForClass(GetItem, { id: '3' });
 
       setDocument(kv, key1, { id: 1, name: 'One' });
       kv.setNumber(updatedAtKeyFor(key1), Date.now() - 100_000_000);

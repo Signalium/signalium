@@ -4,7 +4,7 @@ import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, fetchQuery } from '../query.js';
+import { JsonQuery, fetchQuery } from '../query.js';
 import { createMockFetch, sendStreamUpdate, sleep, testWithClient } from './utils.js';
 
 /**
@@ -52,9 +52,10 @@ describe('Entity Streaming', () => {
       }
 
       // Create entity via query
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -118,9 +119,10 @@ describe('Entity Streaming', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -162,9 +164,10 @@ describe('Entity Streaming', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -223,9 +226,10 @@ describe('Entity Streaming', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -274,9 +278,10 @@ describe('Entity Streaming', () => {
         age = t.number;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -335,9 +340,10 @@ describe('Entity Streaming', () => {
         count = t.number;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -393,9 +399,10 @@ describe('Entity Streaming', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -451,9 +458,10 @@ describe('Entity Streaming', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -494,9 +502,10 @@ describe('Entity Streaming', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -539,9 +548,10 @@ describe('Entity Streaming', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -585,9 +595,10 @@ describe('Entity Streaming', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -644,9 +655,10 @@ describe('Entity Streaming', () => {
         });
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -690,9 +702,10 @@ describe('Entity Streaming', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {
@@ -738,9 +751,10 @@ describe('Entity Streaming', () => {
         }
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       mockFetch.get('/user/[id]', {

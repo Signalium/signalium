@@ -8,7 +8,7 @@ import { AsyncPersistentStore, StoreMessage } from '../../stores/async.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, fetchQuery, queryKeyForClass } from '../../query.js';
+import { JsonQuery, fetchQuery, queryKeyForClass } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { valueKeyFor } from '../../stores/shared.js';
 
@@ -126,9 +126,10 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = t.entity(User);
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User);
       }
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
@@ -175,10 +176,11 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = t.entity(User);
-        cache = { staleTime: 10000 };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User);
+        config = { staleTime: 10000 };
       }
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
@@ -244,10 +246,11 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = t.entity(User);
-        cache = { staleTime: 50 };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User);
+        config = { staleTime: 50 };
       }
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
@@ -330,14 +333,16 @@ describe('React AsyncQueryStore Integration', () => {
         authorId = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = t.entity(User);
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User);
       }
 
-      class GetPost extends Query {
-        path = '/posts/[id]';
-        response = t.entity(Post);
+      class GetPost extends JsonQuery {
+        params = { id: t.id };
+        path = `/posts/${this.params.id}`;
+        result = t.entity(Post);
       }
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
@@ -396,9 +401,10 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = t.entity(User);
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User);
       }
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
@@ -460,9 +466,10 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = t.entity(User);
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User);
       }
 
       mockFetch.get('/users/1', null, { error: new Error('Network error') });
@@ -497,10 +504,11 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = t.entity(User);
-        cache = { staleTime: 10000 };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User);
+        config = { staleTime: 10000 };
       }
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -126,9 +126,9 @@ describe('t.string', () => {
         mockFetch.get('/item', { name: 'Test String' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { name: t.string };
+            result = { name: t.string };
           }
 
           const relay = fetchQuery(GetItem);
@@ -144,9 +144,9 @@ describe('t.string', () => {
         mockFetch.get('/item', { value: '' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { value: t.string };
+            result = { value: t.string };
           }
 
           const relay = fetchQuery(GetItem);
@@ -165,9 +165,9 @@ describe('t.string', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = {
+            result = {
               user: t.object({
                 profile: t.object({
                   bio: t.string,
@@ -190,9 +190,9 @@ describe('t.string', () => {
         mockFetch.get('/tags', { tags: ['a', 'b', 'c'] });
 
         await testWithClient(client, async () => {
-          class GetTags extends Query {
+          class GetTags extends JsonQuery {
             path = '/tags';
-            response = { tags: t.array(t.string) };
+            result = { tags: t.array(t.string) };
           }
 
           const relay = fetchQuery(GetTags);
@@ -211,9 +211,9 @@ describe('t.string', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetConfig extends Query {
+          class GetConfig extends JsonQuery {
             path = '/config';
-            response = { settings: t.record(t.string) };
+            result = { settings: t.record(t.string) };
           }
 
           const relay = fetchQuery(GetConfig);
@@ -231,9 +231,9 @@ describe('t.string', () => {
         mockFetch.get('/value', { value: 'hello' });
 
         await testWithClient(client, async () => {
-          class GetValue extends Query {
+          class GetValue extends JsonQuery {
             path = '/value';
-            response = { value: t.union(t.string, t.number) };
+            result = { value: t.union(t.string, t.number) };
           }
 
           const relay = fetchQuery(GetValue);

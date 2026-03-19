@@ -10,30 +10,21 @@ import {
 } from './types.js';
 import {
   QueryCacheOptions,
+  QueryConfigOptions,
   QueryClientContext,
   QueryContext,
   QueryParams,
   queryKeyFor,
   resolveBaseUrl,
 } from './QueryClient.js';
-import { ValidatorDef } from './typeDefs.js';
-import { createPathInterpolator } from './pathInterpolator.js';
 import { HasRequiredKeys, Optionalize, Signalize } from './type-utils.js';
 import { resolveTypeDef } from './resolveTypeDef.js';
-
-// ================================
-// Path param extraction types
-// ================================
-
-type IsParameter<Part> = Part extends `[${infer ParamName}]` ? ParamName : never;
-type FilteredParts<Path> = Path extends `${infer PartA}/${infer PartB}`
-  ? IsParameter<PartA> | FilteredParts<PartB>
-  : IsParameter<Path>;
-type ParamValue<Key> = Key extends `...${infer _Anything}` ? (string | number)[] : string | number;
-type RemovePrefixDots<Key> = Key extends `...${infer Name}` ? Name : Key;
-type PathParams<Path> = {
-  [Key in FilteredParts<Path> as RemovePrefixDots<Key>]: ParamValue<Key>;
-};
+import {
+  createDefinitionProxy,
+  extractDefinition,
+  createExecutionContext as createExecutionContextUtil,
+  type CapturedDefinition,
+} from './fieldRef.js';
 
 // ================================
 // Stream options
@@ -66,14 +57,14 @@ export interface ResolvedRetryConfig {
 }
 
 export function resolveRetryConfig(
-  retryOption: RetryConfig | number | false | undefined,
+  retryOption: RetryConfig | number | boolean | undefined,
   isServer: boolean = typeof window === 'undefined',
 ): ResolvedRetryConfig {
   let retries: number;
 
   if (retryOption === false) {
     retries = 0;
-  } else if (retryOption === undefined) {
+  } else if (retryOption === undefined || retryOption === true) {
     retries = isServer ? 0 : 3;
   } else if (typeof retryOption === 'number') {
     retries = retryOption;
@@ -92,188 +83,228 @@ export function resolveRetryConfig(
 // ================================
 // Query base class
 // ================================
-// Generic params preserve literal types for searchParams/body so optional keys type-check (e.g. t.union(t.number, t.undefined)).
-export abstract class Query<
-  SearchParamsDef extends Record<string, TypeDef> = Record<string, TypeDef>,
-  BodyDef extends Record<string, TypeDef> = Record<string, TypeDef>,
-> {
-  abstract readonly path: string;
-  abstract readonly response: ResponseTypeDef;
 
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' = 'GET';
-  searchParams?: SearchParamsDef;
-  body?: BodyDef;
-  requestOptions?: QueryRequestOptions;
-  cache?: QueryCacheOptions;
+export abstract class Query {
+  static cache?: QueryCacheOptions;
+
+  params?: Record<string, TypeDef>;
+  abstract result: ResponseTypeDef;
+  config?: QueryConfigOptions;
   stream?: StreamOptions;
-  debounce?: number;
+
+  declare context: QueryContext;
+  declare response: Response | undefined;
+
+  abstract getStorageKey(): unknown;
+  abstract send(): Promise<unknown>;
+
+  getConfig(): QueryConfigOptions | undefined {
+    return this.config;
+  }
+
+  getStream(): StreamOptions | undefined {
+    return this.stream;
+  }
+
+  constructor() {
+    return createDefinitionProxy(this);
+  }
 }
 
 // ================================
-// Query definition base class
+// JsonQuery
 // ================================
 
+export abstract class JsonQuery extends Query {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' = 'GET';
+  path?: string;
+  searchParams?: Record<string, unknown>;
+  body?: Record<string, unknown>;
+  headers?: HeadersInit;
+  requestOptions?: QueryRequestOptions;
+
+  getStorageKey(): string {
+    return `${this.method ?? 'GET'}:${this.path ?? ''}`;
+  }
+
+  getPath(): string | undefined {
+    return this.path;
+  }
+
+  getMethod(): string {
+    return this.method;
+  }
+
+  getSearchParams(): Record<string, unknown> | undefined {
+    return this.searchParams;
+  }
+
+  getBody(): Record<string, unknown> | undefined {
+    return this.body;
+  }
+
+  getRequestOptions(): QueryRequestOptions | undefined {
+    return this.requestOptions;
+  }
+
+  async send(): Promise<unknown> {
+    const path = this.getPath();
+    const method = this.getMethod();
+    const searchParams = this.getSearchParams();
+    const body = this.getBody();
+    const requestOptions = this.getRequestOptions();
+
+    if (!path) {
+      throw new Error('JsonQuery requires a path. Define `path` as a field or override `getPath()`.');
+    }
+
+    let url = path;
+
+    if (searchParams) {
+      const sp = new URLSearchParams();
+      for (const key in searchParams) {
+        const val = searchParams[key];
+        if (val !== undefined && val !== null) {
+          sp.append(key, String(val));
+        }
+      }
+      const qs = sp.toString();
+      if (qs) {
+        url += '?' + qs;
+      }
+    }
+
+    const baseUrl = resolveBaseUrl(requestOptions?.baseUrl) ?? resolveBaseUrl(this.context.baseUrl);
+    const fullUrl = baseUrl ? `${baseUrl}${url}` : url;
+
+    const { baseUrl: _baseUrl, ...fetchOptions } = requestOptions ?? {};
+
+    const hasHeaders = body || this.headers;
+    const headers: HeadersInit | undefined = hasHeaders
+      ? {
+          ...(body ? { 'Content-Type': 'application/json' } : undefined),
+          ...(this.headers as Record<string, string>),
+        }
+      : undefined;
+
+    const fetchResponse = await this.context.fetch(fullUrl, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      ...fetchOptions,
+    });
+
+    this.response = fetchResponse;
+    return fetchResponse.json();
+  }
+}
+
+// ================================
+// Query definition
+// ================================
+
+const queryDefCache = new WeakMap<new () => Query, QueryDefinition<any, any, any>>();
+
+export interface ResolvedQueryOptions {
+  config: QueryConfigOptions | undefined;
+  stream: ResolvedStreamOptions | undefined;
+  retryConfig: ResolvedRetryConfig;
+}
+
+export interface QueryDefinitionStatics {
+  readonly id: string;
+  readonly shape: InternalTypeDef;
+  readonly shapeKey: number;
+  readonly cache: QueryCacheOptions | undefined;
+}
+
 export class QueryDefinition<Params extends QueryParams | undefined, Result, StreamType> {
+  private _streamShape: { shape: InternalTypeDef; shapeKey: number } | undefined;
+
+  readonly statics: QueryDefinitionStatics;
+
   constructor(
-    public readonly id: string,
-    public readonly shape: InternalTypeDef,
-    public readonly shapeKey: number,
-    public readonly fetchFn: (context: QueryContext, params: Params, prevResult?: Result) => Promise<Result>,
-    public readonly debounce?: number,
-    public readonly cache?: QueryCacheOptions,
-    public readonly stream?: {
-      shape: InternalTypeDef;
-      shapeKey: number;
-      subscribeFn: StreamSubscribeFn<Params, StreamType>;
-    },
-    public readonly retryConfig: ResolvedRetryConfig = resolveRetryConfig(cache?.retry),
-  ) {}
+    statics: QueryDefinitionStatics,
+    public readonly captured: CapturedDefinition<Query>,
+  ) {
+    this.statics = statics;
+  }
+
+  createExecutionContext(actualParams: Record<string, unknown>, queryContext: QueryContext): Query {
+    return createExecutionContextUtil(this.captured, actualParams, queryContext);
+  }
+
+  resolveOptions(ctx: Query): ResolvedQueryOptions {
+    const { methods, fields } = this.captured;
+
+    const config = methods.getConfig?.call(ctx);
+    const rawStream = methods.getStream?.call(ctx);
+
+    let stream: ResolvedStreamOptions | undefined;
+    if (rawStream) {
+      if (!this._streamShape) {
+        const originalStream = methods.getStream?.call(fields) ?? fields.stream;
+        if (originalStream?.type) {
+          this._streamShape = resolveTypeDef(originalStream.type);
+        }
+      }
+      if (this._streamShape) {
+        const { shape, shapeKey } = this._streamShape;
+        stream = {
+          shape,
+          shapeKey,
+          subscribeFn: rawStream.subscribe,
+        };
+      }
+    }
+
+    const retryConfig = resolveRetryConfig(config?.retry);
+
+    return { config, stream, retryConfig };
+  }
+
+  static for(QueryClass: new () => Query): QueryDefinition<any, any, any> {
+    let queryDefinition = queryDefCache.get(QueryClass);
+
+    if (queryDefinition !== undefined) {
+      return queryDefinition;
+    }
+
+    const instance = new QueryClass();
+    const captured = extractDefinition(instance);
+
+    const id = String(captured.methods.getStorageKey.call(captured.fields));
+    const { shape, shapeKey } = resolveTypeDef(captured.fields.result);
+    const cache = (QueryClass as typeof Query).cache;
+
+    queryDefinition = new QueryDefinition({ id, shape, shapeKey, cache }, captured);
+
+    queryDefCache.set(QueryClass, queryDefinition);
+    return queryDefinition;
+  }
 }
 
 // ================================
 // Type extraction from Query classes
 // ================================
 
-type ExtractSearchParams<T extends Query> =
-  T['searchParams'] extends Record<string, TypeDef>
-    ? { [K in keyof T['searchParams']]: ExtractType<T['searchParams'][K]> }
-    : unknown;
-
-type ExtractBodyParams<T extends Query> =
-  T['body'] extends Record<string, TypeDef> ? { [K in keyof T['body']]: ExtractType<T['body'][K]> } : unknown;
-
-export type ExtractQueryParams<T extends Query> = PathParams<T['path']> & ExtractSearchParams<T> & ExtractBodyParams<T>;
+export type ExtractQueryParams<T extends Query> =
+  T['params'] extends Record<string, TypeDef>
+    ? { [K in keyof T['params']]: ExtractType<T['params'][K]> }
+    : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+      {};
 
 // ================================
-// Query definition cache and lookup
+// Query definition lookup
 // ================================
-
-const queryDefCache = new WeakMap<new () => Query, QueryDefinition<any, any, any>>();
 
 export const queryKeyForClass = (cls: new () => Query, params: unknown): number => {
-  const queryDef = getQueryDefinition(cls);
-
+  const queryDef = QueryDefinition.for(cls);
   return queryKeyFor(queryDef, params);
 };
 
-// ================================
-// Internal: build query definition from class
-// ================================
-
-const checkConflicts = (
-  sourceNames: Set<string>,
-  targetNames: Set<string>,
-  sourceLabel: string,
-  targetLabel: string,
-) => {
-  const conflicts = [...sourceNames].filter(name => targetNames.has(name));
-  if (conflicts.length > 0) {
-    throw new Error(
-      `Query definition error: ${sourceLabel} [${conflicts.join(', ')}] conflict with ${targetLabel}. ` +
-        `Please rename to avoid this conflict.`,
-    );
-  }
-};
-
-function getQueryDefinition(QueryClass: new () => Query): QueryDefinition<any, any, any> {
-  let queryDefinition = queryDefCache.get(QueryClass);
-
-  if (queryDefinition !== undefined) {
-    return queryDefinition;
-  }
-
-  const userDefinition = new QueryClass();
-
-  const { path, method, searchParams, body, response, requestOptions, cache, stream, debounce } = userDefinition;
-
-  const id = `${method}:${path}`;
-
-  const { shape, shapeKey } = resolveTypeDef(response);
-
-  const { interpolate: interpolatePath, pathParamNames } = createPathInterpolator(path);
-
-  const bodyParamNames = new Set<string>();
-  const hasBody =
-    body !== undefined && typeof body === 'object' && !(body instanceof ValidatorDef) && !(body instanceof Set);
-  if (hasBody) {
-    for (const key of Object.keys(body as Record<string, unknown>)) {
-      bodyParamNames.add(key);
-    }
-  }
-
-  const searchParamNames = new Set(
-    searchParams &&
-    typeof searchParams === 'object' &&
-    !(searchParams instanceof ValidatorDef) &&
-    !(searchParams instanceof Set)
-      ? Object.keys(searchParams)
-      : [],
-  );
-
-  if (IS_DEV) {
-    checkConflicts(searchParamNames, pathParamNames, 'Search param(s)', `path parameter(s) in "${path}"`);
-    checkConflicts(bodyParamNames, pathParamNames, 'Body field(s)', `path parameter(s) in "${path}"`);
-    checkConflicts(bodyParamNames, searchParamNames, 'Body field(s)', 'search param(s)');
-  }
-
-  const fetchFn = async (context: QueryContext, params: QueryParams) => {
-    let bodyData: Record<string, unknown> | undefined;
-    let urlParams: QueryParams | undefined = params;
-
-    if (hasBody) {
-      bodyData = {};
-      urlParams = params !== undefined ? {} : undefined;
-      if (params !== undefined) {
-        for (const key in params) {
-          if (bodyParamNames.has(key)) {
-            bodyData[key] = params[key];
-          } else {
-            (urlParams as Record<string, unknown>)[key] = params[key];
-          }
-        }
-      }
-    }
-
-    const interpolatedPath = interpolatePath(urlParams ?? {});
-
-    const baseUrl = resolveBaseUrl(requestOptions?.baseUrl) ?? resolveBaseUrl(context.baseUrl);
-    const fullUrl = baseUrl ? `${baseUrl}${interpolatedPath}` : interpolatedPath;
-
-    const { baseUrl: _baseUrl, headers: userHeaders, ...fetchOptions } = requestOptions ?? {};
-
-    const headers: HeadersInit | undefined = bodyData
-      ? { 'Content-Type': 'application/json', ...userHeaders }
-      : userHeaders;
-
-    const fetchResponse = await context.fetch(fullUrl, {
-      method,
-      headers,
-      body: bodyData ? JSON.stringify(bodyData) : undefined,
-      ...fetchOptions,
-    });
-
-    return fetchResponse.json();
-  };
-
-  let streamConfig: ResolvedStreamOptions | undefined = undefined;
-  if (stream) {
-    const { shape: streamShape, shapeKey: streamShapeKey } = resolveTypeDef(stream.type);
-
-    streamConfig = {
-      shape: streamShape,
-      shapeKey: streamShapeKey,
-      subscribeFn: (context: QueryContext, params: QueryParams | undefined, onUpdate: any) => {
-        return (stream.subscribe as any)(context, params as any, onUpdate);
-      },
-    };
-  }
-
-  const retryConfig = resolveRetryConfig(cache?.retry);
-
-  queryDefinition = new QueryDefinition(id, shape, shapeKey, fetchFn, debounce, cache, streamConfig, retryConfig);
-
-  queryDefCache.set(QueryClass, queryDefinition);
-  return queryDefinition;
+export function getQueryDefinition(QueryClass: new () => Query): QueryDefinition<any, any, any> {
+  return QueryDefinition.for(QueryClass);
 }
 
 // ================================
@@ -286,7 +317,7 @@ export function fetchQuery<T extends Query>(
     ? [params: Optionalize<Signalize<ExtractQueryParams<T>>>]
     : [params?: Optionalize<Signalize<ExtractQueryParams<T>>> | undefined]
 ): QueryPromise<T> {
-  const queryDef = getQueryDefinition(QueryClass);
+  const queryDef = QueryDefinition.for(QueryClass);
 
   const queryClient = getContext(QueryClientContext);
 
