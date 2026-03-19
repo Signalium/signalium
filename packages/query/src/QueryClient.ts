@@ -62,11 +62,17 @@ export function resolveBaseUrl(baseUrl: BaseUrlValue | undefined): string | unde
   return baseUrl.value; // Signal
 }
 
+/**
+ * Callback that receives query state and returns an interval or `false` to skip.
+ * Useful for stopping or slowing polling based on error state (e.g. 404s).
+ */
+export type RefetchIntervalFn = (query: { isRejected: boolean; error: unknown }) => RefetchInterval | false;
+
 export interface QueryCacheOptions {
   maxCount?: number;
   gcTime?: number; // milliseconds - only applies to on-disk/persistent storage cleanup
   staleTime?: number;
-  refetchInterval?: RefetchInterval;
+  refetchInterval?: RefetchInterval | RefetchIntervalFn;
   networkMode?: NetworkMode; // default: NetworkMode.Online
   retry?: RetryConfig | number | false; // default: 3 on client, 0 on server
   refreshStaleOnReconnect?: boolean; // default: true

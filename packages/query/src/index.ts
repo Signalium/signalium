@@ -1,7 +1,7 @@
 export * from './types.js';
 
 export { QueryClient, QueryClientContext, addOptimisticInsert, removeOptimisticInsert } from './QueryClient.js';
-export type { QueryContext } from './QueryClient.js';
+export type { QueryContext, RefetchIntervalFn } from './QueryClient.js';
 export { t, entity, registerFormat } from './typeDefs.js';
 export { query, infiniteQuery, streamQuery } from './query.js';
 export { mutation } from './mutation.js';

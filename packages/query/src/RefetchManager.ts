@@ -1,4 +1,4 @@
-import { QueryType } from './QueryClient.js';
+import { QueryType, type QueryCacheOptions } from './QueryClient.js';
 import type { QueryResultImpl } from './QueryResult.js';
 
 const BASE_TICK_INTERVAL = 1000; // 1 second
@@ -8,8 +8,11 @@ export class RefetchManager {
   private intervalId: NodeJS.Timeout;
   private clock: number = 0; // Increments by 1000ms on each tick
 
-  // Buckets: Map of actual interval -> Set of query instances
+  // Buckets: Map of actual interval -> Set of query instances (static intervals only)
   private buckets = new Map<number, Set<QueryResultImpl<any>>>();
+
+  // Queries with dynamic (function) refetchInterval, evaluated every tick
+  private dynamicQueries = new Set<QueryResultImpl<any>>();
 
   constructor(private multiplier: number = 1) {
     // Start the timer immediately and keep it running
@@ -22,13 +25,18 @@ export class RefetchManager {
       return; // Streams don't have refetch intervals
     }
 
-    const interval = instance.def.cache?.refetchInterval;
+    const refetchInterval = instance.def.cache?.refetchInterval;
 
-    if (!interval) {
+    if (!refetchInterval) {
       return;
     }
 
-    const actualInterval = interval * this.multiplier;
+    if (typeof refetchInterval === 'function') {
+      this.dynamicQueries.add(instance);
+      return;
+    }
+
+    const actualInterval = refetchInterval * this.multiplier;
     // Add to bucket by actual interval
     let bucket = this.buckets.get(actualInterval);
     if (!bucket) {
@@ -43,13 +51,18 @@ export class RefetchManager {
       return; // Streams don't have refetch intervals
     }
 
-    const interval = query.def.cache?.refetchInterval;
+    const refetchInterval = query.def.cache?.refetchInterval;
 
-    if (!interval) {
+    if (!refetchInterval) {
       return;
     }
 
-    const actualInterval = interval * this.multiplier;
+    if (typeof refetchInterval === 'function') {
+      this.dynamicQueries.delete(query);
+      return;
+    }
+
+    const actualInterval = refetchInterval * this.multiplier;
     // Remove from bucket
     const bucket = this.buckets.get(actualInterval);
     if (bucket) {
@@ -64,7 +77,7 @@ export class RefetchManager {
   private tick() {
     this.clock += BASE_TICK_INTERVAL * this.multiplier;
 
-    // Only process buckets where clock is aligned with the interval
+    // Process static-interval buckets where clock is aligned with the interval
     for (const [interval, bucket] of this.buckets.entries()) {
       if (this.clock % interval === 0) {
         // Process all queries in this bucket
@@ -74,6 +87,23 @@ export class RefetchManager {
             query.refetch();
           }
         }
+      }
+    }
+
+    // Process dynamic-interval queries
+    for (const query of this.dynamicQueries) {
+      if (query.isFetching) continue;
+
+      const fn = (query.def.cache as QueryCacheOptions | undefined)?.refetchInterval;
+      if (typeof fn !== 'function') continue;
+
+      const interval = fn({ isRejected: query.isRejected, error: query.error });
+
+      if (interval === false || !interval) continue;
+
+      const actualInterval = interval * this.multiplier;
+      if (this.clock % actualInterval === 0) {
+        query.refetch();
       }
     }
 

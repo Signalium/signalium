@@ -259,4 +259,143 @@ describe('RefetchInterval', () => {
       });
     });
   });
+
+  describe('Dynamic Refetch Interval (function)', () => {
+    it('should stop refetching when function returns false on error', async () => {
+      let callCount = 0;
+      mockFetch.get('/maybe-404', () => {
+        callCount++;
+        throw new Error('Not found');
+      });
+
+      const getMaybe404 = query(() => ({
+        path: '/maybe-404',
+        response: { n: t.number },
+        cache: {
+          refetchInterval: (q: { isRejected: boolean }) => (q.isRejected ? false : RefetchInterval.Every1Second),
+          retry: false,
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        const relay = getMaybe404();
+        try {
+          await relay;
+        } catch {
+          // Expected: initial fetch errors
+        }
+
+        const countAfterInitial = callCount;
+
+        // Wait several intervals — should NOT refetch since function returns false
+        await sleep(350);
+
+        expect(callCount).toBe(countAfterInitial);
+      });
+    });
+
+    it('should keep refetching when function returns an interval on success', async () => {
+      let callCount = 0;
+      mockFetch.get('/ok', () => ({ n: ++callCount }));
+
+      const getOk = query(() => ({
+        path: '/ok',
+        response: { n: t.number },
+        cache: {
+          refetchInterval: (q: { isRejected: boolean }) =>
+            q.isRejected ? false : RefetchInterval.Every1Second,
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        const relay = getOk();
+        await relay;
+        expect(relay.value).toEqual({ n: 1 });
+
+        // Wait for refetches
+        await sleep(350);
+
+        // Should have refetched multiple times since there's no error
+        expect(callCount).toBeGreaterThanOrEqual(3);
+      });
+    });
+
+    it('should resume refetching when error clears', async () => {
+      let callCount = 0;
+      let shouldError = true;
+      mockFetch.get('/flaky', () => {
+        callCount++;
+        if (shouldError) throw new Error('Temporary error');
+        return { n: callCount };
+      });
+
+      const getFlaky = query(() => ({
+        path: '/flaky',
+        response: { n: t.number },
+        cache: {
+          refetchInterval: (q: { isRejected: boolean }) =>
+            q.isRejected ? RefetchInterval.Every5Seconds : RefetchInterval.Every1Second,
+          retry: false,
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        const relay = getFlaky();
+        try {
+          await relay;
+        } catch {
+          // Expected
+        }
+
+        // In error state — dynamic interval is 5s (500ms at 0.1x).
+        // At 1s interval (100ms at 0.1x), it should NOT refetch.
+        const countAfterError = callCount;
+        await sleep(250);
+        // Should not have refetched at 1s cadence since error interval is 5s
+        expect(callCount).toBeLessThanOrEqual(countAfterError + 1);
+
+        // Now fix the endpoint and wait for the 5s interval to hit
+        shouldError = false;
+        await sleep(400);
+
+        // Should have refetched at least once after recovering
+        expect(callCount).toBeGreaterThan(countAfterError);
+      });
+    });
+
+    it('should work alongside static interval queries', async () => {
+      let staticCount = 0;
+      let dynamicCount = 0;
+      mockFetch.get('/static', () => ({ n: ++staticCount }));
+      mockFetch.get('/dynamic', () => ({ n: ++dynamicCount }));
+
+      const getStatic = query(() => ({
+        path: '/static',
+        response: { n: t.number },
+        cache: { refetchInterval: RefetchInterval.Every1Second },
+      }));
+
+      const getDynamic = query(() => ({
+        path: '/dynamic',
+        response: { n: t.number },
+        cache: {
+          refetchInterval: (_q: { isRejected: boolean }) => RefetchInterval.Every1Second,
+        },
+      }));
+
+      await testWithClient(client, async () => {
+        const relayStatic = getStatic();
+        const relayDynamic = getDynamic();
+
+        await relayStatic;
+        await relayDynamic;
+
+        await sleep(350);
+
+        // Both should refetch at roughly the same rate
+        expect(staticCount).toBeGreaterThanOrEqual(3);
+        expect(dynamicCount).toBeGreaterThanOrEqual(3);
+      });
+    });
+  });
 });
