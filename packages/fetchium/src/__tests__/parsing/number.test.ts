@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -130,9 +130,9 @@ describe('t.number', () => {
         mockFetch.get('/item', { count: 42, price: 19.99 });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { count: t.number, price: t.number };
+            result = { count: t.number, price: t.number };
           }
 
           const relay = fetchQuery(GetItem);
@@ -153,9 +153,9 @@ describe('t.number', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetNumbers extends Query {
+          class GetNumbers extends JsonQuery {
             path = '/numbers';
-            response = {
+            result = {
               zero: t.number,
               maxSafe: t.number,
               minSafe: t.number,
@@ -176,9 +176,9 @@ describe('t.number', () => {
         mockFetch.get('/numbers', { zero: 0, negative: -42, float: -3.14 });
 
         await testWithClient(client, async () => {
-          class GetNumbers extends Query {
+          class GetNumbers extends JsonQuery {
             path = '/numbers';
-            response = { zero: t.number, negative: t.number, float: t.number };
+            result = { zero: t.number, negative: t.number, float: t.number };
           }
 
           const relay = fetchQuery(GetNumbers);
@@ -199,9 +199,9 @@ describe('t.number', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = {
+            result = {
               item: t.object({
                 stats: t.object({
                   views: t.number,
@@ -226,9 +226,9 @@ describe('t.number', () => {
         mockFetch.get('/numbers', { values: [1, 2, 3, 4, 5] });
 
         await testWithClient(client, async () => {
-          class GetNumbers extends Query {
+          class GetNumbers extends JsonQuery {
             path = '/numbers';
-            response = { values: t.array(t.number) };
+            result = { values: t.array(t.number) };
           }
 
           const relay = fetchQuery(GetNumbers);
@@ -244,9 +244,9 @@ describe('t.number', () => {
         mockFetch.get('/numbers', { numbers: largeArray });
 
         await testWithClient(client, async () => {
-          class GetNumbers extends Query {
+          class GetNumbers extends JsonQuery {
             path = '/numbers';
-            response = { numbers: t.array(t.number) };
+            result = { numbers: t.array(t.number) };
           }
 
           const relay = fetchQuery(GetNumbers);
@@ -267,9 +267,9 @@ describe('t.number', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetMetrics extends Query {
+          class GetMetrics extends JsonQuery {
             path = '/metrics';
-            response = { counts: t.record(t.number) };
+            result = { counts: t.record(t.number) };
           }
 
           const relay = fetchQuery(GetMetrics);
@@ -287,9 +287,9 @@ describe('t.number', () => {
         mockFetch.get('/value', { value: 42 });
 
         await testWithClient(client, async () => {
-          class GetValue extends Query {
+          class GetValue extends JsonQuery {
             path = '/value';
-            response = { value: t.union(t.string, t.number) };
+            result = { value: t.union(t.string, t.number) };
           }
 
           const relay = fetchQuery(GetValue);

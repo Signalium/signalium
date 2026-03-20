@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import {
   setupParsingTests,
@@ -172,9 +172,9 @@ describe('t.object', () => {
         mockFetch.get('/user', { user: { name: 'Alice', age: 30 } });
 
         await testWithClient(client, async () => {
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = {
+            result = {
               user: t.object({ name: t.string, age: t.number }),
             };
           }
@@ -200,9 +200,9 @@ describe('t.object', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetDeep extends Query {
+          class GetDeep extends JsonQuery {
             path = '/deep';
-            response = {
+            result = {
               level1: t.object({
                 level2: t.object({
                   level3: t.object({
@@ -235,9 +235,9 @@ describe('t.object', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetComplex extends Query {
+          class GetComplex extends JsonQuery {
             path = '/complex';
-            response = {
+            result = {
               data: t.object({
                 id: t.number,
                 name: t.string,
@@ -271,9 +271,9 @@ describe('t.object', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetItems extends Query {
+          class GetItems extends JsonQuery {
             path = '/items';
-            response = {
+            result = {
               items: t.array(t.object({ id: t.number, name: t.string })),
             };
           }
@@ -299,9 +299,9 @@ describe('t.object', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUserMap extends Query {
+          class GetUserMap extends JsonQuery {
             path = '/users/map';
-            response = {
+            result = {
               users: t.record(t.object({ id: t.number, name: t.string })),
             };
           }

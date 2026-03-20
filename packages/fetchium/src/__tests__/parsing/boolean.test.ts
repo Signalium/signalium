@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -121,9 +121,9 @@ describe('t.boolean', () => {
         mockFetch.get('/item', { active: true, deleted: false });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { active: t.boolean, deleted: t.boolean };
+            result = { active: t.boolean, deleted: t.boolean };
           }
 
           const relay = fetchQuery(GetItem);
@@ -143,9 +143,9 @@ describe('t.boolean', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = {
+            result = {
               user: t.object({
                 settings: t.object({
                   notifications: t.boolean,
@@ -170,9 +170,9 @@ describe('t.boolean', () => {
         mockFetch.get('/flags', { flags: [true, false, true] });
 
         await testWithClient(client, async () => {
-          class GetFlags extends Query {
+          class GetFlags extends JsonQuery {
             path = '/flags';
-            response = { flags: t.array(t.boolean) };
+            result = { flags: t.array(t.boolean) };
           }
 
           const relay = fetchQuery(GetFlags);
@@ -191,9 +191,9 @@ describe('t.boolean', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetPermissions extends Query {
+          class GetPermissions extends JsonQuery {
             path = '/permissions';
-            response = { permissions: t.record(t.boolean) };
+            result = { permissions: t.record(t.boolean) };
           }
 
           const relay = fetchQuery(GetPermissions);
@@ -212,9 +212,9 @@ describe('t.boolean', () => {
         mockFetch.get('/value', { value: true });
 
         await testWithClient(client, async () => {
-          class GetValue extends Query {
+          class GetValue extends JsonQuery {
             path = '/value';
-            response = { value: t.union(t.string, t.boolean) };
+            result = { value: t.union(t.string, t.boolean) };
           }
 
           const relay = fetchQuery(GetValue);

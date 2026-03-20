@@ -3,7 +3,7 @@ import { signal } from 'signalium';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { Query, fetchQuery } from '../query.js';
+import { JsonQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, getEntityMapSize, sleep } from './utils.js';
 
 /**
@@ -31,12 +31,12 @@ describe('Debounce', () => {
     it('should not delay initial fetch when debounce is configured', async () => {
       mockFetch.get('/users', { users: [] });
 
-      class ListUsers extends Query {
+      class ListUsers extends JsonQuery {
         path = '/users';
-        response = {
+        result = {
           users: t.array(t.object({ id: t.number })),
         };
-        debounce = 100;
+        config = { debounce: 100 };
       }
 
       await testWithClient(client, async () => {
@@ -49,9 +49,9 @@ describe('Debounce', () => {
     it('should not delay when debounce is not configured', async () => {
       mockFetch.get('/users', { users: [] });
 
-      class ListUsers extends Query {
+      class ListUsers extends JsonQuery {
         path = '/users';
-        response = {
+        result = {
           users: t.array(t.object({ id: t.number })),
         };
       }
@@ -68,13 +68,14 @@ describe('Debounce', () => {
       mockFetch.get('/users/[id]', { id: 123, name: 'User 123' });
       mockFetch.get('/users/[id]', { id: 456, name: 'User 456' });
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = {
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = {
           id: t.number,
           name: t.string,
         };
-        debounce = 100;
+        config = { debounce: 100 };
       }
 
       await testWithClient(client, async () => {
@@ -110,13 +111,14 @@ describe('Debounce', () => {
       mockFetch.get('/users/[id]', { id: 456, name: 'User 456' });
       mockFetch.get('/users/[id]', { id: 789, name: 'User 789' });
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = {
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = {
           id: t.number,
           name: t.string,
         };
-        debounce = 50;
+        config = { debounce: 50 };
       }
 
       await testWithClient(client, async () => {
@@ -153,12 +155,12 @@ describe('Debounce', () => {
     it('should handle debounce with 0ms delay (no debounce)', async () => {
       mockFetch.get('/users', { users: [] });
 
-      class ListUsers extends Query {
+      class ListUsers extends JsonQuery {
         path = '/users';
-        response = {
+        result = {
           users: t.array(t.object({ id: t.number })),
         };
-        debounce = 0;
+        config = { debounce: 0 };
       }
 
       await testWithClient(client, async () => {
@@ -173,12 +175,12 @@ describe('Debounce', () => {
       mockFetch.get('/users', null, { status: 500 });
       mockFetch.get('/users', { users: [] });
 
-      class ListUsers extends Query {
+      class ListUsers extends JsonQuery {
         path = '/users';
-        response = {
+        result = {
           users: t.array(t.object({ id: t.number })),
         };
-        cache = {
+        config = {
           debounce: 100,
           retry: 1,
         };

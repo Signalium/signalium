@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import {
   setupParsingTests,
@@ -294,9 +294,9 @@ describe('t.id', () => {
             name = t.string;
           }
 
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = { user: t.entity(User) };
+            result = { user: t.entity(User) };
           }
 
           const relay = fetchQuery(GetUser);
@@ -325,9 +325,9 @@ describe('t.id', () => {
             name = t.string;
           }
 
-          class GetUsers extends Query {
+          class GetUsers extends JsonQuery {
             path = '/users';
-            response = { users: t.array(t.entity(User)) };
+            result = { users: t.array(t.entity(User)) };
           }
 
           const relay = fetchQuery(GetUsers);
@@ -357,9 +357,9 @@ describe('t.id', () => {
             name = t.string;
           }
 
-          class GetUsers extends Query {
+          class GetUsers extends JsonQuery {
             path = '/users/map';
-            response = { users: t.record(t.entity(User)) };
+            result = { users: t.record(t.entity(User)) };
           }
 
           const relay = fetchQuery(GetUsers);

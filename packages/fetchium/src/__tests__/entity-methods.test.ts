@@ -4,7 +4,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, fetchQuery } from '../query.js';
+import { JsonQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient } from './utils.js';
 
 /**
@@ -88,9 +88,10 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends Query {
-          path = '/users/[id]';
-          response = { user: t.entity(User) };
+        class GetUser extends JsonQuery {
+          params = { id: t.id };
+          path = `/users/${this.params.id}`;
+          result = { user: t.entity(User) };
         }
 
         const relay = fetchQuery(GetUser, { id: '1' });
@@ -128,9 +129,10 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetCalc extends Query {
-          path = '/calc/[id]';
-          response = { calc: t.entity(Calculator) };
+        class GetCalc extends JsonQuery {
+          params = { id: t.id };
+          path = `/calc/${this.params.id}`;
+          result = { calc: t.entity(Calculator) };
         }
 
         const relay = fetchQuery(GetCalc, { id: '1' });
@@ -172,9 +174,10 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends Query {
-          path = '/users/[id]';
-          response = { user: t.entity(User) };
+        class GetUser extends JsonQuery {
+          params = { id: t.id };
+          path = `/users/${this.params.id}`;
+          result = { user: t.entity(User) };
         }
 
         const relay = fetchQuery(GetUser, { id: '1' });
@@ -246,9 +249,10 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends Query {
-          path = '/users/[id]';
-          response = { user: t.entity(User) };
+        class GetUser extends JsonQuery {
+          params = { id: t.id };
+          path = `/users/${this.params.id}`;
+          result = { user: t.entity(User) };
         }
 
         const relay = fetchQuery(GetUser, { id: '1' });
@@ -291,9 +295,10 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends Query {
-          path = '/users/[id]';
-          response = { user: t.entity(User) };
+        class GetUser extends JsonQuery {
+          params = { id: t.id };
+          path = `/users/${this.params.id}`;
+          result = { user: t.entity(User) };
         }
 
         const relay = fetchQuery(GetUser, { id: '1' });
@@ -342,9 +347,10 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetBook extends Query {
-          path = '/books/[id]';
-          response = { book: t.entity(Book) };
+        class GetBook extends JsonQuery {
+          params = { id: t.id };
+          path = `/books/${this.params.id}`;
+          result = { book: t.entity(Book) };
         }
 
         const relay = fetchQuery(GetBook, { id: '1' });
@@ -381,9 +387,10 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends Query {
-          path = '/users/[id]';
-          response = { user: t.entity(User) };
+        class GetUser extends JsonQuery {
+          params = { id: t.id };
+          path = `/users/${this.params.id}`;
+          result = { user: t.entity(User) };
         }
 
         const relay = fetchQuery(GetUser, { id: '1' });
@@ -432,9 +439,10 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetCalc extends Query {
-          path = '/calc/[id]';
-          response = { calc: t.entity(Calculator) };
+        class GetCalc extends JsonQuery {
+          params = { id: t.id };
+          path = `/calc/${this.params.id}`;
+          result = { calc: t.entity(Calculator) };
         }
 
         const relay = fetchQuery(GetCalc, { id: '1' });
@@ -490,9 +498,10 @@ describe('Entity Methods', () => {
 
       // First: Get the entity and call the method
       let calc: any;
-      class GetCalc extends Query {
-        path = '/calc/[id]';
-        response = { calc: t.entity(Calculator) };
+      class GetCalc extends JsonQuery {
+        params = { id: t.id };
+        path = `/calc/${this.params.id}`;
+        result = { calc: t.entity(Calculator) };
       }
 
       // Initial computation in first reactive scope
@@ -542,9 +551,10 @@ describe('Entity Methods', () => {
         }
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       // Set up context with dark theme - use testWithClient pattern plus additional context
@@ -614,9 +624,10 @@ describe('Entity Methods', () => {
         }
       }
 
-      class GetProduct extends Query {
-        path = '/products/[id]';
-        response = { product: t.entity(Product) };
+      class GetProduct extends JsonQuery {
+        params = { id: t.id };
+        path = `/products/${this.params.id}`;
+        result = { product: t.entity(Product) };
       }
 
       // Test with US locale and USD - use id '1'
@@ -707,9 +718,10 @@ describe('Entity Methods', () => {
         }
       }
 
-      class GetDoc extends Query {
-        path = '/docs/[id]';
-        response = { doc: t.entity(Document) };
+      class GetDoc extends JsonQuery {
+        params = { id: t.id };
+        path = `/docs/${this.params.id}`;
+        result = { doc: t.entity(Document) };
       }
 
       // Test as admin - use id '1'
@@ -834,9 +846,10 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends Query {
-          path = '/users/[id]';
-          response = { user: t.entity(User) };
+        class GetUser extends JsonQuery {
+          params = { id: t.id };
+          path = `/users/${this.params.id}`;
+          result = { user: t.entity(User) };
         }
 
         const relay = fetchQuery(GetUser, { id: '1' });
@@ -892,9 +905,10 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetCalc extends Query {
-          path = '/calc/[id]';
-          response = { calc: t.entity(Calculator) };
+        class GetCalc extends JsonQuery {
+          params = { id: t.id };
+          path = `/calc/${this.params.id}`;
+          result = { calc: t.entity(Calculator) };
         }
 
         const relay = fetchQuery(GetCalc, { id: '1' });
@@ -951,9 +965,10 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends Query {
-          path = '/users/[id]';
-          response = { user: t.entity(User) };
+        class GetUser extends JsonQuery {
+          params = { id: t.id };
+          path = `/users/${this.params.id}`;
+          result = { user: t.entity(User) };
         }
 
         const relay = fetchQuery(GetUser, { id: '1' });

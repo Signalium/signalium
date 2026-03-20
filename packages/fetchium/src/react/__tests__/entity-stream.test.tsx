@@ -6,7 +6,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { userEvent } from '@vitest/browser/context';
 
@@ -44,9 +44,10 @@ describe('React Entity Stream Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {
@@ -109,9 +110,10 @@ describe('React Entity Stream Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component1 = component(() => {
@@ -186,9 +188,10 @@ describe('React Entity Stream Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(({ testId }: { testId: string }) => {
@@ -255,9 +258,10 @@ describe('React Entity Stream Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {
@@ -316,9 +320,10 @@ describe('React Entity Stream Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {
@@ -374,9 +379,10 @@ describe('React Entity Stream Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {
@@ -435,9 +441,10 @@ describe('React Entity Stream Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(({ show }: { show: boolean }) => {
@@ -517,9 +524,10 @@ describe('React Entity Stream Integration', () => {
         address = t.entity(Address);
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {
@@ -592,9 +600,10 @@ describe('React Entity Stream Integration', () => {
         }
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {
@@ -661,9 +670,10 @@ describe('React Entity Stream Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {
@@ -746,9 +756,10 @@ describe('React Entity Stream Integration', () => {
         count = t.number;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {
@@ -799,9 +810,10 @@ describe('React Entity Stream Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {
@@ -864,9 +876,10 @@ describe('React Entity Stream Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {
@@ -931,9 +944,10 @@ describe('React Entity Stream Integration', () => {
         email = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {
@@ -1013,9 +1027,10 @@ describe('React Entity Stream Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/user/[id]';
-        response = { user: t.entity(User) };
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/user/${this.params.id}`;
+        result = { user: t.entity(User) };
       }
 
       const Component = component(() => {

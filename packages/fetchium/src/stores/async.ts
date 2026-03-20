@@ -165,7 +165,7 @@ export class AsyncQueryStore implements QueryStore {
 
     const updatedAt = await this.delegate.getNumber(updatedAtKeyFor(queryKey));
 
-    const cacheTimeMs = (queryDef.cache?.cacheTime ?? DEFAULT_CACHE_TIME) * 60 * 1000;
+    const cacheTimeMs = (queryDef.statics.cache?.cacheTime ?? DEFAULT_CACHE_TIME) * 60 * 1000;
     if (updatedAt === undefined || updatedAt < Date.now() - cacheTimeMs) {
       return undefined;
     }
@@ -227,11 +227,11 @@ export class AsyncQueryStore implements QueryStore {
   ): void {
     const message: StoreMessage = {
       type: StoreMessageType.SaveQuery,
-      queryDefId: queryDef.id,
+      queryDefId: queryDef.statics.id,
       queryKey,
       value,
       updatedAt,
-      cacheTime: queryDef.cache?.cacheTime ?? DEFAULT_CACHE_TIME,
+      cacheTime: queryDef.statics.cache?.cacheTime ?? DEFAULT_CACHE_TIME,
       refIds: refIds ? Array.from(refIds) : undefined,
     };
 
@@ -252,9 +252,9 @@ export class AsyncQueryStore implements QueryStore {
   activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void {
     const message: StoreMessage = {
       type: StoreMessageType.ActivateQuery,
-      queryDefId: queryDef.id,
+      queryDefId: queryDef.statics.id,
       queryKey,
-      cacheTime: queryDef.cache?.cacheTime ?? DEFAULT_CACHE_TIME,
+      cacheTime: queryDef.statics.cache?.cacheTime ?? DEFAULT_CACHE_TIME,
     };
 
     this.dispatch(message);

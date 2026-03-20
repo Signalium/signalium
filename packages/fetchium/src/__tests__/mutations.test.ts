@@ -3,8 +3,8 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Mutation, getMutation } from '../mutation.js';
-import { Query, fetchQuery } from '../query.js';
+import { JsonMutation, getMutation } from '../mutation.js';
+import { JsonQuery, fetchQuery } from '../query.js';
 import { draft } from '../utils.js';
 import { createMockFetch, testWithClient, sleep, getEntityMapSize } from './utils.js';
 
@@ -37,14 +37,15 @@ describe('Mutations', () => {
     it('should execute a POST mutation', async () => {
       mockFetch.post('/users', { id: 123, name: 'New User', email: 'new@example.com' });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = {
+        readonly params = {
           name: t.string,
           email: t.string,
         };
-        readonly response = {
+        readonly body = { name: this.params.name, email: this.params.email };
+        readonly result = {
           id: t.number,
           name: t.string,
           email: t.string,
@@ -70,15 +71,12 @@ describe('Mutations', () => {
     it('should execute a PUT mutation', async () => {
       mockFetch.put('/users/[id]', { id: 123, name: 'Updated User', email: 'updated@example.com' });
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = { id: t.id, name: t.string, email: t.string };
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = {
-          id: t.id,
-          name: t.string,
-          email: t.string,
-        };
-        readonly response = {
+        readonly body = { name: this.params.name, email: this.params.email };
+        readonly result = {
           id: t.number,
           name: t.string,
           email: t.string,
@@ -99,14 +97,12 @@ describe('Mutations', () => {
     it('should execute a PATCH mutation', async () => {
       mockFetch.patch('/users/[id]', { id: 123, name: 'Patched User' });
 
-      class PatchUser extends Mutation {
-        readonly path = '/users/[id]';
+      class PatchUser extends JsonMutation {
+        readonly params = { id: t.id, name: t.string };
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PATCH' as const;
-        readonly request = {
-          id: t.id,
-          name: t.string,
-        };
-        readonly response = {
+        readonly body = { name: this.params.name };
+        readonly result = {
           id: t.number,
           name: t.string,
         };
@@ -125,13 +121,11 @@ describe('Mutations', () => {
     it('should execute a DELETE mutation', async () => {
       mockFetch.delete('/users/[id]', { success: true });
 
-      class DeleteUser extends Mutation {
-        readonly path = '/users/[id]';
+      class DeleteUser extends JsonMutation {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'DELETE' as const;
-        readonly request = {
-          id: t.id,
-        };
-        readonly response = {
+        readonly result = {
           success: t.boolean,
         };
       }
@@ -150,14 +144,12 @@ describe('Mutations', () => {
     it('should send request body as JSON', async () => {
       mockFetch.post('/users', { id: 1 });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = {
-          name: t.string,
-          age: t.number,
-        };
-        readonly response = {
+        readonly params = { name: t.string, age: t.number };
+        readonly body = { name: this.params.name, age: this.params.age };
+        readonly result = {
           id: t.number,
         };
       }
@@ -172,15 +164,45 @@ describe('Mutations', () => {
       });
     });
 
+    it('should support getBody() override for dynamic body computation', async () => {
+      mockFetch.post('/users', { id: 1 });
+
+      class CreateUser extends JsonMutation {
+        readonly path = '/users';
+        readonly method = 'POST' as const;
+        readonly params = { name: t.string, role: t.string };
+        readonly result = { id: t.number };
+
+        getBody() {
+          return {
+            name: this.params.name,
+            role: this.params.role,
+            createdAt: 'now',
+          };
+        }
+      }
+
+      await testWithClient(client, async () => {
+        const mut = getMutation(CreateUser);
+        await mut.run({ name: 'Alice', role: 'admin' });
+
+        const body = JSON.parse(mockFetch.calls[0].options.body as string);
+        expect(body.name).toBe('Alice');
+        expect(body.role).toBe('admin');
+        expect(body.createdAt).toBe('now');
+      });
+    });
+
     it('should return the same mutation instance for same definition', async () => {
       mockFetch.post('/users', { id: 1 });
       mockFetch.post('/users', { id: 2 });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = { id: t.number };
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number };
       }
 
       await testWithClient(client, async () => {
@@ -201,11 +223,12 @@ describe('Mutations', () => {
       const error = new Error('Network failed');
       mockFetch.post('/users', null, { error });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = { id: t.number };
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number };
       }
 
       await testWithClient(client, async () => {
@@ -233,12 +256,13 @@ describe('Mutations', () => {
         return { id: 1 };
       });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = { id: t.number };
-        cache = {
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number };
+        config = {
           retry: {
             retries: 2,
             retryDelay: () => 10,
@@ -258,12 +282,13 @@ describe('Mutations', () => {
     it('should not retry when retry is false', async () => {
       mockFetch.post('/users', null, { error: new Error('Failed') });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = { id: t.number };
-        cache = {
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number };
+        config = {
           retry: false as const,
         };
       }
@@ -288,11 +313,12 @@ describe('Mutations', () => {
 
   describe('State Management', () => {
     it('should have correct initial state before first run', async () => {
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = { id: t.number };
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number };
       }
 
       await testWithClient(client, async () => {
@@ -308,11 +334,12 @@ describe('Mutations', () => {
     it('should track pending state during mutation', async () => {
       mockFetch.post('/users', { id: 1 }, { delay: 50 });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = { id: t.number };
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number };
       }
 
       await testWithClient(client, async () => {
@@ -343,19 +370,20 @@ describe('Mutations', () => {
       // First get user via query
       mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original Name' });
 
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
+      class GetUser extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
+        readonly result = t.entity(User);
       }
 
       // Setup slow update mutation
       mockFetch.put('/users/[id]', { __typename: 'User', id: 1, name: 'Updated Name' }, { delay: 100 });
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = t.entity(User);
+        readonly result = t.entity(User);
         optimisticUpdates = true;
       }
 
@@ -392,16 +420,17 @@ describe('Mutations', () => {
       mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original Name' });
       mockFetch.put('/users/[id]', null, { error: new Error('Update failed'), delay: 50 });
 
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
+      class GetUser extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
+        readonly result = t.entity(User);
       }
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = t.entity(User);
+        readonly result = t.entity(User);
         optimisticUpdates = true;
       }
 
@@ -425,11 +454,12 @@ describe('Mutations', () => {
     it('should not apply optimistic updates when disabled', async () => {
       mockFetch.post('/users', { id: 1, name: 'Created' }, { delay: 50 });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = { id: t.number, name: t.string };
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number, name: t.string };
         optimisticUpdates = false;
       }
 
@@ -461,16 +491,17 @@ describe('Mutations', () => {
       });
       mockFetch.put('/users/[id]', null, { error: new Error('Update failed'), delay: 50 });
 
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
+      class GetUser extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
+        readonly result = t.entity(User);
       }
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = t.entity(User);
+        readonly result = t.entity(User);
         optimisticUpdates = true;
       }
 
@@ -532,16 +563,17 @@ describe('Mutations', () => {
       });
       mockFetch.put('/users/[id]', null, { error: new Error('Update failed'), delay: 50 });
 
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
+      class GetUser extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
+        readonly result = t.entity(User);
       }
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = t.entity(User);
+        readonly result = t.entity(User);
         optimisticUpdates = true;
       }
 
@@ -618,16 +650,17 @@ describe('Mutations', () => {
         { delay: 100 },
       );
 
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
+      class GetUser extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
+        readonly result = t.entity(User);
       }
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = t.entity(User);
+        readonly result = t.entity(User);
         optimisticUpdates = true;
       }
 
@@ -703,16 +736,17 @@ describe('Mutations', () => {
         { delay: 100 },
       );
 
-      class GetPost extends Query {
-        readonly path = '/posts/[id]';
-        readonly response = t.entity(Post);
+      class GetPost extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/posts/${this.params.id}`;
+        readonly result = t.entity(Post);
       }
 
-      class UpdatePost extends Mutation {
-        readonly path = '/posts/[id]';
+      class UpdatePost extends JsonMutation {
+        readonly params = t.entity(Post);
+        readonly path = `/posts/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(Post);
-        readonly response = t.entity(Post);
+        readonly result = t.entity(Post);
         optimisticUpdates = true;
       }
 
@@ -780,9 +814,10 @@ describe('Mutations', () => {
         email: 'original@test.com',
       });
 
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
+      class GetUser extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
+        readonly result = t.entity(User);
       }
 
       await testWithClient(client, async () => {
@@ -865,16 +900,17 @@ describe('Mutations', () => {
       mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original' });
       mockFetch.put('/users/[id]', { __typename: 'User', id: 1, name: 'Updated via Mutation' });
 
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
+      class GetUser extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
+        readonly result = t.entity(User);
       }
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = t.entity(User);
+        readonly result = t.entity(User);
       }
 
       await testWithClient(client, async () => {
@@ -905,11 +941,12 @@ describe('Mutations', () => {
 
       mockFetch.post('/users', { __typename: 'User', id: 999, name: 'New User' });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = t.entity(User);
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = t.entity(User);
       }
 
       await testWithClient(client, async () => {
@@ -944,11 +981,12 @@ describe('Mutations', () => {
         organization: { __typename: 'Organization', id: 100, name: 'Acme Corp' },
       });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string, organizationId: t.number };
-        readonly response = t.entity(User);
+        readonly params = { name: t.string, organizationId: t.number };
+        readonly body = { name: this.params.name, organizationId: this.params.organizationId };
+        readonly result = t.entity(User);
       }
 
       await testWithClient(client, async () => {
@@ -995,16 +1033,17 @@ describe('Mutations', () => {
         organization: { __typename: 'Organization', id: 100, name: 'Updated Org' },
       });
 
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
+      class GetUser extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
+        readonly result = t.entity(User);
       }
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = t.entity(User);
+        readonly result = t.entity(User);
       }
 
       await testWithClient(client, async () => {
@@ -1053,11 +1092,12 @@ describe('Mutations', () => {
         ],
       });
 
-      class CreatePost extends Mutation {
+      class CreatePost extends JsonMutation {
         readonly path = '/posts';
         readonly method = 'POST' as const;
-        readonly request = { title: t.string };
-        readonly response = t.entity(Post);
+        readonly params = { title: t.string };
+        readonly body = { title: this.params.title };
+        readonly result = t.entity(Post);
       }
 
       await testWithClient(client, async () => {
@@ -1090,11 +1130,11 @@ describe('Mutations', () => {
 
       mockFetch.put('/users/[id]', { __typename: 'User', id: 1, name: 'Response Name' });
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = t.entity(User);
+        readonly result = t.entity(User);
         // parseAndApply defaults to 'both'
       }
 
@@ -1120,11 +1160,11 @@ describe('Mutations', () => {
 
       mockFetch.put('/users/[id]', { __typename: 'User', id: 1, name: 'Response Name' });
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = t.entity(User);
+        readonly result = t.entity(User);
         parseAndApply = 'response' as const;
       }
 
@@ -1148,20 +1188,21 @@ describe('Mutations', () => {
       // Response is a plain object (not entity-shaped for simplicity)
       mockFetch.put('/users/[id]', { success: true });
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = { success: t.boolean };
+        readonly result = { success: t.boolean };
         parseAndApply = 'request' as const;
       }
 
       // Pre-populate entity via a query so we can verify request updates it
       mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original' });
 
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
+      class GetUser extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
+        readonly result = t.entity(User);
       }
 
       await testWithClient(client, async () => {
@@ -1188,11 +1229,12 @@ describe('Mutations', () => {
 
       mockFetch.post('/users', { __typename: 'User', id: 1, name: 'New User' });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = t.entity(User);
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = t.entity(User);
         parseAndApply = 'none' as const;
       }
 
@@ -1217,16 +1259,17 @@ describe('Mutations', () => {
       mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original' });
       mockFetch.put('/users/[id]', { success: true }, { delay: 50 });
 
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
+      class GetUser extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
+        readonly result = t.entity(User);
       }
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = { success: t.boolean };
+        readonly result = { success: t.boolean };
         optimisticUpdates = true;
         parseAndApply = 'request' as const;
       }
@@ -1260,16 +1303,17 @@ describe('Mutations', () => {
       mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original' });
       mockFetch.put('/users/[id]', { __typename: 'User', id: 1, name: 'Server Response' }, { delay: 50 });
 
-      class GetUser extends Query {
-        readonly path = '/users/[id]';
-        readonly response = t.entity(User);
+      class GetUser extends JsonQuery {
+        readonly params = { id: t.id };
+        readonly path = `/users/${this.params.id}`;
+        readonly result = t.entity(User);
       }
 
-      class UpdateUser extends Mutation {
-        readonly path = '/users/[id]';
+      class UpdateUser extends JsonMutation {
+        readonly params = t.entity(User);
+        readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
-        readonly request = t.entity(User);
-        readonly response = t.entity(User);
+        readonly result = t.entity(User);
         optimisticUpdates = true;
         parseAndApply = 'response' as const;
       }
@@ -1302,11 +1346,12 @@ describe('Mutations', () => {
 
       mockFetch.post('/users', { __typename: 'User', id: 1, name: 'New User' });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = t.entity(User);
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = t.entity(User);
         optimisticUpdates = true;
         parseAndApply = 'none' as const;
       }
@@ -1331,11 +1376,12 @@ describe('Mutations', () => {
     it('should be awaitable', async () => {
       mockFetch.post('/users', { id: 1, name: 'Test' });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = { id: t.number, name: t.string };
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number, name: t.string };
       }
 
       await testWithClient(client, async () => {
@@ -1350,11 +1396,12 @@ describe('Mutations', () => {
     it('should support .then()', async () => {
       mockFetch.post('/users', { id: 1 });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = { id: t.number };
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number };
       }
 
       await testWithClient(client, async () => {
@@ -1369,11 +1416,12 @@ describe('Mutations', () => {
     it('should support .catch()', async () => {
       mockFetch.post('/users', null, { error: new Error('Failed') });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = { id: t.number };
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number };
       }
 
       await testWithClient(client, async () => {
@@ -1388,11 +1436,12 @@ describe('Mutations', () => {
     it('should support .finally()', async () => {
       mockFetch.post('/users', { id: 1 });
 
-      class CreateUser extends Mutation {
+      class CreateUser extends JsonMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
-        readonly request = { name: t.string };
-        readonly response = { id: t.number };
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number };
       }
 
       await testWithClient(client, async () => {

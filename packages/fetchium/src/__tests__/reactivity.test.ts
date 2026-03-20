@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { Query, fetchQuery } from '../query.js';
+import { JsonQuery, fetchQuery } from '../query.js';
 import { watcher, reactive } from 'signalium';
 import { createMockFetch, testWithClient } from './utils.js';
 
@@ -35,9 +35,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { data: 'test' }, { delay: 100 });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { data: t.string };
+          result = { data: t.string };
         }
 
         const relay = fetchQuery(GetItem);
@@ -52,9 +52,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { data: 'test' });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { data: t.string };
+          result = { data: t.string };
         }
 
         const relay = fetchQuery(GetItem);
@@ -72,9 +72,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', null, { error });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { data: t.string };
+          result = { data: t.string };
         }
 
         const relay = fetchQuery(GetItem);
@@ -91,9 +91,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/counter', { count: 5 });
 
       await testWithClient(client, async () => {
-        class GetCounter extends Query {
+        class GetCounter extends JsonQuery {
           path = '/counter';
-          response = { count: t.number };
+          result = { count: t.number };
         }
 
         const relay = fetchQuery(GetCounter);
@@ -119,9 +119,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/value', { value: 10 });
 
       await testWithClient(client, async () => {
-        class GetValue extends Query {
+        class GetValue extends JsonQuery {
           path = '/value';
-          response = { value: t.number };
+          result = { value: t.number };
         }
 
         const relay = fetchQuery(GetValue);
@@ -148,9 +148,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/config', { value: 5, shouldDouble: true });
 
       await testWithClient(client, async () => {
-        class GetConfig extends Query {
+        class GetConfig extends JsonQuery {
           path = '/config';
-          response = { value: t.number, shouldDouble: t.boolean };
+          result = { value: t.number, shouldDouble: t.boolean };
         }
 
         const relay = fetchQuery(GetConfig);
@@ -175,9 +175,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { data: 'test' }, { delay: 50 });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { data: t.string };
+          result = { data: t.string };
         }
 
         const relay = fetchQuery(GetItem);
@@ -197,9 +197,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { data: 'test' });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { data: t.string };
+          result = { data: t.string };
         }
 
         const relay = fetchQuery(GetItem);
@@ -216,9 +216,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { success: true });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { success: t.boolean };
+          result = { success: t.boolean };
         }
 
         const relay = fetchQuery(GetItem);
@@ -233,9 +233,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', null, { error: new Error('Failed') });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { success: t.boolean };
+          result = { success: t.boolean };
         }
 
         const relay = fetchQuery(GetItem);
@@ -257,9 +257,9 @@ describe('Signalium Reactivity', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUsers extends Query {
+        class GetUsers extends JsonQuery {
           path = '/users';
-          response = {
+          result = {
             users: t.array(t.object({ id: t.number, name: t.string })),
           };
         }
@@ -291,9 +291,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/config', { enabled: true, data: 'test' });
 
       await testWithClient(client, async () => {
-        class GetConfig extends Query {
+        class GetConfig extends JsonQuery {
           path = '/config';
-          response = { enabled: t.boolean, data: t.string };
+          result = { enabled: t.boolean, data: t.string };
         }
 
         const relay = fetchQuery(GetConfig);
@@ -323,9 +323,10 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/items/3', { url: '/items/3', timestamp: Date.now() });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
-          path = '/items/[id]';
-          response = { url: t.string, timestamp: t.number };
+        class GetItem extends JsonQuery {
+          params = { id: t.id };
+          path = `/items/${this.params.id}`;
+          result = { url: t.string, timestamp: t.number };
         }
 
         // Start multiple concurrent queries
@@ -346,9 +347,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', { count: 1 }, { delay: 50 });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { count: t.number };
+          result = { count: t.number };
         }
 
         // Start multiple concurrent identical requests
@@ -378,9 +379,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', null, { error });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { data: t.string };
+          result = { data: t.string };
         }
 
         const relay = fetchQuery(GetItem);
@@ -408,9 +409,9 @@ describe('Signalium Reactivity', () => {
       mockFetch.get('/item', null, { error });
 
       await testWithClient(client, async () => {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { data: t.string };
+          result = { data: t.string };
         }
 
         const relay = fetchQuery(GetItem);

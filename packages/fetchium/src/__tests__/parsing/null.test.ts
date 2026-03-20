@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -107,9 +107,9 @@ describe('t.null', () => {
         mockFetch.get('/item', { value: null });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { value: t.union(t.string, t.null) };
+            result = { value: t.union(t.string, t.null) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -128,9 +128,9 @@ describe('t.null', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetData extends Query {
+          class GetData extends JsonQuery {
             path = '/data';
-            response = {
+            result = {
               data: t.object({
                 nested: t.object({
                   value: t.union(t.string, t.null),
@@ -153,9 +153,9 @@ describe('t.null', () => {
         mockFetch.get('/items', { items: ['a', null, 'b', null] });
 
         await testWithClient(client, async () => {
-          class GetItems extends Query {
+          class GetItems extends JsonQuery {
             path = '/items';
-            response = { items: t.array(t.union(t.string, t.null)) };
+            result = { items: t.array(t.union(t.string, t.null)) };
           }
 
           const relay = fetchQuery(GetItems);
@@ -174,9 +174,9 @@ describe('t.null', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetData extends Query {
+          class GetData extends JsonQuery {
             path = '/data';
-            response = { values: t.record(t.union(t.string, t.null)) };
+            result = { values: t.record(t.union(t.string, t.null)) };
           }
 
           const relay = fetchQuery(GetData);
@@ -196,14 +196,14 @@ describe('t.null', () => {
         mockFetch.get('/value2', { value: 'text' });
 
         await testWithClient(client, async () => {
-          class GetValue1 extends Query {
+          class GetValue1 extends JsonQuery {
             path = '/value1';
-            response = { value: t.union(t.string, t.null) };
+            result = { value: t.union(t.string, t.null) };
           }
 
-          class GetValue2 extends Query {
+          class GetValue2 extends JsonQuery {
             path = '/value2';
-            response = { value: t.union(t.string, t.null) };
+            result = { value: t.union(t.string, t.null) };
           }
 
           const relay1 = fetchQuery(GetValue1);

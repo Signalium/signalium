@@ -3,7 +3,7 @@ import { AsyncQueryStore, AsyncPersistentStore, StoreMessage } from '../stores/a
 import { valueKeyFor, refCountKeyFor, refIdsKeyFor, updatedAtKeyFor, queueKeyFor } from '../stores/shared.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, queryKeyForClass } from '../query.js';
+import { JsonQuery, queryKeyForClass } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, sleep } from './utils.js';
 
@@ -147,9 +147,10 @@ describe('AsyncQueryStore', () => {
         name = t.string;
       }
 
-      class GetUser extends Query {
-        path = '/users/[id]';
-        response = t.entity(User);
+      class GetUser extends JsonQuery {
+        params = { id: t.id };
+        path = `/users/${this.params.id}`;
+        result = t.entity(User);
       }
 
       const queryDefId = 'GET:/users/[id]';
@@ -160,8 +161,8 @@ describe('AsyncQueryStore', () => {
       const user2 = { id: '2', name: 'Bob' };
 
       // Send multiple messages
-      writerStore.saveQuery({ id: queryDefId } as any, queryKey1, user1, Date.now());
-      writerStore.saveQuery({ id: queryDefId } as any, queryKey2, user2, Date.now());
+      writerStore.saveQuery({ statics: { id: queryDefId } } as any, queryKey1, user1, Date.now());
+      writerStore.saveQuery({ statics: { id: queryDefId } } as any, queryKey2, user2, Date.now());
 
       // Wait for queue to process
       await sleep(100);
@@ -195,7 +196,7 @@ describe('AsyncQueryStore', () => {
       await mockDelegate.setString(valueKeyFor(queryKey), JSON.stringify({ id: '1', name: 'Alice' }));
       await mockDelegate.setNumber(updatedAtKeyFor(queryKey), Date.now());
 
-      writerStore.activateQuery({ id: queryDefId } as any, queryKey);
+      writerStore.activateQuery({ statics: { id: queryDefId } } as any, queryKey);
 
       // Wait for queue to process
       await sleep(100);
@@ -215,7 +216,7 @@ describe('AsyncQueryStore', () => {
       const now = Date.now();
 
       // Reader sends save message
-      readerStore.saveQuery({ id: queryDefId } as any, queryKey, user, now);
+      readerStore.saveQuery({ statics: { id: queryDefId } } as any, queryKey, user, now);
 
       // Wait for writer to process
       await sleep(100);
@@ -251,7 +252,7 @@ describe('AsyncQueryStore', () => {
       const entityId2 = 200;
 
       writerStore.saveQuery(
-        { id: 'test' } as any,
+        { statics: { id: 'test' } } as any,
         queryKey,
         { data: 'test' },
         Date.now(),
@@ -275,7 +276,7 @@ describe('AsyncQueryStore', () => {
 
       // First save with entityId1 and entityId2
       writerStore.saveQuery(
-        { id: 'test' } as any,
+        { statics: { id: 'test' } } as any,
         queryKey,
         { data: 'v1' },
         Date.now(),
@@ -288,7 +289,7 @@ describe('AsyncQueryStore', () => {
 
       // Update to only entityId2 and entityId3
       writerStore.saveQuery(
-        { id: 'test' } as any,
+        { statics: { id: 'test' } } as any,
         queryKey,
         { data: 'v2' },
         Date.now(),
@@ -312,14 +313,26 @@ describe('AsyncQueryStore', () => {
       await mockDelegate.setString(valueKeyFor(childKey), JSON.stringify({ id: 'child' }));
 
       // Save parent with ref to child
-      writerStore.saveQuery({ id: 'test' } as any, parentKey, { data: 'parent' }, Date.now(), new Set([childKey]));
+      writerStore.saveQuery(
+        { statics: { id: 'test' } } as any,
+        parentKey,
+        { data: 'parent' },
+        Date.now(),
+        new Set([childKey]),
+      );
       await sleep(100);
 
       expect(await mockDelegate.getNumber(refCountKeyFor(childKey))).toBe(1);
       expect(await mockDelegate.getString(valueKeyFor(childKey))).toBeDefined();
 
       // Remove ref to child
-      writerStore.saveQuery({ id: 'test' } as any, parentKey, { data: 'parent-updated' }, Date.now(), new Set());
+      writerStore.saveQuery(
+        { statics: { id: 'test' } } as any,
+        parentKey,
+        { data: 'parent-updated' },
+        Date.now(),
+        new Set(),
+      );
       await sleep(100);
 
       // Child should be cascade deleted
@@ -335,7 +348,7 @@ describe('AsyncQueryStore', () => {
 
       await mockDelegate.setString(valueKeyFor(queryKey), JSON.stringify({ users: [] }));
 
-      writerStore.activateQuery({ id: queryDefId } as any, queryKey);
+      writerStore.activateQuery({ statics: { id: queryDefId } } as any, queryKey);
       await sleep(100);
 
       const queue = await mockDelegate.getBuffer(queueKeyFor(queryDefId));
@@ -357,7 +370,7 @@ describe('AsyncQueryStore', () => {
 
       // Activate all queries
       for (const queryKey of queries) {
-        writerStore.activateQuery({ id: queryDefId, cache: { maxCount: 50 } } as any, queryKey);
+        writerStore.activateQuery({ statics: { id: queryDefId, cache: { maxCount: 50 } } } as any, queryKey);
       }
 
       await sleep(200);
@@ -380,9 +393,9 @@ describe('AsyncQueryStore', () => {
       await mockDelegate.setString(valueKeyFor(queryKey2), JSON.stringify({ id: '2' }));
 
       // Activate query 1, then query 2
-      writerStore.activateQuery({ id: queryDefId } as any, queryKey1);
+      writerStore.activateQuery({ statics: { id: queryDefId } } as any, queryKey1);
       await sleep(50);
-      writerStore.activateQuery({ id: queryDefId } as any, queryKey2);
+      writerStore.activateQuery({ statics: { id: queryDefId } } as any, queryKey2);
       await sleep(50);
 
       let queue = await mockDelegate.getBuffer(queueKeyFor(queryDefId));
@@ -390,7 +403,7 @@ describe('AsyncQueryStore', () => {
       expect(queue![1]).toBe(queryKey1);
 
       // Re-activate query 1
-      writerStore.activateQuery({ id: queryDefId } as any, queryKey1);
+      writerStore.activateQuery({ statics: { id: queryDefId } } as any, queryKey1);
       await sleep(50);
 
       queue = await mockDelegate.getBuffer(queueKeyFor(queryDefId));
@@ -408,7 +421,7 @@ describe('AsyncQueryStore', () => {
       await mockDelegate.setString(valueKeyFor(queryKey), JSON.stringify(user));
       await mockDelegate.setNumber(updatedAtKeyFor(queryKey), Date.now());
 
-      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey);
+      const cached = await writerStore.loadQuery({ statics: { id: queryDefId } } as any, queryKey);
 
       expect(cached).toBeDefined();
       expect(cached!.value).toEqual(user);
@@ -426,7 +439,7 @@ describe('AsyncQueryStore', () => {
       await mockDelegate.setString(valueKeyFor(queryKey), JSON.stringify(user));
       await mockDelegate.setNumber(updatedAtKeyFor(queryKey), oldTime);
 
-      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey);
+      const cached = await writerStore.loadQuery({ statics: { id: queryDefId } } as any, queryKey);
 
       expect(cached).toBeUndefined();
     });
@@ -435,7 +448,7 @@ describe('AsyncQueryStore', () => {
       const queryDefId = 'GET:/users/[id]';
       const queryKey = hashValue([queryDefId, { id: '999' }]);
 
-      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey);
+      const cached = await writerStore.loadQuery({ statics: { id: queryDefId } } as any, queryKey);
 
       expect(cached).toBeUndefined();
     });
@@ -454,7 +467,7 @@ describe('AsyncQueryStore', () => {
 
       await mockDelegate.setString(valueKeyFor(entityId), JSON.stringify(entity));
 
-      const cached = await writerStore.loadQuery({ id: queryDefId } as any, queryKey);
+      const cached = await writerStore.loadQuery({ statics: { id: queryDefId } } as any, queryKey);
 
       expect(cached).toBeDefined();
       expect(cached!.refIds).toEqual(new Set([entityId]));
@@ -471,7 +484,7 @@ describe('AsyncQueryStore', () => {
       const now = Date.now();
 
       // Reader saves data (sends to writer)
-      readerStore.saveQuery({ id: queryDefId } as any, queryKey, userData, now);
+      readerStore.saveQuery({ statics: { id: queryDefId } } as any, queryKey, userData, now);
 
       // Wait for writer to process
       await sleep(200);
@@ -492,7 +505,7 @@ describe('AsyncQueryStore', () => {
         connect: handler => newMessageChannel.connectReader(handler),
       });
 
-      const loaded = await newReaderStore.loadQuery({ id: queryDefId } as any, queryKey);
+      const loaded = await newReaderStore.loadQuery({ statics: { id: queryDefId } } as any, queryKey);
       expect(loaded).toBeDefined();
       expect(loaded!.value).toEqual(userData);
     });
@@ -522,11 +535,11 @@ describe('AsyncQueryStore', () => {
       const queryKey = 12345;
 
       // This should error but not crash
-      errorWriterStore.saveQuery({ id: 'test' } as any, queryKey, { data: 'test' }, Date.now());
+      errorWriterStore.saveQuery({ statics: { id: 'test' } } as any, queryKey, { data: 'test' }, Date.now());
       await sleep(100);
 
       // Second save should succeed
-      errorWriterStore.saveQuery({ id: 'test2' } as any, queryKey + 1, { data: 'test2' }, Date.now());
+      errorWriterStore.saveQuery({ statics: { id: 'test2' } } as any, queryKey + 1, { data: 'test2' }, Date.now());
       await sleep(100);
 
       const saved = await errorDelegate.getString(valueKeyFor(queryKey + 1));

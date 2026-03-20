@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { Query, fetchQuery } from '../query.js';
+import { JsonQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import { t } from '../typeDefs.js';
 
@@ -29,10 +29,10 @@ describe('StaleTime', () => {
   describe('Fresh Data', () => {
     it('should not refetch when data is fresh (within staleTime)', async () => {
       // Set up query with 10 second staleTime
-      class GetItem extends Query {
+      class GetItem extends JsonQuery {
         path = '/item';
-        response = { value: t.string };
-        cache = { staleTime: 10000 }; // 10 seconds
+        result = { value: t.string };
+        config = { staleTime: 10000 }; // 10 seconds
       }
 
       mockFetch.get('/item', { value: 'first' });
@@ -59,10 +59,10 @@ describe('StaleTime', () => {
     });
 
     it('should use fresh data from disk cache without refetch', async () => {
-      class GetItem extends Query {
+      class GetItem extends JsonQuery {
         path = '/item';
-        response = { data: t.number };
-        cache = { staleTime: 5000 };
+        result = { data: t.number };
+        config = { staleTime: 5000 };
       }
 
       mockFetch.get('/item', { data: 42 });
@@ -95,9 +95,9 @@ describe('StaleTime', () => {
 
   describe('Stale Data', () => {
     it('should serve stale data immediately while refetching in background', async () => {
-      class GetItem extends Query {
+      class GetItem extends JsonQuery {
         path = '/item';
-        response = { count: t.number };
+        result = { count: t.number };
         staleTime = 100; // 100ms
       }
 
@@ -135,9 +135,9 @@ describe('StaleTime', () => {
     });
 
     it('should refetch stale data from disk cache', async () => {
-      class GetItem extends Query {
+      class GetItem extends JsonQuery {
         path = '/data';
-        response = { version: t.number };
+        result = { version: t.number };
         staleTime = 100;
       }
 
@@ -173,9 +173,9 @@ describe('StaleTime', () => {
     });
 
     it('should handle no staleTime (always refetch)', async () => {
-      class GetItem extends Query {
+      class GetItem extends JsonQuery {
         path = '/item';
-        response = { value: t.string };
+        result = { value: t.string };
         // No staleTime configured
       }
 
@@ -211,10 +211,10 @@ describe('StaleTime', () => {
 
   describe('Edge Cases', () => {
     it('should handle staleTime of 0 (always stale)', async () => {
-      class GetItem extends Query {
+      class GetItem extends JsonQuery {
         path = '/item';
-        response = { n: t.number };
-        cache = { staleTime: 0 };
+        result = { n: t.number };
+        config = { staleTime: 0 };
       }
 
       mockFetch.get('/item', { n: 1 });
@@ -244,10 +244,10 @@ describe('StaleTime', () => {
       vi.useFakeTimers();
 
       try {
-        class GetItem extends Query {
+        class GetItem extends JsonQuery {
           path = '/item';
-          response = { data: t.string };
-          cache = { staleTime: 1000 * 60 * 60 }; // 1 hour
+          result = { data: t.string };
+          config = { staleTime: 1000 * 60 * 60 }; // 1 hour
         }
 
         mockFetch.get('/item', { data: 'cached' });
@@ -320,10 +320,10 @@ describe('StaleTime', () => {
     });
 
     it('should handle concurrent access to stale data', async () => {
-      class GetItem extends Query {
+      class GetItem extends JsonQuery {
         path = '/item';
-        response = { id: t.number };
-        cache = { staleTime: 50 };
+        result = { id: t.number };
+        config = { staleTime: 50 };
       }
 
       mockFetch.get('/item', { id: 1 });

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { t, registerFormat } from '../../typeDefs.js';
 import { Mask } from '../../types.js';
 import { Entity, parseValue } from '../../proxy.js';
-import { Query, fetchQuery } from '../../query.js';
+import { JsonQuery, fetchQuery } from '../../query.js';
 import { parseEntities } from '../../parseEntities.js';
 import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
 
@@ -123,9 +123,9 @@ describe('t.format', () => {
         mockFetch.get('/item', { createdAt: '2024-01-15T10:30:00Z' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { createdAt: t.format('date-time') };
+            result = { createdAt: t.format('date-time') };
           }
 
           const relay = fetchQuery(GetItem);
@@ -142,9 +142,9 @@ describe('t.format', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetTimestamps extends Query {
+          class GetTimestamps extends JsonQuery {
             path = '/timestamps';
-            response = { events: t.record(t.format('date-time')) };
+            result = { events: t.record(t.format('date-time')) };
           }
 
           const relay = fetchQuery(GetTimestamps);
@@ -266,9 +266,9 @@ describe('t.format', () => {
         mockFetch.get('/user', { birthDate: '1990-05-20' });
 
         await testWithClient(client, async () => {
-          class GetUser extends Query {
+          class GetUser extends JsonQuery {
             path = '/user';
-            response = { birthDate: t.format('date') };
+            result = { birthDate: t.format('date') };
           }
 
           const relay = fetchQuery(GetUser);
@@ -338,9 +338,9 @@ describe('t.format', () => {
         mockFetch.get('/item', { deletedAt: undefined });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { deletedAt: t.optional(t.format('date-time')) };
+            result = { deletedAt: t.optional(t.format('date-time')) };
           }
 
           const relay = fetchQuery(GetItem);
@@ -355,9 +355,9 @@ describe('t.format', () => {
         mockFetch.get('/item', { endDate: '2024-12-31' });
 
         await testWithClient(client, async () => {
-          class GetItem extends Query {
+          class GetItem extends JsonQuery {
             path = '/item';
-            response = { endDate: t.format('date') };
+            result = { endDate: t.format('date') };
           }
 
           const relay = fetchQuery(GetItem);
@@ -590,9 +590,9 @@ describe('t.format', () => {
         mockFetch.get('/product', { price: '$49.99', discount: '20%' });
 
         await testWithClient(client, async () => {
-          class GetProduct extends Query {
+          class GetProduct extends JsonQuery {
             path = '/product';
-            response = {
+            result = {
               price: t.format('price'),
               discount: t.format('percentage'),
             };
@@ -611,9 +611,9 @@ describe('t.format', () => {
         mockFetch.get('/prices', { prices: ['$10', '$20', '$30'] });
 
         await testWithClient(client, async () => {
-          class GetPrices extends Query {
+          class GetPrices extends JsonQuery {
             path = '/prices';
-            response = { prices: t.array(t.format('price')) };
+            result = { prices: t.array(t.format('price')) };
           }
 
           const relay = fetchQuery(GetPrices);
@@ -630,9 +630,9 @@ describe('t.format', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetRates extends Query {
+          class GetRates extends JsonQuery {
             path = '/rates';
-            response = { rates: t.record(t.format('percentage')) };
+            result = { rates: t.record(t.format('percentage')) };
           }
 
           const relay = fetchQuery(GetRates);
@@ -649,9 +649,9 @@ describe('t.format', () => {
         mockFetch.get('/location', { location: '37.7749,-122.4194' });
 
         await testWithClient(client, async () => {
-          class GetLocation extends Query {
+          class GetLocation extends JsonQuery {
             path = '/location';
-            response = { location: t.format('coordinates') };
+            result = { location: t.format('coordinates') };
           }
 
           const relay = fetchQuery(GetLocation);

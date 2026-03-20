@@ -3,7 +3,7 @@ import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { Query, fetchQuery } from '../query.js';
+import { JsonQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, sleep, sendStreamUpdate } from './utils.js';
 
 /**
@@ -49,9 +49,9 @@ describe('Query Stream Option', () => {
         ],
       });
 
-      class GetPosts extends Query {
+      class GetPosts extends JsonQuery {
         path = '/posts';
-        response = {
+        result = {
           posts: t.array(t.entity(Post)),
         };
         stream = {
@@ -99,12 +99,11 @@ describe('Query Stream Option', () => {
         messages: [{ __typename: 'Message', id: '1', text: 'Hello', userId: '123' }],
       });
 
-      class GetUserMessages extends Query {
-        path = '/users/[userId]/messages';
-        searchParams = {
-          limit: t.number,
-        };
-        response = {
+      class GetUserMessages extends JsonQuery {
+        params = { userId: t.id, limit: t.number };
+        path = `/users/${this.params.userId}/messages`;
+        searchParams = { limit: this.params.limit };
+        result = {
           messages: t.array(t.entity(Message)),
         };
         stream = {
@@ -143,9 +142,9 @@ describe('Query Stream Option', () => {
         ],
       });
 
-      class GetPosts extends Query {
+      class GetPosts extends JsonQuery {
         path = '/posts';
-        response = {
+        result = {
           posts: t.array(t.entity(Post)),
         };
         stream = {
@@ -204,9 +203,9 @@ describe('Query Stream Option', () => {
         ],
       });
 
-      class GetPosts extends Query {
+      class GetPosts extends JsonQuery {
         path = '/posts';
-        response = {
+        result = {
           posts: t.array(t.entity(Post)),
         };
         stream = {
@@ -252,9 +251,9 @@ describe('Query Stream Option', () => {
         posts: [{ __typename: 'Post', id: '1', title: 'Post 1' }],
       });
 
-      class GetPosts extends Query {
+      class GetPosts extends JsonQuery {
         path = '/posts';
-        response = {
+        result = {
           posts: t.array(t.entity(Post)),
         };
         stream = {
@@ -296,9 +295,9 @@ describe('Query Stream Option', () => {
         posts: [{ __typename: 'Post', id: '1', title: 'Post 1' }],
       });
 
-      class GetPosts extends Query {
+      class GetPosts extends JsonQuery {
         path = '/posts';
-        response = {
+        result = {
           posts: t.array(t.entity(Post)),
         };
         stream = {
@@ -342,9 +341,9 @@ describe('Query Stream Option', () => {
         posts: [{ id: '1', title: 'Post 1' }],
       });
 
-      class GetPosts extends Query {
+      class GetPosts extends JsonQuery {
         path = '/posts';
-        response = {
+        result = {
           posts: t.array(
             t.object({
               id: t.string,
@@ -382,9 +381,9 @@ describe('Query Stream Option', () => {
         ],
       });
 
-      class GetPosts extends Query {
+      class GetPosts extends JsonQuery {
         path = '/posts';
-        response = {
+        result = {
           posts: t.array(t.entity(Post)),
         };
         stream = {

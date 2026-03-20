@@ -73,11 +73,15 @@ export function resolveBaseUrl(baseUrl: BaseUrlValue | undefined): string | unde
 export interface QueryCacheOptions {
   maxCount?: number;
   cacheTime?: number; // minutes - on-disk/persistent storage expiration. Default: 1440 (24 hours)
+}
+
+export interface QueryConfigOptions {
   gcTime?: number; // minutes - in-memory eviction time. Default: 5. Use 0 for next-tick, Infinity to never GC.
   staleTime?: number; // milliseconds - how long data is considered fresh. Default: 0 (always stale)
+  debounce?: number; // milliseconds - debounce delay for param-change refetches. Default: 0
   refetchInterval?: RefetchInterval;
   networkMode?: NetworkMode; // default: NetworkMode.Online
-  retry?: RetryConfig | number | false; // default: 3 on client, 0 on server
+  retry?: RetryConfig | number | boolean; // default: 3 on client, 0 on server
   refreshStaleOnReconnect?: boolean; // default: true
 }
 
@@ -192,7 +196,7 @@ export function extractParamsForKey(params: QueryParams | undefined): Record<str
  * will be stored and put into the LRU cache separately.
  */
 export const queryKeyFor = (queryDef: QueryDefinition<any, any, any>, params: unknown): number => {
-  return hashValue([queryDef.id, queryDef.shapeKey, params]);
+  return hashValue([queryDef.statics.id, queryDef.statics.shapeKey, params]);
 };
 
 export class QueryClient {
@@ -243,14 +247,14 @@ export class QueryClient {
   }
 
   activateQuery(queryInstance: QueryInstance<any>): void {
-    const { def, queryKey, storageKey } = queryInstance;
+    const { def, queryKey, storageKey, config } = queryInstance;
     this.store.activateQuery(def as any, storageKey);
 
-    if (def.cache?.refetchInterval) {
+    if (config?.refetchInterval) {
       this.refetchManager.addQuery(queryInstance);
     }
 
-    const gcTime = def.cache?.gcTime ?? DEFAULT_GC_TIME;
+    const gcTime = config?.gcTime ?? DEFAULT_GC_TIME;
     this.gcManager.cancel(queryKey, gcTime);
   }
 
@@ -361,7 +365,7 @@ export class QueryClient {
   // ======================================================
 
   scheduleQueryEviction(queryInstance: QueryInstance<any>): void {
-    const gcTime = queryInstance.def.cache?.gcTime ?? DEFAULT_GC_TIME;
+    const gcTime = queryInstance.config?.gcTime ?? DEFAULT_GC_TIME;
     this.gcManager.schedule(queryInstance.queryKey, gcTime, GcKeyType.Query);
   }
 

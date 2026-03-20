@@ -1,9 +1,22 @@
 import { relay, type RelayState, DiscriminatedReactivePromise, notifier, type Notifier } from 'signalium';
 import { type InternalTypeDef, EntityDef, ComplexTypeDef, Mask, NetworkMode, type QueryResult } from './types.js';
 import { ValidatorDef } from './typeDefs.js';
-import { type QueryClient, type QueryParams, extractParamsForKey, queryKeyFor } from './QueryClient.js';
+import {
+  type QueryClient,
+  type QueryParams,
+  type QueryConfigOptions,
+  extractParamsForKey,
+  queryKeyFor,
+} from './QueryClient.js';
 import { CachedQuery } from './QueryClient.js';
-import { Query, QueryDefinition, StreamSubscribeFn } from './query.js';
+import {
+  Query,
+  QueryDefinition,
+  type StreamSubscribeFn,
+  type ResolvedStreamOptions,
+  type ResolvedRetryConfig,
+  resolveRetryConfig,
+} from './query.js';
 
 // ======================================================
 // QueryInstance
@@ -50,6 +63,18 @@ export class QueryInstance<T extends Query> {
   /** Root entity keys referenced by the most recent query result. */
   entityRefs: Set<number> | undefined = undefined;
 
+  /** Resolved per-instance options (depend on actual params). */
+  config: QueryConfigOptions | undefined = undefined;
+  stream: ResolvedStreamOptions | undefined = undefined;
+  retryConfig: ResolvedRetryConfig = resolveRetryConfig(undefined);
+
+  /** The raw fetch Response from the most recent successful fetch. */
+  private _lastResponse: Response | undefined = undefined;
+
+  /** Cached execution context, recreated only when storageKey (params) changes. */
+  private _executionCtx: Query | undefined = undefined;
+  private _executionCtxKey: number = -1;
+
   private get relayState(): RelayState<QueryResult<T>> {
     if (IS_DEV && !this._relayState) {
       throw new Error('Relay state not initialized');
@@ -68,15 +93,12 @@ export class QueryInstance<T extends Query> {
     this.queryKey = queryKey;
     this.params = params;
 
-    this._useProxy = isProxiableShape(this.def.shape);
+    this._useProxy = isProxiableShape(this.def.statics.shape);
     this._proxy = this._useProxy ? createQueryProxy<T>(this) : undefined;
 
     // Create the relay whose value is the persistent proxy, set once on first data
     this.relay = relay<QueryResult<any>>(state => {
       this._relayState = state;
-
-      // Load from cache first, then fetch fresh data
-      this.queryClient.activateQuery(this);
 
       const deactivate = () => {
         clearTimeout(this.debounceTimer);
@@ -85,7 +107,7 @@ export class QueryInstance<T extends Query> {
         this.unsubscribe?.();
         this.unsubscribe = undefined;
 
-        if (this.def.cache?.refetchInterval) {
+        if (this.config?.refetchInterval) {
           this.queryClient.refetchManager.removeQuery(this);
         }
 
@@ -112,13 +134,15 @@ export class QueryInstance<T extends Query> {
 
         // Check if storage key changed (comparing hash values)
         if (paramsDidChange) {
-          // Same storage key, just Signal instances changed but values are the same
-          // Update params and trigger debounced refetch
           this.currentParams = newExtractedParams as QueryParams;
           this.storageKey = newStorageKey;
         }
 
+        // Resolve execution context and param-dependent options
+        this.getOrCreateExecutionContext();
+
         if (!this.initialized) {
+          this.queryClient.activateQuery(this);
           this.initialize();
         } else if (wasPaused || activating) {
           this.queryClient.activateQuery(this);
@@ -127,7 +151,7 @@ export class QueryInstance<T extends Query> {
             this.setupSubscription();
           }
 
-          const refreshStaleOnReconnect = this.def.cache?.refreshStaleOnReconnect ?? true;
+          const refreshStaleOnReconnect = this.config?.refreshStaleOnReconnect ?? true;
           if (refreshStaleOnReconnect && this.isStale) {
             this.runDebounced();
           }
@@ -166,7 +190,7 @@ export class QueryInstance<T extends Query> {
         const entityRefs = cached.refIds ?? new Set<number>();
         this._data = qc.parseEntities(
           cached.value,
-          this.def.shape,
+          this.def.statics.shape,
           undefined,
           cached.preloadedEntities,
         ) as QueryResult<T>;
@@ -201,7 +225,7 @@ export class QueryInstance<T extends Query> {
    * Handle stream updates for queries with stream options.
    */
   private setupSubscription(): void {
-    const stream = this.def.stream;
+    const stream = this.stream;
 
     if (!stream) {
       return;
@@ -218,6 +242,28 @@ export class QueryInstance<T extends Query> {
     });
   }
 
+  private getOrCreateExecutionContext(): Query {
+    if (this._executionCtx === undefined || this._executionCtxKey !== this.storageKey) {
+      this._executionCtxKey = this.storageKey;
+      this._executionCtx = this.def.createExecutionContext(
+        (this.currentParams ?? {}) as Record<string, unknown>,
+        this.queryClient.getContext(),
+      );
+    }
+
+    this._executionCtx.response = this._lastResponse;
+    this.resolveAndApplyOptions();
+
+    return this._executionCtx;
+  }
+
+  private resolveAndApplyOptions(): void {
+    const resolved = this.def.resolveOptions(this._executionCtx!);
+    this.config = resolved.config;
+    this.stream = resolved.stream;
+    this.retryConfig = resolved.retryConfig;
+  }
+
   /**
    * Fetches fresh data, updates the cache, and updates updatedAt timestamp
    */
@@ -225,22 +271,27 @@ export class QueryInstance<T extends Query> {
     const qc = this.queryClient;
     const def = this.def;
 
-    // Check if paused before attempting fetch
     if (this.isPaused) {
       throw new Error('Query is paused due to network status');
     }
 
-    const { retries, retryDelay } = def.retryConfig;
+    const ctx = this.getOrCreateExecutionContext();
+    const { send } = def.captured.methods;
+
+    const { retries, retryDelay } = this.retryConfig;
     let lastError: unknown;
 
-    // Attempt fetch with retries
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const freshData = await def.fetchFn(qc.getContext(), params);
+        const freshData = await send.call(ctx);
+
+        this._lastResponse = ctx.response;
+        this._executionCtx!.response = this._lastResponse;
+        this.resolveAndApplyOptions();
 
         const entityRefs = new Set<number>();
 
-        const parsedData = qc.parseEntities(freshData, def.shape, entityRefs);
+        const parsedData = qc.parseEntities(freshData, def.statics.shape, entityRefs);
 
         const updatedAt = (this.updatedAt = Date.now());
 
@@ -260,23 +311,19 @@ export class QueryInstance<T extends Query> {
       } catch (error) {
         lastError = error;
 
-        // If we've exhausted retries, throw the error
         if (attempt >= retries) {
           throw error;
         }
 
-        // Wait before retrying (unless paused)
         const delay = retryDelay(attempt);
         await sleep(delay);
 
-        // Check if paused during retry delay
         if (this.isPaused) {
           throw new Error('Query is paused due to network status');
         }
       }
     }
 
-    // Should never reach here, but TypeScript needs it
     throw lastError;
   }
 
@@ -291,7 +338,7 @@ export class QueryInstance<T extends Query> {
   private runDebounced(): void {
     if (this.relayState.isPending) return;
 
-    const debounce = this.def.debounce ?? 0;
+    const debounce = this.config?.debounce ?? 0;
 
     clearTimeout(this.debounceTimer);
 
@@ -320,12 +367,12 @@ export class QueryInstance<T extends Query> {
       return true;
     }
 
-    const staleTime = this.def.cache?.staleTime ?? 0;
+    const staleTime = this.config?.staleTime ?? 0;
     return Date.now() - this.updatedAt >= staleTime;
   }
 
   private get isPaused(): boolean {
-    const networkMode = this.def.cache?.networkMode ?? NetworkMode.Online;
+    const networkMode = this.config?.networkMode ?? NetworkMode.Online;
 
     if (networkMode === NetworkMode.Always) {
       return false;

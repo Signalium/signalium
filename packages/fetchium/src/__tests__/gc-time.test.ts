@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { Query, fetchQuery, queryKeyForClass } from '../query.js';
+import { JsonQuery, fetchQuery, queryKeyForClass } from '../query.js';
 import { t, getShapeKey } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
@@ -40,10 +40,12 @@ describe('cacheTime (disk expiration)', () => {
   });
 
   it('should evict queries from disk after cacheTime expires', async () => {
-    class GetItem extends Query {
-      path = '/item/[id]';
-      response = { id: t.number, name: t.string };
-      cache = { cacheTime: 100 / 60_000, staleTime: 50, gcTime: 1 };
+    class GetItem extends JsonQuery {
+      static cache = { cacheTime: 100 / 60_000 };
+      params = { id: t.id };
+      path = `/item/${this.params.id}`;
+      result = { id: t.number, name: t.string };
+      config = { staleTime: 50, gcTime: 1 };
     }
 
     mockFetch.get('/item/1', { id: 1, name: 'Item 1' });
@@ -79,10 +81,10 @@ describe('cacheTime (disk expiration)', () => {
   });
 
   it('should NOT evict queries with active subscribers', async () => {
-    class GetItem extends Query {
+    class GetItem extends JsonQuery {
+      static cache = { cacheTime: 50 / 60_000 };
       path = '/active';
-      response = { data: t.string };
-      cache = { cacheTime: 50 / 60_000 };
+      result = { data: t.string };
     }
 
     mockFetch.get('/active', { data: 'test' });
@@ -120,10 +122,10 @@ describe('GC Time (in-memory eviction)', () => {
   });
 
   it('should evict queries from memory after gcTime bucket rotates', async () => {
-    class GetItem extends Query {
+    class GetItem extends JsonQuery {
       path = '/gc-item';
-      response = { value: t.string };
-      cache = { gcTime: 1 }; // 1 minute → ~60ms at 0.001 multiplier
+      result = { value: t.string };
+      config = { gcTime: 1 }; // 1 minute → ~60ms at 0.001 multiplier
     }
 
     mockFetch.get('/gc-item', { value: 'test' });
@@ -143,10 +145,10 @@ describe('GC Time (in-memory eviction)', () => {
   });
 
   it('should cancel eviction when reactivated before bucket fires', async () => {
-    class GetItem extends Query {
+    class GetItem extends JsonQuery {
       path = '/reactivate';
-      response = { n: t.number };
-      cache = { gcTime: 1 };
+      result = { n: t.number };
+      config = { gcTime: 1 };
     }
 
     mockFetch.get('/reactivate', { n: 1 });
@@ -177,10 +179,10 @@ describe('GC Time (in-memory eviction)', () => {
   });
 
   it('should evict on next tick when gcTime is 0', async () => {
-    class GetItem extends Query {
+    class GetItem extends JsonQuery {
       path = '/instant-gc';
-      response = { v: t.number };
-      cache = { gcTime: 0 };
+      result = { v: t.number };
+      config = { gcTime: 0 };
     }
 
     mockFetch.get('/instant-gc', { v: 42 });
@@ -199,10 +201,10 @@ describe('GC Time (in-memory eviction)', () => {
   });
 
   it('should never evict when gcTime is Infinity', async () => {
-    class GetItem extends Query {
+    class GetItem extends JsonQuery {
       path = '/forever';
-      response = { data: t.string };
-      cache = { gcTime: Infinity };
+      result = { data: t.string };
+      config = { gcTime: Infinity };
     }
 
     mockFetch.get('/forever', { data: 'persisted' });
@@ -220,16 +222,16 @@ describe('GC Time (in-memory eviction)', () => {
   });
 
   it('should use separate buckets for different gcTime values', async () => {
-    class FastQuery extends Query {
+    class FastQuery extends JsonQuery {
       path = '/fast';
-      response = { x: t.number };
-      cache = { gcTime: 1 }; // ~60ms at 0.001
+      result = { x: t.number };
+      config = { gcTime: 1 }; // ~60ms at 0.001
     }
 
-    class SlowQuery extends Query {
+    class SlowQuery extends JsonQuery {
       path = '/slow';
-      response = { y: t.number };
-      cache = { gcTime: 2 }; // ~120ms at 0.001
+      result = { y: t.number };
+      config = { gcTime: 2 }; // ~120ms at 0.001
     }
 
     mockFetch.get('/fast', { x: 1 });
@@ -287,10 +289,10 @@ describe('GC with Entities', () => {
       post = t.entity(Post);
     }
 
-    class GetUser extends Query {
+    class GetUser extends JsonQuery {
       path = '/user';
-      response = { user: t.entity(User) };
-      cache = { gcTime: 1 };
+      result = { user: t.entity(User) };
+      config = { gcTime: 1 };
     }
 
     mockFetch.get('/user', {
@@ -331,16 +333,16 @@ describe('GC with Entities', () => {
       name = t.string;
     }
 
-    class GetUser1 extends Query {
+    class GetUser1 extends JsonQuery {
       path = '/user1';
-      response = { user: t.entity(User) };
-      cache = { gcTime: 1 };
+      result = { user: t.entity(User) };
+      config = { gcTime: 1 };
     }
 
-    class GetUser2 extends Query {
+    class GetUser2 extends JsonQuery {
       path = '/user2';
-      response = { user: t.entity(User) };
-      cache = { gcTime: 1 };
+      result = { user: t.entity(User) };
+      config = { gcTime: 1 };
     }
 
     const sharedUserData = { __typename: 'SharedUser', id: 42, name: 'Bob' };
@@ -371,10 +373,10 @@ describe('GC with Entities', () => {
       value = t.string;
     }
 
-    class GetDelayed extends Query {
+    class GetDelayed extends JsonQuery {
       path = '/delayed';
-      response = { item: t.entity(DelayedEntity) };
-      cache = { gcTime: 1 }; // query GC is faster
+      result = { item: t.entity(DelayedEntity) };
+      config = { gcTime: 1 }; // query GC is faster
     }
 
     mockFetch.get('/delayed', {
@@ -407,16 +409,16 @@ describe('GC with Entities', () => {
       name = t.string;
     }
 
-    class GetCancel1 extends Query {
+    class GetCancel1 extends JsonQuery {
       path = '/cancel1';
-      response = { item: t.entity(CancelEntity) };
-      cache = { gcTime: 1 };
+      result = { item: t.entity(CancelEntity) };
+      config = { gcTime: 1 };
     }
 
-    class GetCancel2 extends Query {
+    class GetCancel2 extends JsonQuery {
       path = '/cancel2';
-      response = { item: t.entity(CancelEntity) };
-      cache = { gcTime: 1 };
+      result = { item: t.entity(CancelEntity) };
+      config = { gcTime: 1 };
     }
 
     const entityData = { __typename: 'CancelEnt', id: 1, name: 'test' };
@@ -460,10 +462,10 @@ describe('GC with Entities', () => {
       value = t.string;
     }
 
-    class GetWrapped extends Query {
+    class GetWrapped extends JsonQuery {
       path = '/wrapped';
-      response = { item: t.optional(t.entity(WrappedEntity)) };
-      cache = { gcTime: 1 };
+      result = { item: t.optional(t.entity(WrappedEntity)) };
+      config = { gcTime: 1 };
     }
 
     mockFetch.get('/wrapped', {
@@ -501,10 +503,10 @@ describe('GC with Entities', () => {
       tags = t.array(t.entity(Tag));
     }
 
-    class GetPost extends Query {
+    class GetPost extends JsonQuery {
       path = '/gc-post';
-      response = { post: t.entity(Post) };
-      cache = { gcTime: 1 };
+      result = { post: t.entity(Post) };
+      config = { gcTime: 1 };
     }
 
     mockFetch.get('/gc-post', {
@@ -561,13 +563,11 @@ describe('GC with Entities', () => {
       name = t.string;
     }
 
-    class GetUser extends Query {
-      path = '/users/[id]';
-      response = { user: t.entity(User) };
-      cache = {
-        maxCount: 2,
-        cacheTime: 5000 / 60_000, // ~5s in minutes
-      };
+    class GetUser extends JsonQuery {
+      static cache = { maxCount: 2, cacheTime: 5000 / 60_000 };
+      params = { id: t.id };
+      path = `/users/${this.params.id}`;
+      result = { user: t.entity(User) };
     }
 
     mockFetch.get('/users/1', { user: { __typename: 'LruUser', id: 1, name: 'User 1' } });
