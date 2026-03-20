@@ -21,6 +21,7 @@ import {
   BaseUrlValue,
   QueryRequestInit,
   MutationResultValue,
+  MutationEvent,
   QueryPromise,
   ComplexTypeDef,
   Mask,
@@ -199,6 +200,32 @@ export const queryKeyFor = (queryDef: QueryDefinition<any, any, any>, params: un
   return hashValue([queryDef.statics.id, queryDef.statics.shapeKey, params]);
 };
 
+function fieldAllowsUndefined(fieldDef: unknown): boolean {
+  if (typeof fieldDef === 'number') return (fieldDef & Mask.UNDEFINED) !== 0;
+  if (fieldDef instanceof ValidatorDef) return (fieldDef.mask & Mask.UNDEFINED) !== 0;
+  return false;
+}
+
+function payloadSatisfiesShape(data: Record<string, unknown>, def: ValidatorDef<any>): boolean {
+  const shape = def.shape as Record<string, unknown>;
+  const typenameField = def.typenameField;
+
+  for (const key of Object.keys(shape)) {
+    if (key === typenameField) continue;
+    if (!(key in data) && !fieldAllowsUndefined(shape[key])) return false;
+  }
+
+  return true;
+}
+
+function fieldTypesCompatible(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a === 'number' && typeof b === 'number') return a === b;
+  if (typeof a === 'string' && typeof b === 'string') return a === b;
+  if (a instanceof ValidatorDef && b instanceof ValidatorDef) return a.shapeKey === b.shapeKey;
+  return false;
+}
+
 export class QueryClient {
   private entityMap: EntityStore;
   queryInstances = new Map<number, QueryInstance<any>>();
@@ -209,6 +236,9 @@ export class QueryClient {
   isServer: boolean;
 
   currentParseId: number = 0;
+
+  private typenameRegistry = new Map<string, ValidatorDef<any>[]>();
+  private typenameIdFields = new Map<string, string>();
 
   constructor(
     private store: QueryStore,
@@ -231,6 +261,61 @@ export class QueryClient {
 
   getContext(): QueryContext {
     return this.context;
+  }
+
+  // ======================================================
+  // Typename Registry (per-client)
+  // ======================================================
+
+  private registerEntityDef(def: ValidatorDef<any>): void {
+    const typename = def.typenameValue;
+    if (typename === undefined) return;
+
+    const existing = this.typenameRegistry.get(typename);
+
+    if (existing !== undefined) {
+      if (existing.indexOf(def) !== -1) return;
+
+      const expectedIdField = this.typenameIdFields.get(typename);
+
+      if (expectedIdField === undefined && def.idField !== undefined) {
+        this.typenameIdFields.set(typename, def.idField);
+      } else if (IS_DEV && expectedIdField !== undefined && def.idField !== expectedIdField) {
+        console.warn(
+          `[fetchium] Entity typename '${typename}' has conflicting id fields: '${expectedIdField}' vs '${def.idField}'`,
+        );
+      }
+
+      if (IS_DEV) {
+        const newShape = def.shape as Record<string, unknown>;
+        for (const other of existing) {
+          const otherShape = other.shape as Record<string, unknown>;
+          for (const key of Object.keys(newShape)) {
+            if (key in otherShape && !fieldTypesCompatible(newShape[key], otherShape[key])) {
+              console.warn(
+                `[fetchium] Entity typename '${typename}' has conflicting type for field '${key}' across different entity definitions`,
+              );
+              break;
+            }
+          }
+        }
+      }
+
+      existing.push(def);
+    } else {
+      this.typenameRegistry.set(typename, [def]);
+      if (def.idField !== undefined) {
+        this.typenameIdFields.set(typename, def.idField);
+      }
+    }
+  }
+
+  private getEntityDefsForTypename(typename: string): ValidatorDef<any>[] | undefined {
+    return this.typenameRegistry.get(typename);
+  }
+
+  private getEntityIdField(typename: string): string | undefined {
+    return this.typenameIdFields.get(typename);
   }
 
   saveQueryData(
@@ -333,6 +418,7 @@ export class QueryClient {
     entityRefs?: Set<number>,
     persist?: boolean,
   ): EntityInstance {
+    this.registerEntityDef(shape as unknown as ValidatorDef<any>);
     const instance = this.entityMap.getOrCreateEntity(key, obj, shape);
 
     // Diff old vs new child entity refs
@@ -358,6 +444,69 @@ export class QueryClient {
     }
 
     return instance;
+  }
+
+  // ======================================================
+  // Mutation Events
+  // ======================================================
+
+  applyMutationEvent(event: MutationEvent): void {
+    const { type, typename } = event;
+
+    const defs = this.getEntityDefsForTypename(typename);
+    if (defs === undefined) return;
+
+    const idField = this.getEntityIdField(typename);
+    if (idField === undefined) return;
+
+    const rawData = event.data;
+    const id =
+      type === 'delete' && (typeof rawData === 'string' || typeof rawData === 'number')
+        ? rawData
+        : (rawData as Record<string, unknown>)[idField];
+
+    if (typeof id !== 'string' && typeof id !== 'number') return;
+
+    const entityDesc = `${typename}:${id}`;
+
+    switch (type) {
+      case 'update': {
+        const data = event.data as Record<string, unknown>;
+        for (const def of defs) {
+          const key = hashValue([entityDesc, def.shapeKey]);
+          const existing = this.entityMap.getEntity(key);
+          if (existing !== undefined) {
+            existing.update(data);
+            this.store.saveEntity(key, existing.data);
+          }
+        }
+        break;
+      }
+
+      case 'create': {
+        const data = event.data as Record<string, unknown>;
+        for (const def of defs) {
+          const key = hashValue([entityDesc, def.shapeKey]);
+          const existing = this.entityMap.getEntity(key);
+
+          if (existing !== undefined) {
+            existing.update(data);
+            this.store.saveEntity(key, existing.data);
+          } else if (payloadSatisfiesShape(data, def)) {
+            this.entityMap.getOrCreateEntity(key, data, def as EntityDef);
+          }
+        }
+        break;
+      }
+
+      case 'delete': {
+        for (const def of defs) {
+          const key = hashValue([entityDesc, def.shapeKey]);
+          this.evictEntity(key);
+        }
+        break;
+      }
+    }
   }
 
   // ======================================================

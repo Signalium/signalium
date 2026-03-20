@@ -931,83 +931,60 @@ describe('Query definition getter methods', () => {
     });
   });
 
-  describe('getStream()', () => {
-    it('should resolve stream from a field assignment', () => {
-      class Post extends Entity {
-        __typename = t.typename('Post');
-        id = t.id;
-        title = t.string;
-      }
-
-      const subscribeFn = () => () => {};
+  describe('subscribe()', () => {
+    it('should call subscribe on the execution context', () => {
+      let called = false;
 
       class StreamQuery extends JsonQuery {
         path = '/posts';
-        result = { posts: t.array(t.entity(Post)) };
-        stream = {
-          type: t.entity(Post),
-          subscribe: subscribeFn,
-        };
-      }
+        result = { id: t.string };
 
-      const opts = resolveOpts(StreamQuery);
-      expect(opts.stream).toBeDefined();
-      expect(opts.stream!.subscribeFn).toBeDefined();
-    });
-
-    it('should resolve getStream() referencing other fields', () => {
-      class Post extends Entity {
-        __typename = t.typename('Post');
-        id = t.id;
-        title = t.string;
-      }
-
-      const subscribeFn = () => () => {};
-
-      class ConditionalStream extends JsonQuery {
-        path = '/posts';
-        result = { posts: t.array(t.entity(Post)) };
-
-        getStream() {
-          if (this.method === 'GET') {
-            return {
-              type: t.entity(Post),
-              subscribe: subscribeFn,
-            };
-          }
-          return undefined;
+        subscribe(onEvent: any) {
+          called = true;
+          return () => {};
         }
       }
 
-      expect(resolveOpts(ConditionalStream).stream).toBeDefined();
+      const def = QueryDefinition.for(StreamQuery);
+      const ctx = def.createExecutionContext({}, {} as QueryContext);
+      const unsub = ctx.subscribe!(() => {});
+
+      expect(called).toBe(true);
+      expect(typeof unsub).toBe('function');
     });
 
-    it('should resolve getStream() returning undefined when condition not met', () => {
-      class Post extends Entity {
-        __typename = t.typename('Post');
-        id = t.id;
-        title = t.string;
-      }
-
-      const subscribeFn = () => () => {};
-
+    it('should not have subscribe when not defined on the query', () => {
       class NoStreamMutation extends JsonQuery {
         path = '/posts';
         method = 'POST' as const;
-        result = { posts: t.array(t.entity(Post)) };
+        result = { id: t.string };
+      }
 
-        getStream() {
-          if ((this.method as string) === 'GET') {
-            return {
-              type: t.entity(Post),
-              subscribe: subscribeFn,
-            };
-          }
-          return undefined;
+      const def = QueryDefinition.for(NoStreamMutation);
+      const ctx = def.createExecutionContext({}, {} as QueryContext);
+
+      expect(ctx.subscribe).toBeUndefined();
+    });
+
+    it('should have access to this.params in subscribe', () => {
+      let receivedId: any;
+
+      class ParamStream extends JsonQuery {
+        params = { channelId: t.id };
+        path = `/channels/${this.params.channelId}`;
+        result = { id: t.string };
+
+        subscribe(onEvent: any) {
+          receivedId = this.params.channelId;
+          return () => {};
         }
       }
 
-      expect(resolveOpts(NoStreamMutation).stream).toBeUndefined();
+      const def = QueryDefinition.for(ParamStream);
+      const ctx = def.createExecutionContext({ channelId: 'ch-99' }, {} as QueryContext);
+      ctx.subscribe!(() => {});
+
+      expect(receivedId).toBe('ch-99');
     });
   });
 
@@ -1186,7 +1163,7 @@ describe('Query definition getter methods', () => {
         title = t.string;
       }
 
-      const subscribeFn = () => () => {};
+      let streamCalled = false;
 
       class FullQuery extends JsonQuery {
         path = '/posts';
@@ -1200,11 +1177,11 @@ describe('Query definition getter methods', () => {
           return this.method === 'GET' ? { staleTime: 30000, debounce: 150 } : { debounce: 0 };
         }
 
-        getStream() {
+        subscribe(onEvent: any) {
           if (this.method === 'GET') {
-            return { type: t.entity(Post), subscribe: subscribeFn };
+            streamCalled = true;
           }
-          return undefined;
+          return () => {};
         }
       }
 
@@ -1212,7 +1189,11 @@ describe('Query definition getter methods', () => {
       const opts = resolveOpts(FullQuery);
       expect(opts.config?.staleTime).toBe(30000);
       expect(opts.config?.debounce).toBe(150);
-      expect(opts.stream).toBeDefined();
+
+      const def = QueryDefinition.for(FullQuery);
+      const ctx = def.createExecutionContext({}, {} as QueryContext);
+      ctx.subscribe!(() => {});
+      expect(streamCalled).toBe(true);
     });
 
     it('should execute a query with all getter methods applied', async () => {

@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { signal } from 'signalium';
 import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
 import { JsonQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, sleep, sendStreamUpdate } from './utils.js';
+import type { MutationEvent } from '../types.js';
 
 /**
  * Query Stream Tests
@@ -33,7 +35,7 @@ describe('Query Stream Option', () => {
   describe('Basic Stream Subscription', () => {
     it('should subscribe to stream when query is activated', async () => {
       class Post extends Entity {
-        __typename = t.typename('Post');
+        __typename = t.typename('StreamPost');
         id = t.id;
         title = t.string;
         content = t.string;
@@ -44,8 +46,8 @@ describe('Query Stream Option', () => {
 
       mockFetch.get('/posts', {
         posts: [
-          { __typename: 'Post', id: '1', title: 'Post 1', content: 'Content 1' },
-          { __typename: 'Post', id: '2', title: 'Post 2', content: 'Content 2' },
+          { __typename: 'StreamPost', id: '1', title: 'Post 1', content: 'Content 1' },
+          { __typename: 'StreamPost', id: '2', title: 'Post 2', content: 'Content 2' },
         ],
       });
 
@@ -54,49 +56,43 @@ describe('Query Stream Option', () => {
         result = {
           posts: t.array(t.entity(Post)),
         };
-        stream = {
-          type: t.entity(Post),
-          subscribe: (context: any, params: any, onUpdate: any) => {
-            subscribeCallCount++;
-            return () => {
-              unsubscribeCallCount++;
-            };
-          },
-        };
+
+        subscribe(onEvent: (event: MutationEvent) => void) {
+          subscribeCallCount++;
+          return () => {
+            unsubscribeCallCount++;
+          };
+        }
       }
 
       await testWithClient(client, async () => {
         const relay = fetchQuery(GetPosts);
 
-        // Access a property to activate the relay
         expect(relay.isPending).toBe(true);
 
-        // Wait for query to complete
         await relay;
 
-        // Stream should be subscribed
         expect(subscribeCallCount).toBe(1);
         expect(relay.value?.posts.length).toBe(2);
       });
 
       await sleep();
 
-      // Should unsubscribe when relay is deactivated
       expect(unsubscribeCallCount).toBe(1);
     });
 
-    it('should pass params to stream subscribe function', async () => {
+    it('should have access to this.params inside subscribe', async () => {
       class Message extends Entity {
-        __typename = t.typename('Message');
+        __typename = t.typename('StreamMessage');
         id = t.id;
         text = t.string;
         userId = t.string;
       }
 
-      let receivedParams: any;
+      let receivedUserId: any;
 
       mockFetch.get('/users/[userId]/messages', {
-        messages: [{ __typename: 'Message', id: '1', text: 'Hello', userId: '123' }],
+        messages: [{ __typename: 'StreamMessage', id: '1', text: 'Hello', userId: '123' }],
       });
 
       class GetUserMessages extends JsonQuery {
@@ -106,20 +102,18 @@ describe('Query Stream Option', () => {
         result = {
           messages: t.array(t.entity(Message)),
         };
-        stream = {
-          type: t.entity(Message),
-          subscribe: (context: any, params: any, onUpdate: any) => {
-            receivedParams = params;
-            return () => {};
-          },
-        };
+
+        subscribe(onEvent: (event: MutationEvent) => void) {
+          receivedUserId = this.params.userId;
+          return () => {};
+        }
       }
 
       await testWithClient(client, async () => {
         const relay = fetchQuery(GetUserMessages, { userId: '123', limit: 10 } as any);
         await relay;
 
-        expect(receivedParams).toEqual({ userId: '123', limit: 10 });
+        expect(receivedUserId).toBe('123');
       });
     });
   });
@@ -127,18 +121,18 @@ describe('Query Stream Option', () => {
   describe('Entity Updates via Stream', () => {
     it('should update entities in response when stream event arrives', async () => {
       class Post extends Entity {
-        __typename = t.typename('Post');
+        __typename = t.typename('StreamUpdatePost');
         id = t.id;
         title = t.string;
         content = t.string;
       }
 
-      let streamCallback: ((update: any) => void) | undefined;
+      let streamCallback: ((event: MutationEvent) => void) | undefined;
 
       mockFetch.get('/posts', {
         posts: [
-          { __typename: 'Post', id: '1', title: 'Post 1', content: 'Content 1' },
-          { __typename: 'Post', id: '2', title: 'Post 2', content: 'Content 2' },
+          { __typename: 'StreamUpdatePost', id: '1', title: 'Post 1', content: 'Content 1' },
+          { __typename: 'StreamUpdatePost', id: '2', title: 'Post 2', content: 'Content 2' },
         ],
       });
 
@@ -147,13 +141,11 @@ describe('Query Stream Option', () => {
         result = {
           posts: t.array(t.entity(Post)),
         };
-        stream = {
-          type: t.entity(Post),
-          subscribe: (context: any, params: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+
+        subscribe(onEvent: (event: MutationEvent) => void) {
+          streamCallback = onEvent;
+          return () => {};
+        }
       }
 
       await testWithClient(client, async () => {
@@ -163,42 +155,40 @@ describe('Query Stream Option', () => {
         const initialPosts = relay.value!.posts;
         expect(initialPosts[0].title).toBe('Post 1');
 
-        // Send stream update for Post 1 (using helper to avoid reactive context issues)
         await sendStreamUpdate(streamCallback!, {
-          __typename: 'Post',
-          id: '1',
-          title: 'Updated Post 1',
+          type: 'update',
+          typename: 'StreamUpdatePost',
+          data: { id: '1', title: 'Updated Post 1' },
         });
 
-        // Post should be updated in the array
         expect(relay.value!.posts[0].title).toBe('Updated Post 1');
-        expect(relay.value!.posts[0].content).toBe('Content 1'); // Should preserve other fields
+        expect(relay.value!.posts[0].content).toBe('Content 1');
       });
     });
 
     it('should update nested entities in response', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
+      class StreamAuthor extends Entity {
+        __typename = t.typename('StreamAuthor');
         id = t.id;
         name = t.string;
       }
 
-      class Post extends Entity {
-        __typename = t.typename('Post');
+      class StreamNestedPost extends Entity {
+        __typename = t.typename('StreamNestedPost');
         id = t.id;
         title = t.string;
-        author = t.entity(User);
+        author = t.entity(StreamAuthor);
       }
 
-      let streamCallback: ((update: any) => void) | undefined;
+      let streamCallback: ((event: MutationEvent) => void) | undefined;
 
       mockFetch.get('/posts', {
         posts: [
           {
-            __typename: 'Post',
+            __typename: 'StreamNestedPost',
             id: '1',
             title: 'Post 1',
-            author: { __typename: 'User', id: 'u1', name: 'Alice' },
+            author: { __typename: 'StreamAuthor', id: 'u1', name: 'Alice' },
           },
         ],
       });
@@ -206,15 +196,13 @@ describe('Query Stream Option', () => {
       class GetPosts extends JsonQuery {
         path = '/posts';
         result = {
-          posts: t.array(t.entity(Post)),
+          posts: t.array(t.entity(StreamNestedPost)),
         };
-        stream = {
-          type: t.entity(User),
-          subscribe: (context: any, params: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+
+        subscribe(onEvent: (event: MutationEvent) => void) {
+          streamCallback = onEvent;
+          return () => {};
+        }
       }
 
       await testWithClient(client, async () => {
@@ -223,14 +211,12 @@ describe('Query Stream Option', () => {
 
         expect((relay.value!.posts[0].author as any).name).toBe('Alice');
 
-        // Send stream update for User (using helper to avoid reactive context issues)
         await sendStreamUpdate(streamCallback!, {
-          __typename: 'User',
-          id: 'u1',
-          name: 'Alice Smith',
+          type: 'update',
+          typename: 'StreamAuthor',
+          data: { id: 'u1', name: 'Alice Smith' },
         });
 
-        // Nested user should be updated
         expect((relay.value!.posts[0].author as any).name).toBe('Alice Smith');
       });
     });
@@ -239,7 +225,7 @@ describe('Query Stream Option', () => {
   describe('Stream Lifecycle', () => {
     it('should unsubscribe when query is deactivated', async () => {
       class Post extends Entity {
-        __typename = t.typename('Post');
+        __typename = t.typename('StreamLifecyclePost');
         id = t.id;
         title = t.string;
       }
@@ -248,7 +234,7 @@ describe('Query Stream Option', () => {
       let unsubscribeCount = 0;
 
       mockFetch.get('/posts', {
-        posts: [{ __typename: 'Post', id: '1', title: 'Post 1' }],
+        posts: [{ __typename: 'StreamLifecyclePost', id: '1', title: 'Post 1' }],
       });
 
       class GetPosts extends JsonQuery {
@@ -256,15 +242,13 @@ describe('Query Stream Option', () => {
         result = {
           posts: t.array(t.entity(Post)),
         };
-        stream = {
-          type: t.entity(Post),
-          subscribe: (context: any, params: any, onUpdate: any) => {
-            subscribeCount++;
-            return () => {
-              unsubscribeCount++;
-            };
-          },
-        };
+
+        subscribe(onEvent: (event: MutationEvent) => void) {
+          subscribeCount++;
+          return () => {
+            unsubscribeCount++;
+          };
+        }
       }
 
       await testWithClient(client, async () => {
@@ -277,13 +261,12 @@ describe('Query Stream Option', () => {
 
       await sleep();
 
-      // After exiting testWithClient scope, relay should be deactivated
       expect(unsubscribeCount).toBe(1);
     });
 
     it('should resubscribe when query is reactivated', async () => {
       class Post extends Entity {
-        __typename = t.typename('Post');
+        __typename = t.typename('StreamResubPost');
         id = t.id;
         title = t.string;
       }
@@ -292,7 +275,7 @@ describe('Query Stream Option', () => {
       let unsubscribeCount = 0;
 
       mockFetch.get('/posts', {
-        posts: [{ __typename: 'Post', id: '1', title: 'Post 1' }],
+        posts: [{ __typename: 'StreamResubPost', id: '1', title: 'Post 1' }],
       });
 
       class GetPosts extends JsonQuery {
@@ -300,15 +283,13 @@ describe('Query Stream Option', () => {
         result = {
           posts: t.array(t.entity(Post)),
         };
-        stream = {
-          type: t.entity(Post),
-          subscribe: (context: any, params: any, onUpdate: any) => {
-            subscribeCount++;
-            return () => {
-              unsubscribeCount++;
-            };
-          },
-        };
+
+        subscribe(onEvent: (event: MutationEvent) => void) {
+          subscribeCount++;
+          return () => {
+            unsubscribeCount++;
+          };
+        }
       }
 
       // First activation
@@ -334,7 +315,7 @@ describe('Query Stream Option', () => {
       expect(unsubscribeCount).toBe(2);
     });
 
-    it('should not subscribe if stream is not configured', async () => {
+    it('should not subscribe if subscribe is not overridden', async () => {
       let subscribeCount = 0;
 
       mockFetch.get('/posts', {
@@ -358,7 +339,6 @@ describe('Query Stream Option', () => {
         await relay;
 
         expect(relay.value?.posts.length).toBe(1);
-        // No subscriptions should occur
         expect(subscribeCount).toBe(0);
       });
     });
@@ -367,17 +347,17 @@ describe('Query Stream Option', () => {
   describe('Complex Scenarios', () => {
     it('should handle rapid successive stream events', async () => {
       class Post extends Entity {
-        __typename = t.typename('Post');
+        __typename = t.typename('StreamRapidPost');
         id = t.id;
         title = t.string;
       }
 
-      let streamCallback: ((update: any) => void) | undefined;
+      let streamCallback: ((event: MutationEvent) => void) | undefined;
 
       mockFetch.get('/posts', {
         posts: [
-          { __typename: 'Post', id: '1', title: 'Post 1' },
-          { __typename: 'Post', id: '2', title: 'Post 2' },
+          { __typename: 'StreamRapidPost', id: '1', title: 'Post 1' },
+          { __typename: 'StreamRapidPost', id: '2', title: 'Post 2' },
         ],
       });
 
@@ -386,28 +366,191 @@ describe('Query Stream Option', () => {
         result = {
           posts: t.array(t.entity(Post)),
         };
-        stream = {
-          type: t.entity(Post),
-          subscribe: (context: any, params: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+
+        subscribe(onEvent: (event: MutationEvent) => void) {
+          streamCallback = onEvent;
+          return () => {};
+        }
       }
 
       await testWithClient(client, async () => {
         const relay = fetchQuery(GetPosts);
         await relay;
 
-        // Send rapid successive stream events
-        await sendStreamUpdate(streamCallback!, { __typename: 'Post', id: '1', title: 'Updated Post 1' });
-        await sendStreamUpdate(streamCallback!, { __typename: 'Post', id: '2', title: 'Updated Post 2' });
+        await sendStreamUpdate(streamCallback!, {
+          type: 'update',
+          typename: 'StreamRapidPost',
+          data: { id: '1', title: 'Updated Post 1' },
+        });
+        await sendStreamUpdate(streamCallback!, {
+          type: 'update',
+          typename: 'StreamRapidPost',
+          data: { id: '2', title: 'Updated Post 2' },
+        });
 
         await sleep(10);
 
-        // Entities in response should be updated
         expect(relay.value!.posts[0].title).toBe('Updated Post 1');
         expect(relay.value!.posts[1].title).toBe('Updated Post 2');
+      });
+    });
+  });
+
+  describe('Stream with this.params', () => {
+    it('should unsubscribe old stream and resubscribe when Signal param changes', async () => {
+      class Item extends Entity {
+        __typename = t.typename('StreamResubItem');
+        id = t.id;
+        name = t.string;
+      }
+
+      const subscriptions: { channelId: any; unsubscribed: boolean }[] = [];
+
+      mockFetch.get('/channels/[channelId]/items', {
+        items: [{ __typename: 'StreamResubItem', id: '1', name: 'Item 1' }],
+      });
+
+      class GetChannelItems extends JsonQuery {
+        params = { channelId: t.id };
+        path = `/channels/${this.params.channelId}/items`;
+        result = {
+          items: t.array(t.entity(Item)),
+        };
+
+        subscribe(onEvent: (event: MutationEvent) => void) {
+          const sub = { channelId: this.params.channelId, unsubscribed: false };
+          subscriptions.push(sub);
+          return () => {
+            sub.unsubscribed = true;
+          };
+        }
+      }
+
+      const channelSignal = signal('ch-1');
+
+      await testWithClient(client, async () => {
+        const relay = fetchQuery(GetChannelItems, { channelId: channelSignal });
+        await relay;
+
+        expect(subscriptions.length).toBe(1);
+        expect(subscriptions[0].channelId).toBe('ch-1');
+        expect(subscriptions[0].unsubscribed).toBe(false);
+
+        // Change the Signal param outside reactive context
+        await new Promise<void>(resolve => {
+          setTimeout(() => {
+            channelSignal.value = 'ch-2';
+            resolve();
+          }, 10);
+        });
+
+        await sleep(100);
+
+        // Re-read to trigger relay re-evaluation
+        await fetchQuery(GetChannelItems, { channelId: channelSignal });
+
+        // Old subscription should be torn down
+        expect(subscriptions[0].unsubscribed).toBe(true);
+
+        // New subscription should exist with updated params
+        expect(subscriptions.length).toBe(2);
+        expect(subscriptions[1].channelId).toBe('ch-2');
+        expect(subscriptions[1].unsubscribed).toBe(false);
+      });
+    });
+
+    it('should deliver events on the new subscription after param change', async () => {
+      class Item extends Entity {
+        __typename = t.typename('StreamNewSubItem');
+        id = t.id;
+        name = t.string;
+      }
+
+      let latestOnEvent: ((event: MutationEvent) => void) | undefined;
+      let subscribeCount = 0;
+
+      mockFetch.get('/channels/[channelId]/items', {
+        items: [{ __typename: 'StreamNewSubItem', id: '1', name: 'Original' }],
+      });
+
+      class GetChannelItems extends JsonQuery {
+        params = { channelId: t.id };
+        path = `/channels/${this.params.channelId}/items`;
+        result = {
+          items: t.array(t.entity(Item)),
+        };
+
+        subscribe(onEvent: (event: MutationEvent) => void) {
+          subscribeCount++;
+          latestOnEvent = onEvent;
+          return () => {};
+        }
+      }
+
+      const channelSignal = signal('ch-1');
+
+      await testWithClient(client, async () => {
+        const relay = fetchQuery(GetChannelItems, { channelId: channelSignal });
+        await relay;
+
+        expect(subscribeCount).toBe(1);
+        expect(relay.value!.items[0].name).toBe('Original');
+
+        // Change param
+        await new Promise<void>(resolve => {
+          setTimeout(() => {
+            channelSignal.value = 'ch-2';
+            resolve();
+          }, 10);
+        });
+
+        await sleep(100);
+        await fetchQuery(GetChannelItems, { channelId: channelSignal });
+
+        expect(subscribeCount).toBe(2);
+
+        // Send an event on the new subscription
+        await sendStreamUpdate(latestOnEvent!, {
+          type: 'update',
+          typename: 'StreamNewSubItem',
+          data: { id: '1', name: 'Updated via new sub' },
+        });
+
+        expect(relay.value!.items[0].name).toBe('Updated via new sub');
+      });
+    });
+
+    it('should have access to this.context inside subscribe', async () => {
+      class Post extends Entity {
+        __typename = t.typename('StreamCtxPost');
+        id = t.id;
+        title = t.string;
+      }
+
+      let receivedContext: any;
+
+      mockFetch.get('/posts', {
+        posts: [{ __typename: 'StreamCtxPost', id: '1', title: 'Post 1' }],
+      });
+
+      class GetPosts extends JsonQuery {
+        path = '/posts';
+        result = {
+          posts: t.array(t.entity(Post)),
+        };
+
+        subscribe(onEvent: (event: MutationEvent) => void) {
+          receivedContext = this.context;
+          return () => {};
+        }
+      }
+
+      await testWithClient(client, async () => {
+        const relay = fetchQuery(GetPosts);
+        await relay;
+
+        expect(receivedContext).toBeDefined();
+        expect(typeof receivedContext.fetch).toBe('function');
       });
     });
   });

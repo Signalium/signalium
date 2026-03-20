@@ -326,3 +326,27 @@ export type QueryPromise<T extends Query> = DiscriminatedReactivePromise<QueryRe
 export type ParseAndApply = 'both' | 'request' | 'response' | 'none';
 
 export type MutationResultValue<Response> = Response;
+
+// ================================
+// Mutation Events
+// ================================
+
+export interface CreateEvent {
+  type: 'create';
+  typename: string;
+  data: Record<string, unknown>;
+}
+
+export interface UpdateEvent {
+  type: 'update';
+  typename: string;
+  data: Record<string, unknown>;
+}
+
+export interface DeleteEvent {
+  type: 'delete';
+  typename: string;
+  data: string | number | Record<string, unknown>;
+}
+
+export type MutationEvent = CreateEvent | UpdateEvent | DeleteEvent;
