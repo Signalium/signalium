@@ -1,9 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
-import { Entity, parseValue } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
-import { parseEntities } from '../../parseEntities.js';
-import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
+import { Entity } from '../../proxy.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
+import {
+  parseValue,
+  parseEntities,
+  setupParsingTests,
+  testWithClient,
+  getEntityKey,
+  getDocument,
+} from './test-utils.js';
 
 /**
  * t.nullable Tests
@@ -109,7 +115,7 @@ describe('t.nullable', () => {
         mockFetch.get('/item', { value: null });
 
         await testWithClient(client, async () => {
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = { value: t.nullable(t.string) };
           }
@@ -126,7 +132,7 @@ describe('t.nullable', () => {
         mockFetch.get('/item', { value: 'present' });
 
         await testWithClient(client, async () => {
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = { value: t.nullable(t.string) };
           }
@@ -147,7 +153,7 @@ describe('t.nullable', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             path = '/user';
             result = {
               user: t.object({
@@ -172,7 +178,7 @@ describe('t.nullable', () => {
         mockFetch.get('/items', { items: ['a', null, 'b', null] });
 
         await testWithClient(client, async () => {
-          class GetItems extends JsonQuery {
+          class GetItems extends RESTQuery {
             path = '/items';
             result = { items: t.array(t.nullable(t.string)) };
           }
@@ -193,7 +199,7 @@ describe('t.nullable', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetData extends JsonQuery {
+          class GetData extends RESTQuery {
             path = '/data';
             result = { values: t.record(t.nullable(t.string)) };
           }
@@ -228,10 +234,10 @@ describe('t.nullable', () => {
           user: { __typename: 'User', id: 1, deletedAt: null },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1, getShapeKey(t.entity(User)));
+        const key = getEntityKey('User', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -253,10 +259,10 @@ describe('t.nullable', () => {
           user: { __typename: 'User', id: 1, deletedAt: '2024-01-15' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1, getShapeKey(t.entity(User)));
+        const key = getEntityKey('User', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -287,10 +293,10 @@ describe('t.nullable', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Profile', 1, getShapeKey(t.entity(Profile)));
+        const key = getEntityKey('Profile', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -319,10 +325,10 @@ describe('t.nullable', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Post', 1, getShapeKey(t.entity(Post)));
+        const key = getEntityKey('Post', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -350,10 +356,10 @@ describe('t.nullable', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Config', 1, getShapeKey(t.entity(Config)));
+        const key = getEntityKey('Config', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -407,7 +413,7 @@ describe('t.nullable', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = {
               count: t.nullable(t.number),

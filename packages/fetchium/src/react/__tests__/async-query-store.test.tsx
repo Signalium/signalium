@@ -8,7 +8,7 @@ import { AsyncPersistentStore, StoreMessage } from '../../stores/async.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { JsonQuery, fetchQuery, queryKeyForClass } from '../../query.js';
+import { RESTQuery, fetchQuery, queryKeyForClass } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { valueKeyFor } from '../../stores/shared.js';
 
@@ -126,7 +126,7 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = t.entity(User);
@@ -176,7 +176,7 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = t.entity(User);
@@ -246,7 +246,7 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = t.entity(User);
@@ -333,13 +333,13 @@ describe('React AsyncQueryStore Integration', () => {
         authorId = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = t.entity(User);
       }
 
-      class GetPost extends JsonQuery {
+      class GetPost extends RESTQuery {
         params = { id: t.id };
         path = `/posts/${this.params.id}`;
         result = t.entity(Post);
@@ -401,7 +401,7 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = t.entity(User);
@@ -466,7 +466,7 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = t.entity(User);
@@ -504,7 +504,7 @@ describe('React AsyncQueryStore Integration', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = t.entity(User);

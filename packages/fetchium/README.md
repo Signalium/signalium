@@ -152,7 +152,6 @@ const getUser = query(() => ({
   cache: {
     staleTime: 5000, // Data is fresh for 5 seconds
     gcTime: 300000, // Cache persists for 5 minutes after last use
-    refetchInterval: 10000, // Refetch every 10 seconds when in use
     networkMode: 'online', // Only fetch when online
     retry: 3, // Retry failed requests 3 times
     refreshStaleOnReconnect: true, // Refetch stale data on reconnect

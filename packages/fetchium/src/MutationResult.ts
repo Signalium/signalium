@@ -1,107 +1,137 @@
 import { task, type ReactiveTask } from 'signalium';
-import { ComplexTypeDef, MutationResultValue } from './types.js';
-import { ValidatorDef } from './typeDefs.js';
+import { ComplexTypeDef, MutationEffects, EntityClassOrTypename } from './types.js';
+import { ValidatorDef, getEntityDef } from './typeDefs.js';
 import { type QueryClient } from './QueryClient.js';
 import { MutationDefinition } from './mutation.js';
 import { resolveRetryConfig } from './query.js';
-import { createExecutionContext } from './fieldRef.js';
-
-// ======================================================
-// MutationResultImpl
-// ======================================================
+import { parseEntities, ParseContext } from './parseEntities.js';
+import { createExecutionContext, reifyValue } from './fieldRef.js';
+import { Entity } from './proxy.js';
+import { withRetry } from './retry.js';
 
 /**
  * Internal mutation manager. Consumers interact with the public `task` property,
- * which is a standard ReactiveTask whose resolved value is the parsed response.
+ * which is a standard ReactiveTask whose resolved value is the validated response.
+ *
+ * Mutations use Phase 1 only (parseData) for response validation. Entity store
+ * updates are handled exclusively through effects (creates/updates/deletes).
  */
-export class MutationResultImpl<Request, Response> {
-  def: MutationDefinition<Request, Response>;
+export class MutationResultImpl<Request, Result> {
+  def: MutationDefinition<Request, Result>;
   private queryClient: QueryClient;
+  private _lastResponse: globalThis.Response | undefined;
+  private _inFlight: boolean = false;
 
-  /** The public-facing ReactiveTask returned to consumers. */
-  readonly task: ReactiveTask<MutationResultValue<Response>, [Request]>;
+  readonly task: ReactiveTask<Result, [Request]>;
 
-  constructor(def: MutationDefinition<Request, Response>, queryClient: QueryClient) {
+  constructor(def: MutationDefinition<Request, Result>, queryClient: QueryClient) {
     this.def = def;
     this.queryClient = queryClient;
     this.task = this.createTask();
   }
 
-  private createTask(): ReactiveTask<MutationResultValue<Response>, [Request]> {
-    return task(async (request: Request): Promise<MutationResultValue<Response>> => {
-      const { parseAndApply } = this.def;
-      const applyRequest = parseAndApply === 'both' || parseAndApply === 'request';
-      const applyResponse = parseAndApply === 'both' || parseAndApply === 'response';
+  private createTask(): ReactiveTask<Result, [Request]> {
+    return task(
+      async (request: Request): Promise<Result> => {
+        if (this._inFlight) {
+          throw new Error('A mutation is already in progress. Await the previous call before starting a new one.');
+        }
+        this._inFlight = true;
+        try {
+          const response = await this.executeWithRetry(request);
 
-      const response = await this.executeWithRetry(request);
+          const parsedResponse = this.validateResponse(response);
 
-      if (applyRequest) {
-        this.applyRequestEntities(request);
-      }
+          this.processEffects(request, parsedResponse);
 
-      let parsedResponse: Response;
-      if (applyResponse) {
-        parsedResponse = this.parseAndUpdateEntities(response);
-      } else {
-        parsedResponse = response as Response;
-      }
-
-      return parsedResponse as MutationResultValue<Response>;
-    });
+          return parsedResponse;
+        } finally {
+          this._inFlight = false;
+        }
+      },
+      { desc: `Mutation(${this.def.id})` },
+    );
   }
 
-  private applyRequestEntities(request: Request): void {
-    const requestShape = this.def.requestShape;
-
-    if (!(requestShape instanceof ValidatorDef)) {
-      return;
-    }
-
-    this.queryClient.parseEntities(request, requestShape as ComplexTypeDef, new Set());
-  }
-
-  private parseAndUpdateEntities(response: unknown): Response {
+  private validateResponse(response: unknown): Result {
     const responseShape = this.def.responseShape;
 
     if (!(responseShape instanceof ValidatorDef)) {
-      return response as Response;
+      return response as Result;
     }
 
-    const entityRefs = new Set<number>();
-    const parsed = this.queryClient.parseEntities(response, responseShape as ComplexTypeDef, entityRefs);
+    const warn = this.queryClient.getContext().log?.warn ?? (() => {});
+    const ctx = new ParseContext();
+    ctx.reset(undefined, undefined, warn);
+    return parseEntities(response, responseShape as ComplexTypeDef, ctx) as Result;
+  }
 
-    return parsed as Response;
+  // ======================================================
+  // Effects processing
+  // ======================================================
+
+  private processEffects(request: Request, parsedResult: Result): void {
+    let effects: MutationEffects | undefined;
+
+    if (this.def.hasGetEffects) {
+      const ctx = createExecutionContext(
+        this.def.captured,
+        (request ?? {}) as Record<string, unknown>,
+        this.queryClient.getContext(),
+      );
+      (ctx as any).result = parsedResult;
+      (ctx as any).response = this._lastResponse;
+      effects = (ctx as any).getEffects();
+    } else if (this.def.effects !== undefined) {
+      const root = { params: request as Record<string, unknown>, result: parsedResult as Record<string, unknown> };
+      effects = reifyValue(this.def.effects, root as Record<string, unknown>) as MutationEffects;
+    }
+
+    if (effects === undefined) return;
+
+    const qc = this.queryClient;
+    applyEffects(effects.creates, 'create', qc);
+    applyEffects(effects.updates, 'update', qc);
+    applyEffects(effects.deletes, 'delete', qc);
   }
 
   // ======================================================
   // Retry logic
   // ======================================================
 
-  private async executeWithRetry(request: Request): Promise<Response> {
-    const { retries, retryDelay } = resolveRetryConfig(this.def.config?.retry, true);
-    let lastError: unknown;
+  private executeWithRetry(request: Request): Promise<Result> {
+    const retryConfig = resolveRetryConfig(this.def.config?.retry, true);
 
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        const ctx = createExecutionContext(
-          this.def.captured,
-          (request ?? {}) as Record<string, unknown>,
-          this.queryClient.getContext(),
-        );
+    return withRetry(async () => {
+      const ctx = createExecutionContext(
+        this.def.captured,
+        (request ?? {}) as Record<string, unknown>,
+        this.queryClient.getContext(),
+      );
 
-        return (await this.def.captured.methods.send.call(ctx)) as Response;
-      } catch (error) {
-        lastError = error;
+      const result = (await this.def.captured.methods.send.call(ctx)) as Result;
+      this._lastResponse = (ctx as any).response;
+      return result;
+    }, retryConfig);
+  }
+}
 
-        if (attempt >= retries) {
-          throw error;
-        }
+function resolveTypename(entityRef: EntityClassOrTypename): string | undefined {
+  if (typeof entityRef === 'string') return entityRef;
+  const def = getEntityDef(entityRef as new () => Entity);
+  return def.typenameValue;
+}
 
-        const delay = retryDelay(attempt);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
+function applyEffects(
+  entries: ReadonlyArray<readonly [EntityClassOrTypename, unknown]> | undefined,
+  type: 'create' | 'update' | 'delete',
+  qc: QueryClient,
+): void {
+  if (!entries) return;
+  for (const [entityRef, data] of entries) {
+    const typename = resolveTypename(entityRef);
+    if (typename !== undefined) {
+      qc.applyMutationEvent({ type, typename, data: data as Record<string, unknown> });
     }
-
-    throw lastError;
   }
 }

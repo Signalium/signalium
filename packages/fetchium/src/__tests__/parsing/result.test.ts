@@ -1,10 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
-import { Entity, parseValue } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
-import { parseEntities } from '../../parseEntities.js';
+import { Entity } from '../../proxy.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
 import { ParseError, ParseResult, ParseSuccess } from '../../types.js';
-import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
+import {
+  parseValue,
+  parseEntities,
+  setupParsingTests,
+  testWithClient,
+  getEntityKey,
+  getDocument,
+} from './test-utils.js';
 
 /**
  * t.result Tests
@@ -175,7 +181,7 @@ describe('t.result', () => {
     });
 
     describe('with optional/nullable', () => {
-      it('should return error for invalid value with optional wrapper', () => {
+      it('should fall back to undefined for invalid value with optional wrapper', () => {
         const optionalResult = t.result(t.optional(t.number));
 
         const undefinedResult = parseValue(undefined, optionalResult, 'test') as ParseResult<number | undefined>;
@@ -183,7 +189,8 @@ describe('t.result', () => {
         expect((undefinedResult as ParseSuccess<number | undefined>).value).toBeUndefined();
 
         const invalidResult = parseValue('not number', optionalResult, 'test') as ParseResult<number | undefined>;
-        expect(invalidResult.success).toBe(false);
+        expect(invalidResult.success).toBe(true);
+        expect((invalidResult as ParseSuccess<number | undefined>).value).toBeUndefined();
       });
 
       it('should return error for invalid value with nullable wrapper', () => {
@@ -220,7 +227,7 @@ describe('t.result', () => {
         mockFetch.get('/item', { value: 42 });
 
         await testWithClient(client, async () => {
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = { value: t.result(t.number) };
           }
@@ -237,7 +244,7 @@ describe('t.result', () => {
         mockFetch.get('/item', { value: 'not a number' });
 
         await testWithClient(client, async () => {
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = { value: t.result(t.number) };
           }
@@ -259,7 +266,7 @@ describe('t.result', () => {
         await testWithClient(client, async () => {
           const Status = t.enum('active', 'inactive', 'pending');
 
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = { status: t.result(Status) };
           }
@@ -278,7 +285,7 @@ describe('t.result', () => {
         await testWithClient(client, async () => {
           const Status = t.enum('active', 'inactive', 'pending');
 
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = { status: t.result(Status) };
           }
@@ -297,7 +304,7 @@ describe('t.result', () => {
         mockFetch.get('/items', { items: [1, 'invalid', 3] });
 
         await testWithClient(client, async () => {
-          class GetItems extends JsonQuery {
+          class GetItems extends RESTQuery {
             path = '/items';
             result = { items: t.array(t.result(t.number)) };
           }
@@ -319,7 +326,7 @@ describe('t.result', () => {
         mockFetch.get('/item', { date: '2024-01-15T10:30:00.000Z' });
 
         await testWithClient(client, async () => {
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = { date: t.result(t.format('date-time')) };
           }
@@ -337,7 +344,7 @@ describe('t.result', () => {
         mockFetch.get('/item', { date: 'not-a-date' });
 
         await testWithClient(client, async () => {
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = { date: t.result(t.format('date-time')) };
           }
@@ -358,7 +365,7 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetData extends JsonQuery {
+          class GetData extends RESTQuery {
             path = '/data';
             result = {
               data: t.object({
@@ -399,7 +406,7 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             path = '/user';
             result = { user: t.result(t.entity(UserEntity)) };
           }
@@ -427,7 +434,7 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             path = '/user';
             result = { user: t.result(t.entity(UserEntity)) };
           }
@@ -458,7 +465,7 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUsers extends JsonQuery {
+          class GetUsers extends RESTQuery {
             path = '/users';
             result = { users: t.array(t.result(t.entity(UserEntity))) };
           }
@@ -497,7 +504,7 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetPet extends JsonQuery {
+          class GetPet extends RESTQuery {
             path = '/pet';
             result = { pet: t.result(PetUnion) };
           }
@@ -532,7 +539,7 @@ describe('t.result', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetPet extends JsonQuery {
+          class GetPet extends RESTQuery {
             path = '/pet';
             result = { pet: t.result(PetUnion) };
           }
@@ -566,10 +573,10 @@ describe('t.result', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Config', 1, getShapeKey(t.entity(Config)));
+        const key = getEntityKey('Config', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -577,15 +584,15 @@ describe('t.result', () => {
     });
   });
 
-  describe('Override fallback behavior', () => {
+  describe('Fallback behavior with optional types', () => {
     const getContext = setupParsingTests();
 
-    it('should return error for t.result(t.optional(t.number)) with invalid value', async () => {
+    it('should fall back to undefined for t.result(t.optional(t.number)) with invalid value', async () => {
       const { client, mockFetch } = getContext();
       mockFetch.get('/item', { value: 'not a number' });
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           path = '/item';
           result = { value: t.result(t.optional(t.number)) };
         }
@@ -593,17 +600,17 @@ describe('t.result', () => {
         const relay = fetchQuery(GetItem);
         const result = await relay;
 
-        expect(result.value.success).toBe(false);
-        expect((result.value as ParseError).error).toBeInstanceOf(Error);
+        expect(result.value.success).toBe(true);
+        expect((result.value as ParseSuccess<number | undefined>).value).toBeUndefined();
       });
     });
 
-    it('should return error for t.result(t.optional(t.format)) with invalid value', async () => {
+    it('should fall back to undefined for t.result(t.optional(t.format)) with invalid value', async () => {
       const { client, mockFetch } = getContext();
       mockFetch.get('/item', { date: 'not-a-date' });
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           path = '/item';
           result = { date: t.result(t.optional(t.format('date-time'))) };
         }
@@ -611,8 +618,8 @@ describe('t.result', () => {
         const relay = fetchQuery(GetItem);
         const result = await relay;
 
-        expect(result.date.success).toBe(false);
-        expect((result.date as ParseError).error).toBeInstanceOf(Error);
+        expect(result.date.success).toBe(true);
+        expect((result.date as ParseSuccess<Date | undefined>).value).toBeUndefined();
       });
     });
 
@@ -623,7 +630,7 @@ describe('t.result', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetItems extends JsonQuery {
+        class GetItems extends RESTQuery {
           path = '/items';
           result = { items: t.array(t.result(t.number)) };
         }
@@ -643,7 +650,7 @@ describe('t.result', () => {
       mockFetch.get('/item', { value: undefined });
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           path = '/item';
           result = { value: t.result(t.optional(t.number)) };
         }
@@ -666,7 +673,7 @@ describe('t.result', () => {
       mockFetch.get('/item', { value: 42 });
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           path = '/item';
           result = { value: t.result(t.number) };
         }

@@ -6,7 +6,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { createRenderCounter } from './utils.js';
 import { useQuery } from '../use-query.js';
@@ -41,7 +41,7 @@ describe('useQuery Hook', () => {
 
       mockFetch.get('/user', { __typename: 'User', id: '1', name: 'Alice' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/user';
         result = t.entity(User);
       }
@@ -99,7 +99,7 @@ describe('useQuery Hook', () => {
 
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = t.entity(User);
@@ -159,7 +159,7 @@ describe('useQuery Hook', () => {
         author: { __typename: 'User', id: '5', name: 'Alice' },
       });
 
-      class GetPost extends JsonQuery {
+      class GetPost extends RESTQuery {
         params = { id: t.id };
         path = `/post/${this.params.id}`;
         result = t.entity(Post);
@@ -211,7 +211,7 @@ describe('useQuery Hook', () => {
     it('should verify cloned values are independent', async () => {
       mockFetch.get('/data', { count: 1, nested: { value: 'original' } });
 
-      class GetData extends JsonQuery {
+      class GetData extends RESTQuery {
         path = '/data';
         result = {
           count: t.number,
@@ -263,7 +263,7 @@ describe('useQuery Hook', () => {
 
       mockFetch.get('/user', { __typename: 'User', id: '1', name: 'Alice', email: 'alice@example.com' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/user';
         result = t.entity(User);
       }
@@ -327,7 +327,7 @@ describe('useQuery Hook', () => {
 
       mockFetch.get('/user', { __typename: 'User', id: '1', name: 'Alice' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/user';
         result = t.entity(User);
       }
@@ -378,7 +378,7 @@ describe('useQuery Hook', () => {
         ],
       });
 
-      class GetItems extends JsonQuery {
+      class GetItems extends RESTQuery {
         path = '/items';
         result = {
           items: t.array(t.object({ id: t.number, price: t.number })),
@@ -450,7 +450,7 @@ describe('useQuery Hook', () => {
         },
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/user';
         result = t.entity(User);
       }
@@ -530,7 +530,7 @@ describe('useQuery Hook', () => {
         },
       });
 
-      class GetPost extends JsonQuery {
+      class GetPost extends RESTQuery {
         params = { id: t.id };
         path = `/posts/${this.params.id}`;
         result = t.entity(Post);
@@ -663,7 +663,7 @@ describe('useQuery Hook', () => {
         author: { __typename: 'User', id: '1', name: 'Alice', email: 'alice@example.com' },
       });
 
-      class GetPost extends JsonQuery {
+      class GetPost extends RESTQuery {
         params = { postId: t.id };
         path = `/posts/${this.params.postId}`;
         result = t.entity(Post);
@@ -721,7 +721,7 @@ describe('useQuery Hook', () => {
 
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = t.entity(User);
@@ -802,7 +802,7 @@ describe('useQuery Hook', () => {
         ],
       });
 
-      class GetPost extends JsonQuery {
+      class GetPost extends RESTQuery {
         params = { id: t.id };
         path = `/post/${this.params.id}`;
         result = t.entity(Post);
@@ -862,7 +862,7 @@ describe('useQuery Hook', () => {
       const now = new Date('2024-01-01T00:00:00.000Z');
       mockFetch.get('/event', { id: 1, date: now.toISOString() });
 
-      class GetEvent extends JsonQuery {
+      class GetEvent extends RESTQuery {
         path = '/event';
         result = {
           id: t.number,
@@ -904,7 +904,7 @@ describe('useQuery Hook', () => {
         },
       });
 
-      class GetNested extends JsonQuery {
+      class GetNested extends RESTQuery {
         path = '/nested';
         result = {
           level1: t.object({
@@ -960,7 +960,7 @@ describe('useQuery Hook', () => {
         nested: { empty: {} },
       });
 
-      class GetEmpty extends JsonQuery {
+      class GetEmpty extends RESTQuery {
         path = '/empty';
         result = {
           emptyObj: t.object({}),
@@ -1011,7 +1011,7 @@ describe('useQuery Hook', () => {
         ],
       });
 
-      class GetUsers extends JsonQuery {
+      class GetUsers extends RESTQuery {
         path = '/users';
         result = {
           users: t.array(t.entity(User)),
@@ -1059,7 +1059,7 @@ describe('useQuery Hook', () => {
     it('should work with standard queries', async () => {
       mockFetch.get('/item', { id: 1, name: 'Test' });
 
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/item';
         result = { id: t.number, name: t.string };
       }
@@ -1081,7 +1081,7 @@ describe('useQuery Hook', () => {
     it('should handle refetch behavior', async () => {
       mockFetch.get('/counter', { count: 0 });
 
-      class GetCounter extends JsonQuery {
+      class GetCounter extends RESTQuery {
         path = '/counter';
         result = { count: t.number };
       }
@@ -1117,7 +1117,7 @@ describe('useQuery Hook', () => {
     it('should work with queries returning primitive values', async () => {
       mockFetch.get('/count', { value: 42 });
 
-      class GetCount extends JsonQuery {
+      class GetCount extends RESTQuery {
         path = '/count';
         result = { value: t.number };
       }
@@ -1141,7 +1141,7 @@ describe('useQuery Hook', () => {
     it('should handle null values in results', async () => {
       mockFetch.get('/data', { value: null, name: 'Test' });
 
-      class GetData extends JsonQuery {
+      class GetData extends RESTQuery {
         path = '/data';
         result = {
           value: t.union(t.string, t.null),
@@ -1177,7 +1177,7 @@ describe('useQuery Hook', () => {
     it('should handle undefined optional fields', async () => {
       mockFetch.get('/data', { required: 'yes' });
 
-      class GetData extends JsonQuery {
+      class GetData extends RESTQuery {
         path = '/data';
         result = {
           required: t.string,
@@ -1215,7 +1215,7 @@ describe('useQuery Hook', () => {
     it('should handle multiple useQuery calls with same underlying query', async () => {
       mockFetch.get('/shared', { data: 'shared' });
 
-      class GetShared extends JsonQuery {
+      class GetShared extends RESTQuery {
         path = '/shared';
         result = { data: t.string };
       }
@@ -1248,7 +1248,7 @@ describe('useQuery Hook', () => {
     it('should maintain cloning after multiple refetches', async () => {
       mockFetch.get('/data', { count: 0 });
 
-      class GetData extends JsonQuery {
+      class GetData extends RESTQuery {
         path = '/data';
         result = { count: t.number };
       }
@@ -1289,7 +1289,7 @@ describe('useQuery Hook', () => {
     it('should handle boolean values correctly', async () => {
       mockFetch.get('/flags', { isActive: true, isDisabled: false });
 
-      class GetFlags extends JsonQuery {
+      class GetFlags extends RESTQuery {
         path = '/flags';
         result = {
           isActive: t.boolean,
@@ -1325,7 +1325,7 @@ describe('useQuery Hook', () => {
     it('should handle number edge cases (0, negative, float)', async () => {
       mockFetch.get('/numbers', { zero: 0, negative: -42, float: 3.14 });
 
-      class GetNumbers extends JsonQuery {
+      class GetNumbers extends RESTQuery {
         path = '/numbers';
         result = {
           zero: t.number,

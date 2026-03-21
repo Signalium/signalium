@@ -36,7 +36,7 @@ export function typeToString(type: InternalObjectFieldTypeDef): string {
   // Handle primitive masks
   if (typeof type === 'number') {
     // Check for formatted types first
-    const hasFormat = (type & (Mask.HAS_STRING_FORMAT | Mask.HAS_NUMBER_FORMAT)) !== 0;
+    const hasFormat = (type & Mask.HAS_FORMAT) !== 0;
     if (hasFormat) {
       const formatName = getFormatName(type);
       if (formatName) {
@@ -99,7 +99,7 @@ export function typeToString(type: InternalObjectFieldTypeDef): string {
     mask = unionType.mask;
 
     // Check for formatted types in union mask
-    const hasFormat = (mask & (Mask.HAS_STRING_FORMAT | Mask.HAS_NUMBER_FORMAT)) !== 0;
+    const hasFormat = (mask & Mask.HAS_FORMAT) !== 0;
     if (hasFormat) {
       const formatName = getFormatName(mask);
       if (formatName) {

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { t, registerFormat, getShapeKey } from '../typeDefs.js';
+import { t, registerFormat } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { JsonQuery, fetchQuery, queryKeyForClass } from '../query.js';
+import { RESTQuery, fetchQuery, queryKeyForClass } from '../query.js';
 import { Mask, type ExtractType } from '../types.js';
 import { createMockFetch, testWithClient } from './utils.js';
 import { hashValue } from 'signalium/utils';
@@ -12,7 +12,7 @@ import { valueKeyFor, updatedAtKeyFor, refIdsKeyFor, refCountKeyFor } from '../s
 // Helper to set up a query result in the store (similar to caching-persistence.test.ts)
 function setQuery(
   kv: MemoryPersistentStore,
-  cls: new () => JsonQuery,
+  cls: new () => RESTQuery,
   params: unknown,
   result: unknown,
   refIds?: Set<number>,
@@ -45,9 +45,8 @@ function getDocument(kv: MemoryPersistentStore, key: number): unknown | undefine
  * Format System Tests
  *
  * Tests the format system including:
- * - Lazy parsing (values parsed on access, not during initial parsing)
- * - Caching (parsed values cached for subsequent accesses)
- * - Serialization (formatted values serialize back to original format)
+ * - Eager parsing (values formatted during parse, stored in entity data)
+ * - Serialization (formatted values serialize back to original format for storage)
  * - Type inference (t.format('date-time') typed as Date)
  * - Built-in formats (date, date-time)
  * - Module augmentation (custom formats)
@@ -102,7 +101,7 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             params = { id: t.id };
             path = `/user/${this.params.id}`;
             result = { user: t.entity(User) };
@@ -134,7 +133,7 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             params = { id: t.id };
             path = `/user/${this.params.id}`;
             result = { user: t.entity(User) };
@@ -170,7 +169,7 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             params = { id: t.id };
             path = `/user/${this.params.id}`;
             result = { user: t.entity(User) };
@@ -183,7 +182,7 @@ describe('Format System', () => {
           const _ = relay.value!.user.createdAt;
 
           // Verify entity is stored with raw string value
-          const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+          const userKey = hashValue(['User', '1']);
           const entityData = getDocument(kv, userKey) as Record<string, unknown>;
 
           expect(entityData.createdAt).toBe(isoString);
@@ -207,19 +206,16 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             params = { id: t.id };
             path = `/user/${this.params.id}`;
             result = { user: t.entity(User) };
           }
 
           const relay = fetchQuery(GetUser, { id: '1' });
-          const result = await relay;
 
-          // Should throw error when accessing invalid date
-          expect(() => {
-            const _ = result.user.createdAt;
-          }).toThrow();
+          // Formats are eager -- invalid value throws during parsing
+          await expect(relay).rejects.toThrow(/Invalid date-time string/);
         });
       });
     });
@@ -242,7 +238,7 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             params = { id: t.id };
             path = `/user/${this.params.id}`;
             result = { user: t.entity(User) };
@@ -255,7 +251,7 @@ describe('Format System', () => {
           expect(result.user.birthDate).toBeInstanceOf(Date);
 
           // Verify entity is stored with raw string value
-          const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+          const userKey = hashValue(['User', '1']);
           const entityData = getDocument(kv, userKey) as Record<string, unknown>;
           expect(entityData.birthDate).toBe(dateString);
         });
@@ -278,7 +274,7 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             params = { id: t.id };
             path = `/user/${this.params.id}`;
             result = { user: t.entity(User) };
@@ -291,7 +287,7 @@ describe('Format System', () => {
           const _ = relay.value!.user.birthDate;
 
           // Verify entity is stored with raw string value
-          const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+          const userKey = hashValue(['User', '1']);
           const entityData = getDocument(kv, userKey) as Record<string, unknown>;
           expect(entityData.birthDate).toBe(dateString);
           expect(typeof entityData.birthDate).toBe('string');
@@ -320,10 +316,8 @@ describe('Format System', () => {
         birthDate = t.format('date');
       }
 
-      type UserFields = ExtractType<ReturnType<typeof t.entity<typeof User>>>;
-      // @ts-expect-error - TypeDef wrapping prevents direct index access
+      type UserFields = ExtractType<ReturnType<typeof t.entity<User>>>;
       type UserCreatedAt = UserFields['createdAt'];
-      // @ts-expect-error - TypeDef wrapping prevents direct index access
       type UserBirthDate = UserFields['birthDate'];
 
       const _createdAtCheck: UserCreatedAt = new Date();
@@ -358,7 +352,7 @@ describe('Format System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetProduct extends JsonQuery {
+        class GetProduct extends RESTQuery {
           params = { id: t.id };
           path = `/product/${this.params.id}`;
           result = { product: t.entity(Product) };
@@ -372,7 +366,7 @@ describe('Format System', () => {
         expect(typeof result.product.price).toBe('number');
 
         // Verify entity is stored with raw string value
-        const productKey = hashValue(['Product:1', getShapeKey(t.entity(Product))]);
+        const productKey = hashValue(['Product', '1']);
         const entityData = getDocument(kv, productKey) as Record<string, unknown>;
         expect(entityData.price).toBe('$10.99');
         expect(typeof entityData.price).toBe('string');
@@ -403,25 +397,22 @@ describe('Format System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/user/${this.params.id}`;
           result = { user: t.entity(User) };
         }
 
         const relay = fetchQuery(GetUser, { id: '1' });
-        const result = await relay;
 
-        // Should throw validation error mentioning the format when accessing the field
-        expect(() => {
-          const _ = result.user.createdAt;
-        }).toThrow(/expected "date-time"/);
+        // Validation error now happens eagerly during parsing
+        await expect(relay).rejects.toThrow(/expected "date-time"/);
       });
     });
   });
 
-  describe('Lazy Parsing Behavior', () => {
-    it('should not parse format until field is accessed', async () => {
+  describe('Eager Parsing Behavior', () => {
+    it('should eagerly parse format during entity parsing', async () => {
       class User extends Entity {
         __typename = t.typename('User');
         id = t.id;
@@ -438,7 +429,7 @@ describe('Format System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/user/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -447,8 +438,7 @@ describe('Format System', () => {
         const relay = fetchQuery(GetUser, { id: '1' });
         const result = await relay;
 
-        // At this point, createdAt should still be a string in the raw data
-        // But when accessed, it should be parsed to Date
+        // Formats are eagerly applied during parse
         const dateValue = result.user.createdAt;
         expect(dateValue).toBeInstanceOf(Date);
       });
@@ -471,7 +461,7 @@ describe('Format System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/user/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -484,7 +474,7 @@ describe('Format System', () => {
         const second = result.user.createdAt;
         const third = result.user.createdAt;
 
-        // All should be the same instance (cached)
+        // All should be the same instance (stored directly in entity data)
         expect(first).toBe(second);
         expect(second).toBe(third);
       });
@@ -515,7 +505,7 @@ describe('Format System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/user/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -529,7 +519,7 @@ describe('Format System', () => {
         const _birthDate = relay.value!.user.birthDate;
 
         // Verify entity is stored with raw string values
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+        const userKey = hashValue(['User', '1']);
         const entityData = getDocument(kv, userKey) as Record<string, unknown>;
 
         expect(entityData.createdAt).toBe(isoString);
@@ -557,7 +547,7 @@ describe('Format System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/user/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -567,7 +557,7 @@ describe('Format System', () => {
         await relay;
 
         // Don't access createdAt - check store directly
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+        const userKey = hashValue(['User', '1']);
         const entityData = getDocument(kv, userKey) as Record<string, unknown>;
 
         // Should be stored as raw string value
@@ -598,7 +588,7 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             params = { id: t.id };
             path = `/user/${this.params.id}`;
             result = { user: t.entity(User) };
@@ -655,7 +645,7 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             params = { id: t.id };
             path = `/user/${this.params.id}`;
             result = { user: t.entity(User) };
@@ -707,7 +697,7 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             params = { id: t.id };
             path = `/user/${this.params.id}`;
             result = { user: t.entity(User) };
@@ -738,7 +728,7 @@ describe('Format System', () => {
           expect(updatedDate).toBeInstanceOf(Date);
 
           // Verify entity is stored with updated raw string value
-          const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+          const userKey = hashValue(['User', '1']);
           const entityData = getDocument(kv, userKey) as Record<string, unknown>;
           expect(entityData.birthDate).toBe(updatedDateString);
         });
@@ -772,7 +762,7 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetProduct extends JsonQuery {
+          class GetProduct extends RESTQuery {
             params = { id: t.id };
             path = `/product/${this.params.id}`;
             result = { product: t.entity(Product) };
@@ -805,7 +795,7 @@ describe('Format System', () => {
           expect(updatedPrice).not.toBe(initialPrice);
 
           // Verify entity is stored with updated raw string value
-          const productKey = hashValue(['Product:1', getShapeKey(t.entity(Product))]);
+          const productKey = hashValue(['Product', '1']);
           const entityData = getDocument(kv, productKey) as Record<string, unknown>;
           expect(entityData.price).toBe('$25.50');
         });
@@ -839,7 +829,7 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetProduct extends JsonQuery {
+          class GetProduct extends RESTQuery {
             params = { id: t.id };
             path = `/product/${this.params.id}`;
             result = { product: t.entity(Product) };
@@ -866,11 +856,10 @@ describe('Format System', () => {
 
           await relay.value!.__refetch();
 
-          // Access again - should get new value
+          // Access again - should get updated value
           const thirdAccess = result.product.price;
           expect((thirdAccess as any).amount).toBe(25.5);
           expect((thirdAccess as any).currency).toBe('EUR');
-          expect(thirdAccess).not.toBe(firstAccess); // Should be a new object
         });
       });
     });
@@ -896,7 +885,7 @@ describe('Format System', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             params = { id: t.id };
             path = `/user/${this.params.id}`;
             result = { user: t.entity(User) };
@@ -930,7 +919,7 @@ describe('Format System', () => {
           expect(updatedCreatedAt).not.toBe(initialCreatedAt);
 
           // Verify both fields are stored with updated raw string values
-          const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+          const userKey = hashValue(['User', '1']);
           const entityData = getDocument(kv, userKey) as Record<string, unknown>;
           expect(entityData.birthDate).toBe('1995-12-25');
           expect(entityData.createdAt).toBe('2024-06-10T14:20:00.000Z');
@@ -962,7 +951,7 @@ describe('Format System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/user/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -976,7 +965,7 @@ describe('Format System', () => {
         const _birthDate = relay.value!.user.birthDate;
 
         // Verify entity is persisted with raw string values (not parsed Date objects)
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+        const userKey = hashValue(['User', '1']);
         const entityData = getDocument(kv, userKey) as Record<string, unknown>;
 
         expect(entityData).toBeDefined();
@@ -995,7 +984,7 @@ describe('Format System', () => {
       }
 
       const isoString = '2024-01-15T10:30:00.000Z';
-      const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+      const userKey = hashValue(['User', '1']);
 
       // Pre-populate entity in store with raw string value
       const userData = {
@@ -1014,7 +1003,7 @@ describe('Format System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/user/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -1043,13 +1032,13 @@ describe('Format System', () => {
         price = t.format('price');
       }
 
-      class GetProduct extends JsonQuery {
+      class GetProduct extends RESTQuery {
         params = { id: t.id };
         path = `/product/${this.params.id}`;
         result = { product: t.entity(Product) };
       }
 
-      const productKey = hashValue(['Product:1', getShapeKey(t.entity(Product))]);
+      const productKey = hashValue(['Product', '1']);
 
       // Pre-populate entity in store with raw string value
       const productData = {

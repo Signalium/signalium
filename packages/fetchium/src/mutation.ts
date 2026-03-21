@@ -1,18 +1,15 @@
 import { getContext, ReactiveTask } from 'signalium';
 import {
   ExtractType,
-  ExtractTypesFromObjectOrEntity,
   InternalTypeDef,
-  MutationResultValue,
-  ParseAndApply,
+  MutationEffects,
   TypeDef,
   RetryConfig,
-  ResponseTypeDef,
+  TypeDefShape,
   QueryRequestOptions,
 } from './types.js';
 import { QueryClientContext, QueryContext, resolveBaseUrl } from './QueryClient.js';
-import { Prettify } from './type-utils.js';
-import { resolveTypeDef } from './resolveTypeDef.js';
+import { ValidatorDef, t } from './typeDefs.js';
 import { createDefinitionProxy, extractDefinition, type CapturedDefinition } from './fieldRef.js';
 
 // ================================
@@ -26,13 +23,12 @@ export interface MutationConfigOptions {
 export interface MutationDefinition<Request, Response> {
   id: string;
   requestShape: InternalTypeDef;
-  requestShapeKey: number;
   responseShape: InternalTypeDef | undefined;
-  responseShapeKey: number | undefined;
   captured: CapturedDefinition<Mutation>;
   optimisticUpdates: boolean;
-  parseAndApply: ParseAndApply;
   config?: MutationConfigOptions;
+  effects?: MutationEffects;
+  hasGetEffects: boolean;
 }
 
 // ================================
@@ -40,17 +36,20 @@ export interface MutationDefinition<Request, Response> {
 // ================================
 
 export abstract class Mutation {
-  params?: ResponseTypeDef;
-  result?: ResponseTypeDef;
-  optimisticUpdates?: boolean;
-  parseAndApply?: ParseAndApply;
-  config?: MutationConfigOptions;
+  readonly params?: TypeDefShape;
+  readonly result?: TypeDefShape;
+  readonly optimisticUpdates?: boolean;
+  readonly config?: MutationConfigOptions;
+  readonly effects?: Readonly<MutationEffects>;
 
   declare context: QueryContext;
   declare response: Response | undefined;
+  declare signal: AbortSignal;
 
   abstract send(): Promise<unknown>;
   abstract getStorageKey(): unknown;
+
+  getEffects?(): MutationEffects;
 
   constructor() {
     return createDefinitionProxy(this);
@@ -58,10 +57,10 @@ export abstract class Mutation {
 }
 
 // ================================
-// JsonMutation
+// RESTMutation
 // ================================
 
-export abstract class JsonMutation extends Mutation {
+export abstract class RESTMutation extends Mutation {
   path?: string;
   method: 'POST' | 'PUT' | 'DELETE' | 'PATCH' = 'POST';
   body?: Record<string, unknown>;
@@ -72,30 +71,19 @@ export abstract class JsonMutation extends Mutation {
     return `${this.method ?? 'POST'}:${this.path ?? ''}`;
   }
 
-  getPath(): string | undefined {
-    return this.path;
-  }
-
-  getMethod(): string {
-    return this.method;
-  }
-
-  getBody(): Record<string, unknown> | undefined {
-    return this.body;
-  }
-
-  getRequestOptions(): QueryRequestOptions | undefined {
-    return this.requestOptions;
-  }
+  getPath?(): string | undefined;
+  getMethod?(): string;
+  getBody?(): Record<string, unknown> | undefined;
+  getRequestOptions?(): QueryRequestOptions | undefined;
 
   async send(): Promise<unknown> {
-    const path = this.getPath();
-    const method = this.getMethod();
-    const body = this.getBody();
-    const requestOptions = this.getRequestOptions();
+    const path = this.getPath ? this.getPath() : this.path;
+    const method = this.getMethod ? this.getMethod() : this.method;
+    const body = this.getBody ? this.getBody() : this.body;
+    const requestOptions = this.getRequestOptions ? this.getRequestOptions() : this.requestOptions;
 
     if (!path) {
-      throw new Error('JsonMutation requires a path. Define `path` as a field or override `getPath()`.');
+      throw new Error('RESTMutation requires a path. Define `path` as a field or override `getPath()`.');
     }
 
     const bodyData = body ?? (this.params as Record<string, unknown>);
@@ -103,7 +91,7 @@ export abstract class JsonMutation extends Mutation {
     const baseUrl = resolveBaseUrl(requestOptions?.baseUrl) ?? resolveBaseUrl(this.context.baseUrl);
     const fullUrl = baseUrl ? `${baseUrl}${path}` : path;
 
-    const { baseUrl: _baseUrl, ...fetchOptions } = requestOptions ?? {};
+    const { baseUrl: _baseUrl, signal: _signal, ...fetchOptions } = requestOptions ?? ({} as Record<string, unknown>);
 
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
@@ -114,6 +102,7 @@ export abstract class JsonMutation extends Mutation {
       method,
       headers,
       body: JSON.stringify(bodyData),
+      signal: this.signal,
       ...fetchOptions,
     });
 
@@ -121,26 +110,6 @@ export abstract class JsonMutation extends Mutation {
     return fetchResponse.json();
   }
 }
-
-// ================================
-// Type extraction from Mutation classes
-// ================================
-
-export type ExtractMutationParams<T extends Mutation> =
-  T['params'] extends TypeDef<infer U>
-    ? U
-    : T['params'] extends Record<string, TypeDef>
-      ? Prettify<{ [K in keyof T['params']]: ExtractType<T['params'][K]> }>
-      : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-        {};
-
-type ExtractMutationResult<T extends Mutation> =
-  T['result'] extends TypeDef<infer U>
-    ? U
-    : T['result'] extends Record<string, TypeDef>
-      ? Prettify<{ [K in keyof T['result']]: ExtractType<T['result'][K]> }>
-      : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-        {};
 
 // ================================
 // Mutation definition cache and lookup
@@ -182,19 +151,25 @@ function buildMutationDefinition(MutationClass: new () => Mutation): () => Mutat
 
     const id = `mutation:${String(captured.methods.getStorageKey.call(fields))}`;
 
-    const { shape: requestShape, shapeKey: requestShapeKey } = resolveTypeDef(fields.params ?? {});
-    const resolved = fields.result ? resolveTypeDef(fields.result) : undefined;
+    const requestDef = fields.params ?? {};
+    const requestShape = (requestDef instanceof ValidatorDef
+      ? requestDef
+      : t.object(requestDef)) as unknown as InternalTypeDef;
+    const responseDef = fields.result;
+    const responseShape =
+      responseDef !== undefined
+        ? ((responseDef instanceof ValidatorDef ? responseDef : t.object(responseDef)) as unknown as InternalTypeDef)
+        : undefined;
 
     mutationDefinition = {
       id,
       requestShape,
-      requestShapeKey,
-      responseShape: resolved?.shape,
-      responseShapeKey: resolved?.shapeKey,
+      responseShape,
       captured,
       optimisticUpdates: fields.optimisticUpdates ?? false,
-      parseAndApply: fields.parseAndApply ?? 'both',
       config: fields.config,
+      effects: fields.effects,
+      hasGetEffects: typeof captured.methods.getEffects === 'function',
     };
 
     return mutationDefinition;
@@ -210,7 +185,7 @@ function buildMutationDefinition(MutationClass: new () => Mutation): () => Mutat
 
 export function getMutation<T extends Mutation>(
   MutationClass: new () => T,
-): ReactiveTask<MutationResultValue<Readonly<ExtractMutationResult<T>>>, [ExtractMutationParams<T>]> {
+): ReactiveTask<Readonly<ExtractType<T['result']>>, [ExtractType<T['params']>]> {
   const getMutationDef = buildMutationDefinition(MutationClass);
 
   const queryClient = getContext(QueryClientContext);

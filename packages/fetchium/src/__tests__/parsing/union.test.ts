@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
-import { Entity, parseValue } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
-import { parseEntities } from '../../parseEntities.js';
+import { Entity } from '../../proxy.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
 import {
+  parseValue,
+  parseEntities,
   setupParsingTests,
   testWithClient,
   getEntityKey,
   getDocument,
   getEntityRefs,
-  getShapeKey,
 } from './test-utils.js';
 
 /**
@@ -93,7 +93,7 @@ describe('t.union', () => {
 
       it('should filter invalid items in union array', () => {
         const unionType = t.union(t.string, t.number);
-        const result = parseValue(['hello', true, 42], t.array(unionType), 'test', false, () => {});
+        const result = parseValue(['hello', true, 42], t.array(unionType), 'test', () => {});
         expect(result).toEqual(['hello', 42]);
       });
     });
@@ -158,7 +158,7 @@ describe('t.union', () => {
           pet: { id: 1, breed: 'Lab' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         expect(() => parseEntities(result, QueryResult, client, entityRefs)).toThrow(
           /required for union discrimination/,
         );
@@ -186,7 +186,7 @@ describe('t.union', () => {
           pet: { __typename: 'Bird', id: 1, species: 'Parrot' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         expect(() => parseEntities(result, QueryResult, client, entityRefs)).toThrow(/Unknown typename 'Bird'/);
       });
 
@@ -223,7 +223,7 @@ describe('t.union', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         expect(() => parseEntities(result, QueryResult, client, entityRefs)).toThrow(
           /required for union discrimination/,
         );
@@ -311,15 +311,15 @@ describe('t.union', () => {
           ],
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
         expect(entityRefs.size).toBe(3);
 
-        const dogDoc1 = await getDocument(kv, getEntityKey('Dog', 1, getShapeKey(t.entity(Dog))));
+        const dogDoc1 = await getDocument(kv, getEntityKey('Dog', 1));
         expect((dogDoc1 as any).breed).toBe('Lab');
 
-        const catDoc = await getDocument(kv, getEntityKey('Cat', 2, getShapeKey(t.entity(Cat))));
+        const catDoc = await getDocument(kv, getEntityKey('Cat', 2));
         expect((catDoc as any).color).toBe('Orange');
       });
     });
@@ -368,10 +368,10 @@ describe('t.union', () => {
           parent: { __typename: 'Parent', id: 1, child: null },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const parentDoc = await getDocument(kv, getEntityKey('Parent', 1, getShapeKey(t.entity(Parent))));
+        const parentDoc = await getDocument(kv, getEntityKey('Parent', 1));
         expect((parentDoc as any).child).toBeNull();
       });
     });
@@ -397,7 +397,7 @@ describe('t.union', () => {
         await testWithClient(client, async () => {
           const UnionType = t.union(t.string, t.number, t.boolean);
 
-          class GetValues extends JsonQuery {
+          class GetValues extends RESTQuery {
             path = '/values';
             result = {
               value1: UnionType,
@@ -422,7 +422,7 @@ describe('t.union', () => {
         mockFetch.get('/item', { value: null });
 
         await testWithClient(client, async () => {
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = { value: t.union(t.string, t.null) };
           }
@@ -455,7 +455,7 @@ describe('t.union', () => {
 
           const PetUnion = t.union(t.entity(Dog), t.entity(Cat));
 
-          class GetPet extends JsonQuery {
+          class GetPet extends RESTQuery {
             path = '/pet';
             result = { pet: PetUnion };
           }
@@ -477,7 +477,7 @@ describe('t.union', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetData extends JsonQuery {
+          class GetData extends RESTQuery {
             path = '/data';
             result = {
               wrapper: t.object({
@@ -500,7 +500,7 @@ describe('t.union', () => {
         mockFetch.get('/mixed', { values: ['hello', 42, 'world', 123] });
 
         await testWithClient(client, async () => {
-          class GetMixed extends JsonQuery {
+          class GetMixed extends RESTQuery {
             path = '/mixed';
             result = { values: t.array(t.union(t.string, t.number)) };
           }
@@ -521,7 +521,7 @@ describe('t.union', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetConfig extends JsonQuery {
+          class GetConfig extends RESTQuery {
             path = '/config';
             result = { settings: t.record(t.union(t.string, t.number, t.boolean)) };
           }
@@ -556,10 +556,10 @@ describe('t.union', () => {
           item: { __typename: 'Item', id: 1, value: 'text' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Item', 1, getShapeKey(t.entity(Item)));
+        const key = getEntityKey('Item', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -590,10 +590,10 @@ describe('t.union', () => {
           pet: { __typename: 'Dog', id: 1, breed: 'Labrador' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Dog', 1, getShapeKey(t.entity(Dog)));
+        const key = getEntityKey('Dog', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -626,16 +626,16 @@ describe('t.union', () => {
           ],
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
         expect(entityRefs.size).toBe(2);
 
-        const dogDoc = await getDocument(kv, getEntityKey('Dog', 1, getShapeKey(t.entity(Dog))));
+        const dogDoc = await getDocument(kv, getEntityKey('Dog', 1));
         expect(dogDoc).toBeDefined();
         expect((dogDoc as any).__typename).toBe('Dog');
 
-        const catDoc = await getDocument(kv, getEntityKey('Cat', 2, getShapeKey(t.entity(Cat))));
+        const catDoc = await getDocument(kv, getEntityKey('Cat', 2));
         expect(catDoc).toBeDefined();
         expect((catDoc as any).__typename).toBe('Cat');
       });
@@ -663,10 +663,10 @@ describe('t.union', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Config', 1, getShapeKey(t.entity(Config)));
+        const key = getEntityKey('Config', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -694,10 +694,10 @@ describe('t.union', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Container', 1, getShapeKey(t.entity(Container)));
+        const key = getEntityKey('Container', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -725,10 +725,10 @@ describe('t.union', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Settings', 1, getShapeKey(t.entity(Settings)));
+        const key = getEntityKey('Settings', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -769,11 +769,11 @@ describe('t.union', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const parentKey = getEntityKey('ParentA', 1, getShapeKey(t.entity(ParentA)));
-        const childKey = getEntityKey('Child', 10, getShapeKey(t.entity(Child)));
+        const parentKey = getEntityKey('ParentA', 1);
+        const childKey = getEntityKey('Child', 10);
 
         const parentRefs = await getEntityRefs(kv, parentKey);
         expect(parentRefs).toBeDefined();

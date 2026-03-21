@@ -5,9 +5,11 @@ import {
   EntityConfig,
   EntityMethods,
   ExtractType,
-  ExtractTypesFromShape,
   InternalTypeDef,
   InternalObjectShape,
+  LiveArrayOptions,
+  LiveFieldConfig,
+  LiveValueOptions,
   Mask,
   ObjectDef,
   RECORD_KEY,
@@ -21,31 +23,159 @@ import { hashValue, registerCustomHash } from 'signalium/utils';
 const entries = Object.entries;
 const isArray = Array.isArray;
 const keys = Object.keys;
-const { imul } = Math;
 
-/**
- * Combines two 32-bit hashes using one MurmurHash3 block round.
- * Non-commutative (a and b play different roles), provides avalanche,
- * and avoids the XOR-cancellation that occurs with plain `a ^ b`.
- */
-function mixHashes(a: number, b: number): number {
-  let k = imul(b, 0xcc9e2d51);
-  k = (k << 15) | (k >>> 17);
-  k = imul(k, 0x1b873593);
-  let h = a;
-  h ^= k;
-  h = (h << 13) | (h >>> 19);
-  return (imul(h, 5) + 0xe6546b64) >>> 0;
+let assertFieldTypesCompatible: (typename: string, field: string, a: unknown, b: unknown) => void = () => {};
+
+if (IS_DEV) {
+  const SHIFT = 16;
+
+  const setsEqual = (a: Set<unknown>, b: Set<unknown>): boolean => {
+    if (a.size !== b.size) return false;
+    for (const v of a) {
+      if (!b.has(v)) return false;
+    }
+    return true;
+  };
+
+  const fieldTypesCompatible = (a: unknown, b: unknown): boolean => {
+    if (a === b) return true;
+    if (typeof a !== typeof b) return false;
+
+    if (typeof a === 'number') {
+      const bNum = b as number;
+      if ((a & 0xffff) !== (bNum & 0xffff)) return false;
+      const aFormat = a >> SHIFT;
+      const bFormat = bNum >> SHIFT;
+      if (aFormat !== 0 && bFormat !== 0 && aFormat !== bFormat) return false;
+      return true;
+    }
+
+    if (typeof a === 'string') return a === b;
+
+    if (a instanceof Set && b instanceof Set) {
+      return setsEqual(a, b);
+    }
+
+    if (a instanceof ValidatorDef && b instanceof ValidatorDef) {
+      const aMask = a.mask as number;
+      const bMask = b.mask as number;
+      if ((aMask & 0xffff) !== (bMask & 0xffff)) return false;
+      const aFormat = aMask >> SHIFT;
+      const bFormat = bMask >> SHIFT;
+      if (aFormat !== 0 && bFormat !== 0 && aFormat !== bFormat) return false;
+
+      if (a.shape === b.shape) return true;
+
+      if (
+        a.shape !== undefined &&
+        b.shape !== undefined &&
+        typeof a.shape === 'object' &&
+        typeof b.shape === 'object'
+      ) {
+        const aShape = a.shape as Record<string, unknown>;
+        const bShape = b.shape as Record<string, unknown>;
+        for (const key of Object.keys(aShape)) {
+          if (key in bShape && !fieldTypesCompatible(aShape[key], bShape[key])) return false;
+        }
+        for (const key of Object.keys(bShape)) {
+          if (key in aShape && !fieldTypesCompatible(aShape[key], bShape[key])) return false;
+        }
+      }
+
+      return true;
+    }
+
+    return false;
+  };
+
+  assertFieldTypesCompatible = (typename: string, field: string, a: unknown, b: unknown) => {
+    if (!fieldTypesCompatible(a, b)) {
+      throw new Error(
+        `[fetchium] Entity typename '${typename}' has incompatible type for field '${field}' across different entity definitions`,
+      );
+    }
+  };
+}
+
+function makeOptional(fieldDef: unknown): unknown {
+  if (typeof fieldDef === 'number') {
+    return fieldDef | Mask.UNDEFINED;
+  }
+  if (fieldDef instanceof ValidatorDef) {
+    if ((fieldDef.mask & Mask.UNDEFINED) !== 0) return fieldDef;
+    return ValidatorDef.cloneWith(fieldDef, Mask.UNDEFINED);
+  }
+  return fieldDef;
+}
+
+function isPlainObjectDef(fieldDef: unknown): fieldDef is ValidatorDef<any> {
+  return (
+    fieldDef instanceof ValidatorDef &&
+    (fieldDef.mask & Mask.OBJECT) !== 0 &&
+    (fieldDef.mask & (Mask.ENTITY | Mask.ARRAY | Mask.UNION | Mask.RECORD | Mask.LIVE)) === 0
+  );
+}
+
+function mergeObjectShapes(
+  shapes: (Record<string, unknown> | undefined)[],
+  count: number,
+  typename: string,
+): Record<string, unknown> {
+  const allKeys = new Set<string>();
+  for (const shape of shapes) {
+    if (shape !== undefined) {
+      for (const key of Object.keys(shape)) {
+        allKeys.add(key);
+      }
+    }
+  }
+
+  const merged: Record<string, unknown> = {};
+
+  for (const key of allKeys) {
+    let presentCount = 0;
+    let firstDef: unknown = undefined;
+    const nestedShapes: (Record<string, unknown> | undefined)[] = [];
+    let allPlainObjects = true;
+
+    for (const shape of shapes) {
+      const fieldDef = shape?.[key];
+      if (fieldDef !== undefined) {
+        presentCount++;
+        if (firstDef === undefined) firstDef = fieldDef;
+        if (IS_DEV && firstDef !== undefined && fieldDef !== firstDef && !isPlainObjectDef(fieldDef)) {
+          assertFieldTypesCompatible(typename, key, firstDef, fieldDef);
+        }
+        if (isPlainObjectDef(fieldDef)) {
+          nestedShapes.push(fieldDef.shape as Record<string, unknown>);
+        } else {
+          allPlainObjects = false;
+          nestedShapes.push(undefined);
+        }
+      } else {
+        allPlainObjects = false;
+        nestedShapes.push(undefined);
+      }
+    }
+
+    if (allPlainObjects && presentCount > 0) {
+      const innerMerged = mergeObjectShapes(nestedShapes, count, typename);
+      const newDef = new ValidatorDef(Mask.OBJECT, innerMerged as any);
+      merged[key] = presentCount < count ? makeOptional(newDef) : newDef;
+    } else {
+      merged[key] = presentCount < count ? makeOptional(firstDef!) : firstDef!;
+    }
+  }
+
+  return merged;
 }
 
 export class ValidatorDef<T> {
   public mask: Mask;
-  public shapeKey: number;
   public shape: InternalTypeDef | InternalObjectShape | UnionTypeDefs | ComplexTypeDef[] | undefined;
-  public subEntityPaths: undefined | string | string[] = undefined;
   public typenameField: string | undefined = undefined;
   public typenameValue: string | undefined = undefined;
-  public idField: string | undefined = undefined;
+  public idField: string | symbol | undefined = undefined;
   public values: Set<string | boolean | number> | undefined = undefined;
 
   /**
@@ -57,7 +187,7 @@ export class ValidatorDef<T> {
   /**
    * Entity configuration including stream options.
    */
-  public _entityConfig: EntityConfig<any> | undefined = undefined;
+  public _entityConfig: EntityConfig | undefined = undefined;
 
   /**
    * The original Entity class for this definition.
@@ -70,41 +200,77 @@ export class ValidatorDef<T> {
    */
   public _entityCache: { gcTime?: number } | undefined = undefined;
 
+  /**
+   * Live collection configuration (shared by LiveArray and LiveValue).
+   */
+  public _liveConfig: LiveFieldConfig | undefined = undefined;
+
   constructor(
     mask: Mask,
     shape: InternalTypeDef | InternalObjectShape | UnionTypeDefs | ComplexTypeDef[] | undefined,
-    shapeKey: number,
     values?: Set<string | boolean | number>,
     typenameField?: string,
     typenameValue?: string,
-    idField?: string,
-    subEntityPaths?: string | string[],
+    idField?: string | symbol,
   ) {
     this.mask = mask;
     this.shape = shape;
-    this.shapeKey = shapeKey;
     this.values = values;
     this.typenameField = typenameField;
     this.typenameValue = typenameValue;
     this.idField = idField;
-    this.subEntityPaths = subEntityPaths;
+  }
+
+  static merge(defs: ValidatorDef<any>[]): ValidatorDef<any> {
+    if (defs.length === 1) return defs[0];
+
+    const count = defs.length;
+    const shapes = defs.map(d => d.shape as Record<string, unknown> | undefined);
+    const typename = defs[0].typenameValue ?? '(unknown)';
+
+    const mergedShape = mergeObjectShapes(shapes, count, typename);
+
+    let idField: string | symbol | undefined;
+    let typenameField: string | undefined;
+    let typenameValue: string | undefined;
+
+    for (const def of defs) {
+      if (idField === undefined && def.idField !== undefined) {
+        idField = def.idField;
+      } else if (idField !== undefined && def.idField !== undefined && def.idField !== idField) {
+        throw new Error(
+          `[fetchium] Entity typename '${def.typenameValue}' has conflicting id fields: '${String(idField)}' vs '${String(def.idField)}'`,
+        );
+      }
+
+      if (typenameField === undefined) typenameField = def.typenameField;
+      if (typenameValue === undefined) typenameValue = def.typenameValue;
+    }
+
+    return new ValidatorDef(
+      Mask.ENTITY | Mask.OBJECT,
+      mergedShape as any,
+      undefined,
+      typenameField,
+      typenameValue,
+      idField,
+    );
   }
 
   static cloneWith(def: ValidatorDef<any>, mask: Mask): ValidatorDef<any> {
     const newDef = new ValidatorDef(
       mask | def.mask,
       def.shape,
-      def.shapeKey,
       def.values,
       def.typenameField,
       def.typenameValue,
       def.idField,
-      def.subEntityPaths,
     );
     newDef._methods = def._methods;
     newDef._entityConfig = def._entityConfig;
     newDef._entityClass = def._entityClass;
     newDef._entityCache = def._entityCache;
+    newDef._liveConfig = def._liveConfig;
     return newDef;
   }
 }
@@ -183,29 +349,16 @@ registerCustomHash(CaseInsensitiveSet, set => {
 // Complex Type Definitions
 // -----------------------------------------------------------------------------
 
-function defineWrapperType(kindTag: number, mask: Mask, shape: InternalTypeDef): ValidatorDef<any> {
-  let innerShapeKey;
-
-  if (shape instanceof ValidatorDef) {
-    innerShapeKey = shape.shapeKey;
-
-    if (shape.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
-      mask |= Mask.HAS_SUB_ENTITY;
-    }
-  } else {
-    innerShapeKey = hashValue(shape);
-  }
-
-  const shapeKey = mixHashes(mixHashes(hashValue(kindTag), hashValue(mask)), innerShapeKey);
-  return new ValidatorDef(mask, shape, shapeKey);
+function defineWrapperType(mask: Mask, shape: InternalTypeDef): ValidatorDef<any> {
+  return new ValidatorDef(mask, shape);
 }
 
 export function defineArray<T extends TypeDef>(shape: T): TypeDef<ExtractType<T>[]> {
-  return defineWrapperType(0, Mask.ARRAY, shape as unknown as InternalTypeDef) as unknown as TypeDef<ExtractType<T>[]>;
+  return defineWrapperType(Mask.ARRAY, shape as unknown as InternalTypeDef) as unknown as TypeDef<ExtractType<T>[]>;
 }
 
 export function defineRecord<T extends TypeDef>(shape: T): TypeDef<Record<string, ExtractType<T>>> {
-  return defineWrapperType(1, Mask.RECORD | Mask.OBJECT, shape as unknown as InternalTypeDef) as unknown as TypeDef<
+  return defineWrapperType(Mask.RECORD | Mask.OBJECT, shape as unknown as InternalTypeDef) as unknown as TypeDef<
     Record<string, ExtractType<T>>
   >;
 }
@@ -213,22 +366,18 @@ export function defineRecord<T extends TypeDef>(shape: T): TypeDef<Record<string
 export function defineParseResult<T extends TypeDef>(
   innerType: T,
 ): TypeDef<import('./types.js').ParseResult<ExtractType<T>>> {
-  return defineWrapperType(2, Mask.PARSE_RESULT, innerType as unknown as InternalTypeDef) as unknown as TypeDef<
+  return defineWrapperType(Mask.PARSE_RESULT, innerType as unknown as InternalTypeDef) as unknown as TypeDef<
     import('./types.js').ParseResult<ExtractType<T>>
   >;
 }
 
 function defineObjectOrEntity(baseMask: Mask, shape: InternalObjectShape): ValidatorDef<any> {
   let mask = baseMask;
-  let shapeKey = hashValue(mask);
   let idField: string | undefined = undefined;
   let typenameField: string | undefined = undefined;
   let typenameValue: string | undefined = undefined;
-  let subEntityPaths: undefined | string | string[] = undefined;
 
   for (const [key, value] of entries(shape)) {
-    const keyHash = hashValue(key);
-
     switch (typeof value) {
       case 'number':
         if ((value & Mask.ID) !== 0) {
@@ -238,8 +387,6 @@ function defineObjectOrEntity(baseMask: Mask, shape: InternalObjectShape): Valid
 
           idField = key;
         }
-
-        shapeKey += mixHashes(keyHash, hashValue(value));
         break;
       case 'string':
         if (typenameField !== undefined && typenameField !== key) {
@@ -248,39 +395,25 @@ function defineObjectOrEntity(baseMask: Mask, shape: InternalObjectShape): Valid
 
         typenameField = key;
         typenameValue = value;
-
-        shapeKey += mixHashes(keyHash, hashValue(value));
         break;
       case 'object':
         if (value instanceof CaseInsensitiveSet || value instanceof Set) {
-          shapeKey += mixHashes(keyHash, hashValue(value));
           break;
         }
 
-        shapeKey += mixHashes(keyHash, value.shapeKey);
-
-        if (value.mask & (Mask.ENTITY | Mask.HAS_SUB_ENTITY)) {
-          mask |= Mask.HAS_SUB_ENTITY;
-          if (subEntityPaths === undefined) {
-            subEntityPaths = key;
-          } else if (isArray(subEntityPaths)) {
-            subEntityPaths.push(key);
-          } else {
-            subEntityPaths = [subEntityPaths, key];
-          }
+        if (value.mask & Mask.LIVE) {
+          mask |= Mask.LIVE;
         }
         break;
     }
   }
 
-  shapeKey = shapeKey >>> 0;
-
-  return new ValidatorDef(mask, shape, shapeKey, undefined, typenameField, typenameValue, idField, subEntityPaths);
+  return new ValidatorDef(mask, shape, undefined, typenameField, typenameValue, idField);
 }
 
-export function defineObject<T extends Record<string, TypeDef>>(shape: T): TypeDef<Prettify<ExtractTypesFromShape<T>>> {
+export function defineObject<T extends Record<string, TypeDef>>(shape: T): TypeDef<ExtractType<T>> {
   return defineObjectOrEntity(Mask.OBJECT, shape as unknown as InternalObjectShape) as unknown as TypeDef<
-    Prettify<ExtractTypesFromShape<T>>
+    ExtractType<T>
   >;
 }
 
@@ -361,7 +494,6 @@ function defineUnion<T extends readonly TypeDef[]>(...types: T): TypeDef<Extract
   let values: Set<string | boolean | number> | undefined;
   let unionShape: UnionTypeDefs | undefined;
   let unionTypenameField: string | undefined;
-  let defShapeKeys = 0;
   let defMask = 0;
 
   for (const type of internalTypes) {
@@ -384,7 +516,6 @@ function defineUnion<T extends readonly TypeDef[]>(...types: T): TypeDef<Extract
 
     defCount++;
     defMask |= type.mask;
-    defShapeKeys += type.shapeKey;
 
     if (defCount === 1) {
       firstDef = type;
@@ -408,12 +539,7 @@ function defineUnion<T extends readonly TypeDef[]>(...types: T): TypeDef<Extract
       return values as unknown as R;
     }
 
-    return new ValidatorDef(
-      mask | Mask.UNION,
-      undefined,
-      hashValue([mask | Mask.UNION, values]) >>> 0,
-      values,
-    ) as unknown as R;
+    return new ValidatorDef(mask | Mask.UNION, undefined, values) as unknown as R;
   }
 
   if (defCount === 1) {
@@ -421,13 +547,7 @@ function defineUnion<T extends readonly TypeDef[]>(...types: T): TypeDef<Extract
   }
 
   const finalMask = mask | defMask | Mask.UNION;
-  return new ValidatorDef(
-    finalMask,
-    unionShape!,
-    mixHashes(hashValue([mask | Mask.UNION, values]), defShapeKeys >>> 0),
-    values,
-    unionTypenameField,
-  ) as unknown as R;
+  return new ValidatorDef(finalMask, unionShape!, values, unionTypenameField) as unknown as R;
 }
 
 function defineWithMask(type: TypeDef, mask: Mask, cache: WeakMap<ValidatorDef<any>, ValidatorDef<any>>): TypeDef {
@@ -491,12 +611,49 @@ const defineEnum = (<T extends readonly (string | boolean | number)[]>(...values
 // Formatted Values
 // -----------------------------------------------------------------------------
 
-const FORMAT_MASK_SHIFT = 16;
+export const FORMAT_MASK_SHIFT = 16;
 
 let nextFormatId = 0;
 const FORMAT_PARSERS: ((value: unknown) => unknown)[] = [];
+const FORMAT_SERIALIZERS: ((value: unknown) => unknown)[] = [];
 const FORMAT_MAP = new Map<string, number>();
 const FORMAT_ID_TO_NAME: Map<number, string> | undefined = IS_DEV ? new Map<number, string>() : undefined;
+
+export const WRAPPED_VALUE = new WeakSet();
+
+export class FormattedValue {
+  _raw: unknown;
+  private _formatted: unknown;
+  private _parsed: boolean;
+  private _formatId: number;
+
+  constructor(raw: unknown, formatId: number, eager: boolean) {
+    this._raw = raw;
+    this._formatId = formatId;
+    if (eager) {
+      this._formatted = FORMAT_PARSERS[formatId](raw);
+      this._parsed = true;
+    } else {
+      this._parsed = false;
+    }
+    WRAPPED_VALUE.add(this);
+  }
+
+  getValue(): unknown {
+    if (!this._parsed) {
+      this._formatted = FORMAT_PARSERS[this._formatId](this._raw);
+      this._parsed = true;
+    }
+    return this._formatted;
+  }
+
+  toJSON(): unknown {
+    if (this._parsed) {
+      return FORMAT_SERIALIZERS[this._formatId](this._formatted);
+    }
+    return this._raw;
+  }
+}
 
 function defineFormatted<K extends keyof SignaliumQuery.FormatRegistry>(
   format: K,
@@ -512,8 +669,12 @@ function defineFormatted<K extends keyof SignaliumQuery.FormatRegistry>(
 
 export function getFormat(mask: number): (value: unknown) => unknown {
   const formatId = mask >> FORMAT_MASK_SHIFT;
-
   return FORMAT_PARSERS[formatId];
+}
+
+export function getSerializer(mask: number): (value: unknown) => unknown {
+  const formatId = mask >> FORMAT_MASK_SHIFT;
+  return FORMAT_SERIALIZERS[formatId];
 }
 
 export function getFormatName(mask: number): string | undefined {
@@ -527,14 +688,16 @@ export function registerFormat<Input extends Mask.STRING | Mask.NUMBER, T>(
   type: Input,
   parse: (value: Input extends Mask.STRING ? string : number) => T,
   serialize: (value: T) => Input extends Mask.STRING ? string : number,
+  options?: { eager?: boolean },
 ) {
   const maskId = nextFormatId++;
   FORMAT_PARSERS[maskId] = parse as (value: unknown) => unknown;
+  FORMAT_SERIALIZERS[maskId] = serialize as (value: unknown) => unknown;
   if (IS_DEV) FORMAT_ID_TO_NAME!.set(maskId, name);
 
+  const eager = options?.eager ?? true;
   const shiftedId = maskId << FORMAT_MASK_SHIFT;
-  const formatMask = type === Mask.STRING ? Mask.HAS_STRING_FORMAT : Mask.HAS_NUMBER_FORMAT;
-  const mask = shiftedId | type | formatMask;
+  const mask = shiftedId | type | Mask.HAS_FORMAT | (eager ? Mask.IS_EAGER_FORMAT : 0);
 
   FORMAT_MAP.set(name, mask);
 }
@@ -604,8 +767,29 @@ export function getEntityDef(cls: new () => Entity): ValidatorDef<any> {
   if (def === undefined) {
     const instance = new cls();
 
+    const raw = (instance as any)[DEFINITION_TARGET] ?? instance;
+    if ((instance as any)[CANCEL_PROXY]) {
+      (instance as any)[CANCEL_PROXY]();
+    }
+
     const shape: InternalObjectShape = {};
-    for (const [key, value] of entries(instance as Record<string, unknown>)) {
+    for (const [key, value] of entries(raw as Record<string, unknown>)) {
+      if (IS_DEV) {
+        const isValidDef =
+          typeof value === 'number' ||
+          typeof value === 'string' ||
+          value instanceof Set ||
+          value instanceof ValidatorDef ||
+          value instanceof CaseInsensitiveSet;
+
+        if (!isValidDef) {
+          throw new Error(
+            `[fetchium] Entity '${cls.name}' field '${key}' has an invalid type definition. ` +
+              `All entity fields must be type definitions (e.g. t.string, t.number, t.entity(...), etc). ` +
+              `Got: ${typeof value === 'object' ? (value?.constructor?.name ?? typeof value) : typeof value}`,
+          );
+        }
+      }
       shape[key] = value as any;
     }
 
@@ -641,10 +825,11 @@ export function getEntityDef(cls: new () => Entity): ValidatorDef<any> {
       def._methods = methods;
     }
 
-    const staticCls = cls as typeof Entity;
-    if (staticCls.stream) {
-      def._entityConfig = { stream: staticCls.stream } as any;
+    if (typeof methods['__subscribe'] === 'function') {
+      def._entityConfig = { hasSubscribe: true };
     }
+
+    const staticCls = cls as typeof Entity;
 
     if (staticCls.cache) {
       def._entityCache = staticCls.cache;
@@ -658,6 +843,99 @@ export function getEntityDef(cls: new () => Entity): ValidatorDef<any> {
 
 function defineEntityType(cls: new () => Entity): TypeDef<any> {
   return getEntityDef(cls) as unknown as TypeDef<any>;
+}
+
+// -----------------------------------------------------------------------------
+// LiveArray / LiveValue Definitions
+// -----------------------------------------------------------------------------
+
+import { isFieldRef, DEFINITION_TARGET, CANCEL_PROXY } from './fieldRef.js';
+
+function buildConstraintFieldRefs(
+  entityDefs: ValidatorDef<any>[],
+  constraints: unknown,
+): Map<string, Array<[string, unknown]>> | undefined {
+  if (constraints === undefined || constraints === null) return undefined;
+
+  const result = new Map<string, Array<[string, unknown]>>();
+
+  if (Array.isArray(constraints)) {
+    for (const entry of constraints) {
+      const [cls, constraintMap] = entry as [new () => Entity, Record<string, unknown>];
+      const def = getEntityDef(cls);
+      const typename = def.typenameValue;
+      if (typename === undefined) continue;
+      const pairs: Array<[string, unknown]> = [];
+      for (const [field, ref] of Object.entries(constraintMap)) {
+        pairs.push([field, ref]);
+      }
+      if (pairs.length > 0) {
+        result.set(typename, pairs);
+      }
+    }
+  } else {
+    const constraintMap = constraints as Record<string, unknown>;
+    const constraintEntries = Object.entries(constraintMap);
+    if (constraintEntries.length === 0) return undefined;
+
+    const pairs: Array<[string, unknown]> = constraintEntries.map(([field, ref]) => [field, ref]);
+
+    for (const def of entityDefs) {
+      const typename = def.typenameValue;
+      if (typename !== undefined) {
+        result.set(typename, pairs);
+      }
+    }
+  }
+
+  return result.size > 0 ? result : undefined;
+}
+
+function resolveEntityDefs(entityOrArray: unknown): ValidatorDef<any>[] {
+  if (Array.isArray(entityOrArray)) {
+    return entityOrArray.map(cls => getEntityDef(cls as new () => Entity));
+  }
+  return [getEntityDef(entityOrArray as new () => Entity)];
+}
+
+function defineLiveArray(entityOrArray: unknown, opts?: LiveArrayOptions<any>): TypeDef<any> {
+  const entityDefs = resolveEntityDefs(entityOrArray);
+
+  const innerDef =
+    entityDefs.length === 1
+      ? entityDefs[0]
+      : (defineUnion(...entityDefs.map(d => d as unknown as TypeDef)) as unknown as ValidatorDef<any>);
+
+  const mask = Mask.ARRAY | Mask.LIVE;
+  const def = new ValidatorDef(mask, innerDef as unknown as InternalTypeDef);
+
+  def._liveConfig = LiveFieldConfig.array(
+    entityDefs,
+    buildConstraintFieldRefs(entityDefs, opts?.constraints),
+    opts?.sort as ((a: unknown, b: unknown) => number) | undefined,
+  );
+
+  return def as unknown as TypeDef<any>;
+}
+
+function defineLiveValue(valueType: TypeDef, entityOrArray: unknown, opts: LiveValueOptions<any, any>): TypeDef<any> {
+  const entityDefs = resolveEntityDefs(entityOrArray);
+
+  const valueInternalType = valueType as unknown as InternalTypeDef;
+
+  const mask = Mask.LIVE;
+  const def = new ValidatorDef(mask, undefined);
+
+  def._liveConfig = LiveFieldConfig.value(
+    entityDefs,
+    buildConstraintFieldRefs(entityDefs, opts?.constraints),
+    valueInternalType,
+    opts.onCreate,
+    opts.onUpdate,
+    opts.onDelete,
+  );
+
+  return def as unknown as TypeDef<any>;
 }
 
 export const t: APITypes = {
@@ -680,12 +958,6 @@ export const t: APITypes = {
   nullable: defineNullable,
   result: defineParseResult,
   entity: defineEntityType,
+  liveArray: defineLiveArray as APITypes['liveArray'],
+  liveValue: defineLiveValue as APITypes['liveValue'],
 };
-
-/**
- * Extract the internal shape key from a TypeDef. Used in tests and
- * internal tooling to access the ValidatorDef's shape key.
- */
-export function getShapeKey(def: TypeDef): number {
-  return (def as unknown as ValidatorDef<any>).shapeKey;
-}

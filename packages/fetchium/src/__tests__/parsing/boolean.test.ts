@@ -1,9 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
-import { Entity, parseValue } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
-import { parseEntities } from '../../parseEntities.js';
-import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
+import { Entity } from '../../proxy.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
+import {
+  parseValue,
+  parseEntities,
+  setupParsingTests,
+  testWithClient,
+  getEntityKey,
+  getDocument,
+} from './test-utils.js';
 
 /**
  * t.boolean Tests
@@ -65,7 +71,7 @@ describe('t.boolean', () => {
       });
 
       it('should filter invalid items in array with warning callback', () => {
-        const result = parseValue([true, 'invalid', false], t.array(t.boolean), 'test', false, () => {});
+        const result = parseValue([true, 'invalid', false], t.array(t.boolean), 'test', () => {});
         expect(result).toEqual([true, false]);
       });
     });
@@ -121,7 +127,7 @@ describe('t.boolean', () => {
         mockFetch.get('/item', { active: true, deleted: false });
 
         await testWithClient(client, async () => {
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = { active: t.boolean, deleted: t.boolean };
           }
@@ -143,7 +149,7 @@ describe('t.boolean', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             path = '/user';
             result = {
               user: t.object({
@@ -170,7 +176,7 @@ describe('t.boolean', () => {
         mockFetch.get('/flags', { flags: [true, false, true] });
 
         await testWithClient(client, async () => {
-          class GetFlags extends JsonQuery {
+          class GetFlags extends RESTQuery {
             path = '/flags';
             result = { flags: t.array(t.boolean) };
           }
@@ -191,7 +197,7 @@ describe('t.boolean', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetPermissions extends JsonQuery {
+          class GetPermissions extends RESTQuery {
             path = '/permissions';
             result = { permissions: t.record(t.boolean) };
           }
@@ -212,7 +218,7 @@ describe('t.boolean', () => {
         mockFetch.get('/value', { value: true });
 
         await testWithClient(client, async () => {
-          class GetValue extends JsonQuery {
+          class GetValue extends RESTQuery {
             path = '/value';
             result = { value: t.union(t.string, t.boolean) };
           }
@@ -245,10 +251,10 @@ describe('t.boolean', () => {
           user: { __typename: 'User', id: 1, active: true },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1, getShapeKey(t.entity(User)));
+        const key = getEntityKey('User', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -279,10 +285,10 @@ describe('t.boolean', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1, getShapeKey(t.entity(User)));
+        const key = getEntityKey('User', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -311,10 +317,10 @@ describe('t.boolean', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Survey', 1, getShapeKey(t.entity(Survey)));
+        const key = getEntityKey('Survey', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -342,10 +348,10 @@ describe('t.boolean', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Role', 1, getShapeKey(t.entity(Role)));
+        const key = getEntityKey('Role', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -373,10 +379,10 @@ describe('t.boolean', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Flag', 1, getShapeKey(t.entity(Flag)));
+        const key = getEntityKey('Flag', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();

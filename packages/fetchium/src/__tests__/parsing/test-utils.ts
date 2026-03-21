@@ -3,11 +3,57 @@ import { hashValue } from 'signalium/utils';
 import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient } from '../../QueryClient.js';
 import { valueKeyFor, refIdsKeyFor, refCountKeyFor } from '../../stores/shared.js';
-import { getShapeKey } from '../../typeDefs.js';
-
+import type { EntityInstance } from '../../EntityInstance.js';
+import type { PreloadedEntityMap } from '../../QueryClient.js';
+import type { TypeDef, ComplexTypeDef, EntityDef } from '../../types.js';
 // Import and re-export commonly used utilities from the main utils file
 import { createMockFetch, testWithClient, watchOnce, sleep } from '../utils.js';
-export { createMockFetch, testWithClient, watchOnce, sleep, getShapeKey };
+export { createMockFetch, testWithClient, watchOnce, sleep };
+export { parseValue } from '../../parseEntities.js';
+
+/**
+ * Test wrapper: parse + apply + collect refs.
+ */
+export function parseEntities(
+  value: unknown,
+  typeDef: TypeDef | ComplexTypeDef,
+  queryClient: QueryClient,
+  entityRefs?: Map<EntityInstance, number>,
+  preloadedEntities?: PreloadedEntityMap,
+): unknown {
+  const persist = preloadedEntities === undefined;
+  const parsed = queryClient.parseData(value, typeDef as any, preloadedEntities);
+  const result = queryClient.applyRefs(parsed, persist);
+
+  if (entityRefs !== undefined) {
+    for (const [inst, count] of result.entityRefs) {
+      entityRefs.set(inst, count);
+    }
+  }
+
+  return result.data;
+}
+
+/**
+ * Test wrapper for single entity: parse + apply.
+ */
+export function parseEntity(
+  obj: Record<string, unknown>,
+  entityShape: EntityDef,
+  queryClient: QueryClient,
+  entityRefs?: Map<EntityInstance, number>,
+): unknown {
+  const parsed = queryClient.parseData(obj, entityShape as any);
+  const result = queryClient.applyRefs(parsed, true);
+
+  if (entityRefs !== undefined) {
+    for (const [inst, count] of result.entityRefs) {
+      entityRefs.set(inst, count);
+    }
+  }
+
+  return result.data;
+}
 
 /**
  * Helper to get a document from the kv store for testing
@@ -18,11 +64,10 @@ export async function getDocument(kv: MemoryPersistentStore, key: number): Promi
 }
 
 /**
- * Helper to get the entity key from typename, id, and shapeKey.
- * The shapeKey can be obtained via getShapeKey(entityDef).
+ * Helper to get the entity key from typename and id.
  */
-export function getEntityKey(typename: string, id: string | number, shapeKey: number): number {
-  return hashValue([`${typename}:${id}`, shapeKey]);
+export function getEntityKey(typename: string, id: unknown): number {
+  return hashValue([typename, id]);
 }
 
 /**

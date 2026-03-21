@@ -4,7 +4,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { JsonQuery, fetchQuery } from '../query.js';
+import { RESTQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient } from './utils.js';
 
 /**
@@ -42,10 +42,10 @@ describe('Entity Methods', () => {
         id = t.id;
         name = t.string;
         age = t.number;
-        greet(this: any) {
+        greet() {
           return `Hello, ${this.name}!`;
         }
-        isAdult(this: any) {
+        isAdult() {
           return this.age >= 18;
         }
       }
@@ -67,13 +67,13 @@ describe('Entity Methods', () => {
         id = t.id;
         name = t.string;
         age = t.number;
-        greet(this: any) {
+        greet() {
           return `Hello, ${this.name}!`;
         }
-        isAdult(this: any) {
+        isAdult() {
           return this.age >= 18;
         }
-        getNameAndAge(this: any) {
+        getNameAndAge() {
           return `${this.name} is ${this.age} years old`;
         }
       }
@@ -88,7 +88,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -109,13 +109,13 @@ describe('Entity Methods', () => {
         __typename = t.typename('Calculator');
         id = t.id;
         baseValue = t.number;
-        add(this: any, n: number) {
+        add(n: number) {
           return this.baseValue + n;
         }
-        multiply(this: any, n: number) {
+        multiply(n: number) {
           return this.baseValue * n;
         }
-        format(this: any, prefix: string, suffix: string) {
+        format(prefix: string, suffix: string) {
           return `${prefix}${this.baseValue}${suffix}`;
         }
       }
@@ -129,7 +129,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetCalc extends JsonQuery {
+        class GetCalc extends RESTQuery {
           params = { id: t.id };
           path = `/calc/${this.params.id}`;
           result = { calc: t.entity(Calculator) };
@@ -151,10 +151,10 @@ describe('Entity Methods', () => {
         firstName = t.string;
         lastName = t.string;
         email = t.string;
-        getFullName(this: any) {
+        getFullName() {
           return { first: this.firstName, last: this.lastName };
         }
-        toJSON(this: any) {
+        toJSON() {
           return {
             id: this.id,
             name: `${this.firstName} ${this.lastName}`,
@@ -174,7 +174,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -226,10 +226,10 @@ describe('Entity Methods', () => {
         id = t.id;
         name = t.string;
         address = t.entity(Address);
-        getLocation(this: any) {
+        getLocation() {
           return `${this.address.city}, ${this.address.country}`;
         }
-        greetWithLocation(this: any) {
+        greetWithLocation() {
           return `Hello, ${this.name} from ${this.address.city}!`;
         }
       }
@@ -249,7 +249,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -272,14 +272,14 @@ describe('Entity Methods', () => {
         name = t.string;
         tags = t.array(t.string);
         scores = t.array(t.number);
-        hasTag(this: any, tag: string) {
+        hasTag(tag: string) {
           return this.tags.includes(tag);
         }
-        getAverageScore(this: any) {
+        getAverageScore() {
           if (this.scores.length === 0) return 0;
           return this.scores.reduce((a: number, b: number) => a + b, 0) / this.scores.length;
         }
-        getTagCount(this: any) {
+        getTagCount() {
           return this.tags.length;
         }
       }
@@ -295,7 +295,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -318,7 +318,7 @@ describe('Entity Methods', () => {
         __typename = t.typename('Author');
         id = t.id;
         name = t.string;
-        getDisplayName(this: any) {
+        getDisplayName() {
           return `Author: ${this.name}`;
         }
       }
@@ -328,7 +328,7 @@ describe('Entity Methods', () => {
         id = t.id;
         title = t.string;
         author = t.entity(Author);
-        getFullTitle(this: any) {
+        getFullTitle() {
           return `"${this.title}" by ${this.author.name}`;
         }
       }
@@ -347,7 +347,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetBook extends JsonQuery {
+        class GetBook extends RESTQuery {
           params = { id: t.id };
           path = `/books/${this.params.id}`;
           result = { book: t.entity(Book) };
@@ -371,7 +371,7 @@ describe('Entity Methods', () => {
         id = t.id;
         name = t.string;
         age = t.number;
-        expensiveComputation(this: any) {
+        expensiveComputation() {
           computeCount++;
           return `Computed for ${this.name}`;
         }
@@ -387,7 +387,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -418,12 +418,12 @@ describe('Entity Methods', () => {
         __typename = t.typename('Calculator');
         id = t.id;
         baseValue = t.number;
-        multiply(this: any, factor: number) {
+        multiply(factor: number) {
           const key = `multiply-${factor}`;
           computeCounts.set(key, (computeCounts.get(key) || 0) + 1);
           return this.baseValue * factor;
         }
-        format(this: any, prefix: string, suffix: string) {
+        format(prefix: string, suffix: string) {
           const key = `format-${prefix}-${suffix}`;
           computeCounts.set(key, (computeCounts.get(key) || 0) + 1);
           return `${prefix}${this.baseValue}${suffix}`;
@@ -439,7 +439,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetCalc extends JsonQuery {
+        class GetCalc extends RESTQuery {
           params = { id: t.id };
           path = `/calc/${this.params.id}`;
           result = { calc: t.entity(Calculator) };
@@ -482,7 +482,7 @@ describe('Entity Methods', () => {
         __typename = t.typename('Calculator');
         id = t.id;
         baseValue = t.number;
-        computeWithMultiplier(this: any) {
+        computeWithMultiplier() {
           computeCount++;
           return this.baseValue * multiplierSignal.value;
         }
@@ -498,7 +498,7 @@ describe('Entity Methods', () => {
 
       // First: Get the entity and call the method
       let calc: any;
-      class GetCalc extends JsonQuery {
+      class GetCalc extends RESTQuery {
         params = { id: t.id };
         path = `/calc/${this.params.id}`;
         result = { calc: t.entity(Calculator) };
@@ -545,13 +545,13 @@ describe('Entity Methods', () => {
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
-        getThemedGreeting(this: any) {
+        getThemedGreeting() {
           const theme = getContext(ThemeContext);
           return theme === 'dark' ? `🌙 Hello, ${this.name}!` : `☀️ Hello, ${this.name}!`;
         }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -609,7 +609,7 @@ describe('Entity Methods', () => {
         id = t.id;
         name = t.string;
         price = t.number;
-        getLocalizedPrice(this: any) {
+        getLocalizedPrice() {
           const locale = getContext(LocaleContext);
           const currency = getContext(CurrencyContext);
           return new Intl.NumberFormat(locale, {
@@ -617,14 +617,14 @@ describe('Entity Methods', () => {
             currency,
           }).format(this.price);
         }
-        getLocalizedName(this: any) {
+        getLocalizedName() {
           const locale = getContext(LocaleContext);
           // Simple localization simulation
           return locale === 'de' ? `Produkt: ${this.name}` : `Product: ${this.name}`;
         }
       }
 
-      class GetProduct extends JsonQuery {
+      class GetProduct extends RESTQuery {
         params = { id: t.id };
         path = `/products/${this.params.id}`;
         result = { product: t.entity(Product) };
@@ -701,7 +701,7 @@ describe('Entity Methods', () => {
         title = t.string;
         content = t.string;
         secretNotes = t.string;
-        getVisibleContent(this: any) {
+        getVisibleContent() {
           const role = getContext(UserRoleContext);
           if (role === 'admin') {
             return `${this.content}\n\n[Admin Notes: ${this.secretNotes}]`;
@@ -718,7 +718,7 @@ describe('Entity Methods', () => {
         }
       }
 
-      class GetDoc extends JsonQuery {
+      class GetDoc extends RESTQuery {
         params = { id: t.id };
         path = `/docs/${this.params.id}`;
         result = { doc: t.entity(Document) };
@@ -818,19 +818,19 @@ describe('Entity Methods', () => {
         firstName = t.string;
         lastName = t.string;
         age = t.number;
-        getFullName(this: any) {
+        getFullName() {
           return `${this.firstName} ${this.lastName}`;
         }
-        getInitials(this: any) {
+        getInitials() {
           return `${this.firstName[0]}${this.lastName[0]}`;
         }
-        greet(this: any) {
+        greet() {
           return `Hello, ${this.getFullName()}!`;
         }
-        getFormattedAge(this: any) {
+        getFormattedAge() {
           return `${this.getFullName()} is ${this.age} years old`;
         }
-        getDisplayInfo(this: any) {
+        getDisplayInfo() {
           return `${this.greet()} (${this.getInitials()})`;
         }
       }
@@ -846,7 +846,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -873,22 +873,22 @@ describe('Entity Methods', () => {
         __typename = t.typename('Calculator');
         id = t.id;
         baseValue = t.number;
-        add(this: any, n: number) {
+        add(n: number) {
           return this.baseValue + n;
         }
-        multiply(this: any, n: number) {
+        multiply(n: number) {
           return this.baseValue * n;
         }
-        addThenMultiply(this: any, addend: number, multiplier: number) {
+        addThenMultiply(addend: number, multiplier: number) {
           // Add the addend, then multiply the result by the multiplier
           const sum = this.add(addend);
           return sum * multiplier;
         }
-        multiplyThenAdd(this: any, multiplier: number, addend: number) {
+        multiplyThenAdd(multiplier: number, addend: number) {
           // Multiply baseValue by multiplier, then add the addend
           return this.add(this.multiply(multiplier));
         }
-        complexOperation(this: any, x: number, y: number, z: number) {
+        complexOperation(x: number, y: number, z: number) {
           // Add x, multiply by y, then add z
           const sum = this.add(x);
           const product = this.multiply(y);
@@ -905,7 +905,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetCalc extends JsonQuery {
+        class GetCalc extends RESTQuery {
           params = { id: t.id };
           path = `/calc/${this.params.id}`;
           result = { calc: t.entity(Calculator) };
@@ -940,15 +940,15 @@ describe('Entity Methods', () => {
         id = t.id;
         firstName = t.string;
         lastName = t.string;
-        getFullName(this: any) {
+        getFullName() {
           fullNameCallCount++;
           return `${this.firstName} ${this.lastName}`;
         }
-        getInitials(this: any) {
+        getInitials() {
           initialsCallCount++;
           return `${this.firstName[0]}${this.lastName[0]}`;
         }
-        greet(this: any) {
+        greet() {
           greetCallCount++;
           // This calls getFullName, which should be cached
           return `Hello, ${this.getFullName()}!`;
@@ -965,7 +965,7 @@ describe('Entity Methods', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };

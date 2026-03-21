@@ -129,7 +129,7 @@ export function extractDefinition<T>(instance: T): CapturedDefinition<T> {
 // Reification (FieldRef → actual values)
 // ================================
 
-function resolveFieldRefPath(path: string[], root: Record<string, unknown>): unknown {
+export function resolveFieldRefPath(path: string[], root: Record<string, unknown>): unknown {
   let current: unknown = root;
   for (const segment of path) {
     if (current === undefined || current === null) return undefined;

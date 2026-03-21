@@ -4,17 +4,18 @@ import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { JsonQuery, fetchQuery } from '../query.js';
+import { RESTQuery, fetchQuery } from '../query.js';
 import { createMockFetch, sendStreamUpdate, sleep, testWithClient } from './utils.js';
+import type { MutationEvent } from '../types.js';
 
 /**
- * Entity Stream Tests
+ * Entity Subscribe Tests
  *
- * Tests entity streaming functionality including activation, deactivation,
- * updates, and integration with queries.
+ * Tests entity subscription functionality including activation, deactivation,
+ * updates via MutationEvent, and integration with queries.
  */
 
-describe('Entity Streaming', () => {
+describe('Entity Subscribe', () => {
   let client: QueryClient;
   let mockFetch: ReturnType<typeof createMockFetch>;
   let kv: any;
@@ -31,28 +32,25 @@ describe('Entity Streaming', () => {
     client?.destroy();
   });
 
-  describe('Basic Streaming', () => {
+  describe('Basic Subscribe', () => {
     it('should receive updates when entity is accessed reactively', async () => {
-      let streamCallback: ((update: any) => void) | undefined;
+      let streamCallback: ((event: MutationEvent) => void) | undefined;
       let unsubscribeCallCount = 0;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {
-              unsubscribeCallCount++;
-            };
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
         email = t.string;
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {
+            unsubscribeCallCount++;
+          };
+        }
       }
 
-      // Create entity via query
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -73,53 +71,46 @@ describe('Entity Streaming', () => {
 
         const user = relay.value!.user;
 
-        // Access user in reactive context to activate stream
         const userName = reactive(() => user.name);
 
         expect(userName()).toBe('Alice');
 
-        // Wait a bit for relay to activate and stream callback to be set
         await sleep(20);
         expect(streamCallback).toBeDefined();
         expect(unsubscribeCallCount).toBe(0);
 
-        // Send stream update
         await sendStreamUpdate(streamCallback, {
-          name: 'Alice Updated',
+          type: 'update',
+          typename: 'User',
+          data: { id: '1', name: 'Alice Updated' },
         });
 
-        // Wait for notifier to propagate and reactive function to re-run
         await sleep(20);
 
-        // User should be updated - need to access again to trigger re-computation
         expect(userName()).toBe('Alice Updated');
-        expect(user.email).toBe('alice@example.com'); // Other fields preserved
+        expect(user.email).toBe('alice@example.com');
       });
 
-      // Wait for cleanup
       await sleep(50);
-      // Stream should unsubscribe when reactive context ends
       expect(unsubscribeCallCount).toBeGreaterThan(0);
     });
 
-    it('should only activate stream when entity signal is accessed', async () => {
+    it('should only activate subscribe when entity signal is accessed', async () => {
       let streamActivated = false;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamActivated = true;
-            return () => {
-              streamActivated = false;
-            };
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
+        __subscribe(onEvent: any) {
+          streamActivated = true;
+          return () => {
+            streamActivated = false;
+          };
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -136,35 +127,30 @@ describe('Entity Streaming', () => {
       await testWithClient(client, async () => {
         const { user } = await fetchQuery(GetUser, { id: '1' });
 
-        // Access user outside reactive context - stream should not activate
         expect(streamActivated).toBe(false);
 
         expect(user.name).toBe('Alice');
 
-        // Access in reactive context - stream should activate
-        // Wait for relay to activate
         expect(streamActivated).toBe(true);
       });
     });
 
-    it('should subcribe and unsubscribe dynamically based on usage', async () => {
+    it('should subscribe and unsubscribe dynamically based on usage', async () => {
       let streamActivated = false;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamActivated = true;
-            return () => {
-              streamActivated = false;
-            };
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
+        __subscribe(onEvent: any) {
+          streamActivated = true;
+          return () => {
+            streamActivated = false;
+          };
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -187,7 +173,6 @@ describe('Entity Streaming', () => {
       await testWithClient(client, async () => {
         await maybeGetUser();
 
-        // Access user outside reactive context - stream should not activate
         expect(streamActivated).toBe(false);
 
         await new Promise(resolve => setTimeout(resolve, 0)).then(() => {
@@ -203,7 +188,6 @@ describe('Entity Streaming', () => {
         });
 
         await maybeGetUser();
-        // Wait an extra tick for the stream to unsubscribe
         await sleep();
 
         expect(streamActivated).toBe(false);
@@ -214,19 +198,17 @@ describe('Entity Streaming', () => {
       let unsubscribeCallCount = 0;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            return () => {
-              unsubscribeCallCount++;
-            };
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
+        __subscribe(onEvent: any) {
+          return () => {
+            unsubscribeCallCount++;
+          };
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -246,39 +228,32 @@ describe('Entity Streaming', () => {
 
         const user = relay.value!.user;
 
-        // Create reactive function that watches user
         const userName = reactive(() => user.name);
         expect(userName()).toBe('Alice');
-
-        // Reactive function goes out of scope - stream should unsubscribe
-        // This happens when testWithClient ends
       });
 
-      // Give time for cleanup
       await sleep(50);
       expect(unsubscribeCallCount).toBeGreaterThan(0);
     });
   });
 
-  describe('Partial Updates', () => {
-    it('should merge stream updates correctly with existing entity data', async () => {
-      let streamCallback: ((update: any) => void) | undefined;
+  describe('Updates via MutationEvent', () => {
+    it('should update entity when subscription sends update event', async () => {
+      let streamCallback: ((event: MutationEvent) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
         email = t.string;
         age = t.number;
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -306,41 +281,37 @@ describe('Entity Streaming', () => {
         expect(userName()).toBe('Alice');
         expect(userAge()).toBe(30);
 
-        // Wait for stream to activate
         await sleep(20);
         expect(streamCallback).toBeDefined();
 
-        // Send partial update
         await sendStreamUpdate(streamCallback, {
-          name: 'Alice Updated',
+          type: 'update',
+          typename: 'User',
+          data: { id: '1', name: 'Alice Updated' },
         });
 
-        // Wait for notifier to propagate
         await sleep(20);
 
-        // Only name should change - access again to trigger re-computation
         expect(userName()).toBe('Alice Updated');
         expect(userAge()).toBe(30);
         expect(user.email).toBe('alice@example.com');
       });
     });
 
-    it('should handle multiple rapid updates correctly', async () => {
-      let streamCallback: ((update: any) => void) | undefined;
+    it('should handle multiple rapid update events correctly', async () => {
+      let streamCallback: ((event: MutationEvent) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         count = t.number;
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -363,43 +334,37 @@ describe('Entity Streaming', () => {
         const userCount = reactive(() => user.count);
         expect(userCount()).toBe(0);
 
-        // Wait for stream to activate
         await sleep(20);
         expect(streamCallback).toBeDefined();
 
-        // Send multiple rapid updates
-        await sendStreamUpdate(streamCallback, { count: 1 });
-        await sendStreamUpdate(streamCallback, { count: 2 });
-        await sendStreamUpdate(streamCallback, { count: 3 });
+        await sendStreamUpdate(streamCallback, { type: 'update', typename: 'User', data: { id: '1', count: 1 } });
+        await sendStreamUpdate(streamCallback, { type: 'update', typename: 'User', data: { id: '1', count: 2 } });
+        await sendStreamUpdate(streamCallback, { type: 'update', typename: 'User', data: { id: '1', count: 3 } });
 
-        // Wait for notifier to propagate
         await sleep(20);
 
-        // Should have final value - access again to trigger re-computation
         expect(userCount()).toBe(3);
       });
     });
   });
 
   describe('Multiple Entities', () => {
-    it('should have separate streams for different entity instances', async () => {
-      let streamCallbacks: Map<string, (update: any) => void> = new Map();
+    it('should have separate subscriptions for different entity instances', async () => {
+      let streamCallbacks: Map<string, (event: MutationEvent) => void> = new Map();
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallbacks.set(String(id), onUpdate);
-            return () => {
-              streamCallbacks.delete(String(id));
-            };
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
+        __subscribe(onEvent: any) {
+          streamCallbacks.set(String(this.id), onEvent);
+          return () => {
+            streamCallbacks.delete(String(this.id));
+          };
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -435,30 +400,31 @@ describe('Entity Streaming', () => {
         expect(name1()).toBe('User 1');
         expect(name2()).toBe('User 2');
 
-        // Wait for streams to activate
         await sleep(20);
 
-        // Update user1
-        await sendStreamUpdate(streamCallbacks.get('1'), { name: 'Updated User 1' });
+        await sendStreamUpdate(streamCallbacks.get('1'), {
+          type: 'update',
+          typename: 'User',
+          data: { id: '1', name: 'Updated User 1' },
+        });
 
-        // Wait for notifier to propagate
         await sleep(20);
 
         expect(name1()).toBe('Updated User 1');
-        expect(name2()).toBe('User 2'); // user2 should not be affected
+        expect(name2()).toBe('User 2');
       });
     });
   });
 
   describe('No Entity Config', () => {
-    it('should work normally without entity config', async () => {
+    it('should work normally without subscribe', async () => {
       class User extends Entity {
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -479,7 +445,6 @@ describe('Entity Streaming', () => {
         const user = relay.value!.user;
         expect(user.name).toBe('Alice');
 
-        // Should work normally without stream
         const userName = reactive(() => user.name);
         expect(userName()).toBe('Alice');
       });
@@ -487,22 +452,20 @@ describe('Entity Streaming', () => {
   });
 
   describe('Entity ID Extraction', () => {
-    it('should pass correct entity ID value to stream function', async () => {
+    it('should pass correct entity ID value to subscribe function', async () => {
       let receivedId: string | number | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            receivedId = id;
-            return () => {};
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
+        __subscribe(onEvent: any) {
+          receivedId = this.id as string | number;
+          return () => {};
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -525,7 +488,6 @@ describe('Entity Streaming', () => {
         const userName = reactive(() => user.name);
         expect(userName()).toBe('Alice');
 
-        // Wait for stream to activate
         await sleep(20);
         expect(receivedId).toBe('123');
       });
@@ -537,18 +499,16 @@ describe('Entity Streaming', () => {
       let receivedContext: any;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            receivedContext = context;
-            return () => {};
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
+        __subscribe(onEvent: any) {
+          receivedContext = (this as any).__context;
+          return () => {};
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -571,7 +531,6 @@ describe('Entity Streaming', () => {
         const userName = reactive(() => user.name);
         expect(userName()).toBe('Alice');
 
-        // Wait for stream to activate
         await sleep(20);
         expect(receivedContext).toBeDefined();
         expect(typeof receivedContext.fetch).toBe('function');
@@ -580,22 +539,20 @@ describe('Entity Streaming', () => {
   });
 
   describe('Cache Invalidation', () => {
-    it('should clear entity cache on stream updates', async () => {
-      let streamCallback: ((update: any) => void) | undefined;
+    it('should clear entity cache on subscription updates', async () => {
+      let streamCallback: ((event: MutationEvent) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -615,47 +572,42 @@ describe('Entity Streaming', () => {
 
         const user = relay.value!.user;
 
-        // Access name to populate cache
         expect(user.name).toBe('Alice');
 
-        // Wait for stream to activate
         await sleep(20);
         expect(streamCallback).toBeDefined();
 
-        // Update via stream
         await sendStreamUpdate(streamCallback, {
-          name: 'Alice Updated',
+          type: 'update',
+          typename: 'User',
+          data: { id: '1', name: 'Alice Updated' },
         });
 
-        // Wait for notifier to propagate
         await sleep(20);
 
-        // Cache should be cleared and new value should be available
         expect(user.name).toBe('Alice Updated');
       });
     });
   });
 
   describe('Nested Entity Access', () => {
-    it('should activate stream when accessing nested properties', async () => {
+    it('should activate subscribe when accessing nested properties', async () => {
       let streamActivated = false;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamActivated = true;
-            return () => {};
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         profile = t.object({
           name: t.string,
           bio: t.string,
         });
+        __subscribe(onEvent: any) {
+          streamActivated = true;
+          return () => {};
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -678,31 +630,27 @@ describe('Entity Streaming', () => {
 
         const user = relay.value!.user;
 
-        // Access nested property in reactive context
         const profileName = reactive(() => (user.profile as any).name);
         expect(profileName()).toBe('Alice');
 
-        // Wait for stream to activate
         await sleep(20);
         expect(streamActivated).toBe(true);
       });
     });
   });
 
-  describe('Stream Errors', () => {
-    it('should handle errors in stream function gracefully', async () => {
+  describe('Subscribe Errors', () => {
+    it('should handle errors in subscribe function gracefully', async () => {
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            throw new Error('Stream error');
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
+        __subscribe(onEvent: any): (() => void) | undefined {
+          throw new Error('Stream error');
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -722,7 +670,6 @@ describe('Entity Streaming', () => {
 
         const user = relay.value!.user;
 
-        // Accessing in reactive context should throw error
         expect(() => {
           const userName = reactive(() => user.name);
           userName();
@@ -733,15 +680,9 @@ describe('Entity Streaming', () => {
 
   describe('Entity Methods', () => {
     it('should work correctly with entity methods', async () => {
-      let streamCallback: ((update: any) => void) | undefined;
+      let streamCallback: ((event: MutationEvent) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
         __typename = t.typename('User');
         id = t.id;
         firstName = t.string;
@@ -749,9 +690,13 @@ describe('Entity Streaming', () => {
         fullName() {
           return `${this.firstName} ${this.lastName}`;
         }
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -775,19 +720,17 @@ describe('Entity Streaming', () => {
         const fullName = reactive(() => user.fullName());
         expect(fullName()).toBe('Alice Smith');
 
-        // Wait for stream to activate
         await sleep(20);
         expect(streamCallback).toBeDefined();
 
-        // Update via stream
         await sendStreamUpdate(streamCallback, {
-          firstName: 'Bob',
+          type: 'update',
+          typename: 'User',
+          data: { id: '1', firstName: 'Bob' },
         });
 
-        // Wait for notifier to propagate
         await sleep(20);
 
-        // Method should reflect updated data - access again to trigger re-computation
         expect(fullName()).toBe('Bob Smith');
       });
     });

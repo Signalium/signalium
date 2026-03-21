@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { JsonQuery, fetchQuery } from '../query.js';
+import { RESTQuery, fetchQuery } from '../query.js';
 import { watcher } from 'signalium';
 import { createMockFetch, testWithClient } from './utils.js';
 
@@ -36,7 +36,7 @@ describe('Query Behavior', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           path = '/item';
           result = { data: t.string };
         }
@@ -54,7 +54,7 @@ describe('Query Behavior', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           path = '/item';
           result = { data: t.string };
         }
@@ -66,7 +66,7 @@ describe('Query Behavior', () => {
     });
 
     it('should require QueryClient context', () => {
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/item';
         result = { data: t.string };
       }
@@ -81,7 +81,7 @@ describe('Query Behavior', () => {
       mockFetch.get('/static/path', { data: 'test' });
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           path = '/static/path';
           result = { data: t.string };
         }
@@ -97,7 +97,7 @@ describe('Query Behavior', () => {
       mockFetch.get('/org/[orgId]/team/[teamId]/user/[userId]', { data: 'test' });
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           params = { orgId: t.id, teamId: t.id, userId: t.id };
           path = `/org/${this.params.orgId}/team/${this.params.teamId}/user/${this.params.userId}`;
           result = { data: t.string };
@@ -116,7 +116,7 @@ describe('Query Behavior', () => {
       mockFetch.get('/counter', { count: 1 });
 
       await testWithClient(client, async () => {
-        class GetCounter extends JsonQuery {
+        class GetCounter extends RESTQuery {
           path = '/counter';
           result = { count: t.number };
         }
@@ -144,13 +144,13 @@ describe('Query Behavior', () => {
       mockFetch.post('/items', { success: true });
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           path = '/items';
           method = 'GET' as const;
           result = { success: t.boolean };
         }
 
-        class PostItem extends JsonQuery {
+        class PostItem extends RESTQuery {
           path = '/items';
           method = 'POST' as const;
           result = { success: t.boolean };
@@ -173,7 +173,7 @@ describe('Query Behavior', () => {
       mockFetch.get('/counter', { count: 1 }, { delay: 25 });
 
       await testWithClient(client, async () => {
-        class GetCounter extends JsonQuery {
+        class GetCounter extends RESTQuery {
           path = '/counter';
           result = { count: t.number };
         }
@@ -206,7 +206,7 @@ describe('Query Behavior', () => {
       }
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           params = { id: t.id };
           path = `/items/${this.params.id}`;
           result = { url: t.string };
@@ -234,7 +234,7 @@ describe('Query Behavior', () => {
       mockFetch.get('/counter', { count: 1 });
 
       await testWithClient(client, async () => {
-        class GetCounter extends JsonQuery {
+        class GetCounter extends RESTQuery {
           path = '/counter';
           result = { count: t.number };
         }

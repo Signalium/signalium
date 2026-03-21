@@ -3,7 +3,7 @@ import { AsyncQueryStore, AsyncPersistentStore, StoreMessage } from '../stores/a
 import { valueKeyFor, refCountKeyFor, refIdsKeyFor, updatedAtKeyFor, queueKeyFor } from '../stores/shared.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { JsonQuery, queryKeyForClass } from '../query.js';
+import { RESTQuery, queryKeyForClass } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, sleep } from './utils.js';
 
@@ -147,7 +147,7 @@ describe('AsyncQueryStore', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = t.entity(User);

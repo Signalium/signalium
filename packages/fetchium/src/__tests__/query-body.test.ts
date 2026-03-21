@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { JsonQuery, fetchQuery } from '../query.js';
+import { RESTQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 
 /**
@@ -36,7 +36,7 @@ describe('Query Body Support', () => {
         ],
       });
 
-      class GetPrices extends JsonQuery {
+      class GetPrices extends RESTQuery {
         params = { tokens: t.array(t.string) };
         path = '/prices';
         method = 'POST' as const;
@@ -72,7 +72,7 @@ describe('Query Body Support', () => {
     it('should automatically set Content-Type header to application/json', async () => {
       mockFetch.post('/data', { received: true });
 
-      class PostData extends JsonQuery {
+      class PostData extends RESTQuery {
         params = { value: t.string };
         path = '/data';
         method = 'POST' as const;
@@ -95,7 +95,7 @@ describe('Query Body Support', () => {
     it('should properly JSON stringify body with nested objects', async () => {
       mockFetch.post('/complex', { id: 1 });
 
-      class PostComplex extends JsonQuery {
+      class PostComplex extends RESTQuery {
         params = {
           user: t.object({
             name: t.string,
@@ -127,7 +127,7 @@ describe('Query Body Support', () => {
     it('should allow custom Content-Type header in requestOptions to override default', async () => {
       mockFetch.post('/custom', { ok: true });
 
-      class PostCustom extends JsonQuery {
+      class PostCustom extends RESTQuery {
         params = { data: t.string };
         path = '/custom';
         method = 'POST' as const;
@@ -158,7 +158,7 @@ describe('Query Body Support', () => {
     it('should correctly route path params to URL and body fields to request body', async () => {
       mockFetch.post('/users/[id]/preferences', { success: true });
 
-      class UpdateUserPreferences extends JsonQuery {
+      class UpdateUserPreferences extends RESTQuery {
         params = { id: t.id, theme: t.string, language: t.string };
         path = `/users/${this.params.id}/preferences`;
         method = 'POST' as const;
@@ -194,7 +194,7 @@ describe('Query Body Support', () => {
     it('should handle multiple path params with body', async () => {
       mockFetch.post('/orgs/[orgId]/teams/[teamId]/settings', { updated: true });
 
-      class UpdateTeamSettings extends JsonQuery {
+      class UpdateTeamSettings extends RESTQuery {
         params = { orgId: t.id, teamId: t.id, name: t.string, visibility: t.string };
         path = `/orgs/${this.params.orgId}/teams/${this.params.teamId}/settings`;
         method = 'POST' as const;
@@ -233,7 +233,7 @@ describe('Query Body Support', () => {
         total: 1,
       });
 
-      class SearchItems extends JsonQuery {
+      class SearchItems extends RESTQuery {
         params = {
           page: t.number,
           limit: t.number,
@@ -294,7 +294,7 @@ describe('Query Body Support', () => {
         title: 'New Post',
       });
 
-      class CreateUserPost extends JsonQuery {
+      class CreateUserPost extends RESTQuery {
         params = {
           userId: t.id,
           draft: t.boolean,
@@ -359,7 +359,7 @@ describe('Query Body Support', () => {
         prices: [{ token: 'ETH', price: 2000 }],
       });
 
-      class GetPrices extends JsonQuery {
+      class GetPrices extends RESTQuery {
         params = { tokens: t.array(t.string) };
         path = '/prices';
         method = 'POST' as const;
@@ -394,7 +394,7 @@ describe('Query Body Support', () => {
       mockFetch.post('/prices', { prices: [{ token: 'ETH', price: 2000 }] });
       mockFetch.post('/prices', { prices: [{ token: 'BTC', price: 50000 }] });
 
-      class GetPrices extends JsonQuery {
+      class GetPrices extends RESTQuery {
         params = { tokens: t.array(t.string) };
         path = '/prices';
         method = 'POST' as const;
@@ -430,7 +430,7 @@ describe('Query Body Support', () => {
       mockFetch.post('/prices', { prices: [{ token: 'ETH', price: 2000 }] });
       mockFetch.post('/prices', { prices: [{ token: 'ETH', price: 2100 }] });
 
-      class GetPrices extends JsonQuery {
+      class GetPrices extends RESTQuery {
         params = { tokens: t.array(t.string) };
         path = '/prices';
         method = 'POST' as const;
@@ -465,7 +465,7 @@ describe('Query Body Support', () => {
     it('should deduplicate identical concurrent body queries', async () => {
       mockFetch.post('/prices', { prices: [{ token: 'ETH', price: 2000 }] });
 
-      class GetPrices extends JsonQuery {
+      class GetPrices extends RESTQuery {
         params = { tokens: t.array(t.string) };
         path = '/prices';
         method = 'POST' as const;
@@ -502,7 +502,7 @@ describe('Query Body Support', () => {
     it('should work with empty body object', async () => {
       mockFetch.post('/trigger', { triggered: true });
 
-      class TriggerAction extends JsonQuery {
+      class TriggerAction extends RESTQuery {
         path = '/trigger';
         method = 'POST' as const;
         body = {};
@@ -526,7 +526,7 @@ describe('Query Body Support', () => {
     it('should handle queries without body (backward compatibility)', async () => {
       mockFetch.get('/users', { users: [] });
 
-      class ListUsers extends JsonQuery {
+      class ListUsers extends RESTQuery {
         path = '/users';
         result = {
           users: t.array(t.object({ id: t.number, name: t.string })),
@@ -549,7 +549,7 @@ describe('Query Body Support', () => {
     it('should handle body with array as root type', async () => {
       mockFetch.post('/bulk-create', { created: 3 });
 
-      class BulkCreate extends JsonQuery {
+      class BulkCreate extends RESTQuery {
         params = {
           items: t.array(
             t.object({
@@ -583,7 +583,7 @@ describe('Query Body Support', () => {
       });
     });
 
-    // Note: JsonQuery API prevents param conflicts by design - params are defined once
+    // Note: RESTQuery API prevents param conflicts by design - params are defined once
     // and body/searchParams use refs (this.params.x). No separate conflict validation needed.
   });
 });

@@ -1,23 +1,7 @@
-import { typeError } from './errors.js';
-import { CaseInsensitiveSet, getFormat, ValidatorDef } from './typeDefs.js';
-import {
-  ARRAY_KEY,
-  ComplexTypeDef,
-  EntityDef,
-  InternalObjectFieldTypeDef,
-  InternalTypeDef,
-  Mask,
-  ObjectDef,
-  RECORD_KEY,
-  UnionDef,
-  TypeDef,
-  RecordDef,
-} from './types.js';
-import { typeMaskOf } from './utils.js';
+import { createDefinitionProxy, DEFINITION_TARGET, CANCEL_PROXY } from './fieldRef.js';
 import { PROXY_ID } from './proxyId.js';
 
 export type WarnFn = (message: string, context?: Record<string, unknown>) => void;
-const noopWarn: WarnFn = () => {};
 
 const entries = Object.entries;
 const isArray = Array.isArray;
@@ -27,279 +11,36 @@ const isArray = Array.isArray;
  * Also serves as the prototype for entity proxies, so `proxy instanceof Entity` works.
  */
 export class Entity {
-  static stream?: {
-    subscribe: (
-      context: import('./QueryClient.js').QueryContext,
-      id: string | number,
-      onUpdate: (update: any) => void,
-    ) => (() => void) | undefined;
-  };
   static cache?: {
     gcTime?: number; // minutes - in-memory eviction time. Use 0 for next-tick, Infinity to never GC.
   };
-}
 
-function parseUnionValue(
-  valueType: number,
-  value: Record<string, unknown> | unknown[],
-  unionDef: UnionDef,
-  path: string,
-  warn: WarnFn = noopWarn,
-): unknown {
-  if (valueType === Mask.ARRAY) {
-    const shape = unionDef.shape![ARRAY_KEY];
+  __subscribe?(onEvent: (event: import('./types.js').MutationEvent) => void): (() => void) | undefined;
 
-    if (shape === undefined || typeof shape === 'number') {
-      return value;
-    }
-
-    return parseArrayValue(value as unknown[], shape, path, warn);
-  } else {
-    // Use the cached typename field from the union definition
-    const typenameField = unionDef.typenameField;
-    const typename = typenameField ? (value as Record<string, unknown>)[typenameField] : undefined;
-
-    if (typename === undefined || typeof typename !== 'string') {
-      const recordShape = unionDef.shape![RECORD_KEY];
-
-      if (recordShape === undefined || typeof recordShape === 'number') {
-        // Union of objects/entities requires typename for discrimination
-        throw new Error(
-          `Typename field '${typenameField}' is required for union discrimination but was not found in the data`,
-        );
-      }
-
-      return parseRecordValue(value as Record<string, unknown>, recordShape as ComplexTypeDef, path, warn);
-    }
-
-    const matchingDef = unionDef.shape![typename];
-
-    if (matchingDef === undefined || typeof matchingDef === 'number') {
-      throw new Error(`Unknown typename '${typename}' in union`);
-    }
-
-    return parseObjectValue(value as Record<string, unknown>, matchingDef as ObjectDef | EntityDef, path, warn);
+  constructor() {
+    return createDefinitionProxy(this);
   }
 }
 
-export function parseArrayValue(array: unknown[], arrayShape: InternalTypeDef, path: string, warn: WarnFn = noopWarn) {
-  const result: unknown[] = [];
+const ObjectProto = Object.prototype;
 
-  for (let i = 0; i < array.length; i++) {
-    try {
-      result.push(parseValue(array[i], arrayShape as unknown as TypeDef, `${path}[${i}]`, false, warn));
-    } catch (e) {
-      warn('Failed to parse array item, filtering out', {
-        index: i,
-        value: array[i],
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
-
-  return result;
-}
-
-export function parseRecordValue(
-  record: Record<string, unknown>,
-  recordShape: InternalObjectFieldTypeDef,
-  path: string,
-  warn: WarnFn = noopWarn,
-) {
-  for (const [key, value] of entries(record)) {
-    record[key] = parseValue(value, recordShape as unknown as TypeDef, `${path}["${key}"]`, false, warn);
-  }
-
-  return record;
-}
-
-export function parseObjectValue(
-  object: Record<string, unknown>,
-  objectShape: ObjectDef | EntityDef,
-  path: string,
-  warn: WarnFn = noopWarn,
-) {
-  if (PROXY_ID.has(object)) {
-    // Is an entity proxy, so return it directly
-    return object;
-  }
-
-  const shape = objectShape.shape;
-  const subEntityPaths = objectShape.subEntityPaths;
-
-  for (const [key, propShape] of entries(shape)) {
-    // Skip sub-entity paths — already resolved by parseEntities
-    if (subEntityPaths !== undefined) {
-      if (typeof subEntityPaths === 'string' ? key === subEntityPaths : subEntityPaths.includes(key)) {
-        continue;
-      }
-    }
-
-    object[key] = parseValue(object[key], propShape as unknown as TypeDef, `${path}.${key}`, false, warn);
-  }
-
-  return object;
-}
-
-function assertValidTypeDef(def: unknown, path: string): void {
-  if (typeof def !== 'number' && typeof def !== 'string' && !(def instanceof Set) && !(def instanceof ValidatorDef)) {
-    throw new Error(`Invalid type definition at ${path}: expected a valid TypeDef, got ${typeof def}`);
-  }
-}
-
-export function parseValue(
-  value: unknown,
-  propDef: TypeDef,
-  path: string,
-  skipFallbacks = false,
-  warn: WarnFn = noopWarn,
-): unknown {
-  if (IS_DEV) {
-    assertValidTypeDef(propDef, path);
-  }
-
-  const def = propDef as unknown as InternalObjectFieldTypeDef;
-
-  // Handle case-insensitive enums
-  if (def instanceof CaseInsensitiveSet) {
-    const canonical = def.get(value);
-    if (canonical === undefined) {
-      throw typeError(path, def as any, value);
-    }
-    return canonical;
-  }
-
-  // Handle Set-based constants/enums
-  if (def instanceof Set) {
-    if (!def.has(value as string | boolean | number)) {
-      throw typeError(path, def as any, value);
-    }
-    return value;
-  }
-
-  switch (typeof def) {
-    case 'string':
-      if (value === undefined || value === null) {
-        return def;
-      }
-      if (value !== def) {
-        throw typeError(path, def, value);
-      }
-
-      return value;
-
-    case 'number': {
-      let valueType = typeMaskOf(value);
-
-      if ((def & valueType) === 0) {
-        if (!skipFallbacks && (def & Mask.UNDEFINED) !== 0) {
-          warn('Invalid value for optional type, defaulting to undefined', { value, path });
-          return undefined;
-        }
-        throw typeError(path, def, value);
-      }
-
-      if ((def & (Mask.HAS_STRING_FORMAT | Mask.HAS_NUMBER_FORMAT)) !== 0) {
-        try {
-          return getFormat(def)(value);
-        } catch (e) {
-          if (!skipFallbacks && (def & Mask.UNDEFINED) !== 0) {
-            warn('Invalid formatted value for optional type, defaulting to undefined', {
-              value,
-              path,
-              error: e instanceof Error ? e.message : String(e),
-            });
-            return undefined;
-          }
-          throw e;
-        }
-      }
-
-      return value;
-    }
-
-    default: {
-      let valueType = typeMaskOf(value);
-      const propMask = def.mask;
-
-      if ((propMask & Mask.PARSE_RESULT) !== 0) {
-        try {
-          const innerResult = parseValue(value, def.shape as unknown as TypeDef, path, true, warn);
-          return { success: true as const, value: innerResult };
-        } catch (e) {
-          return { success: false as const, error: e instanceof Error ? e : new Error(String(e)) };
-        }
-      }
-
-      if ((propMask & valueType) === 0 && !def.values?.has(value as string | boolean | number)) {
-        if (!skipFallbacks && (propMask & Mask.UNDEFINED) !== 0) {
-          warn('Invalid value for optional type, defaulting to undefined', { value, path });
-          return undefined;
-        }
-        throw typeError(path, propMask, value);
-      }
-
-      if (valueType < Mask.OBJECT) {
-        if ((propMask & (Mask.HAS_STRING_FORMAT | Mask.HAS_NUMBER_FORMAT)) !== 0) {
-          try {
-            return getFormat(propMask)(value);
-          } catch (e) {
-            if (!skipFallbacks && (propMask & Mask.UNDEFINED) !== 0) {
-              warn('Invalid formatted value for optional type, defaulting to undefined', {
-                value,
-                path,
-                error: e instanceof Error ? e.message : String(e),
-              });
-              return undefined;
-            }
-            throw e;
-          }
-        }
-
-        return value;
-      }
-
-      if ((propMask & Mask.UNION) !== 0) {
-        return parseUnionValue(valueType, value as Record<string, unknown> | unknown[], def as UnionDef, path, warn);
-      }
-
-      if (valueType === Mask.ARRAY) {
-        return parseArrayValue(value as unknown[], def.shape as ComplexTypeDef, path, warn);
-      }
-
-      if ((propMask & Mask.RECORD) !== 0) {
-        return parseRecordValue(value as Record<string, unknown>, (def as RecordDef).shape, path, warn);
-      }
-
-      return parseObjectValue(value as Record<string, unknown>, def as ObjectDef | EntityDef, path, warn);
-    }
-  }
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && Object.getPrototypeOf(v) === ObjectProto;
 }
 
 /**
  * Deep merge two objects, with the update object taking precedence.
- * Arrays are replaced, not merged.
- * Handles nested objects recursively.
+ * Arrays and non-plain objects (Date, etc.) are replaced, not merged.
+ * Only plain objects are recursively merged.
  */
 export function mergeValues<T extends Record<string, unknown>>(
   target: Record<string, unknown>,
   update: Record<string, unknown>,
 ): T {
-  // Iterate over update properties
   for (const [key, value] of entries(update)) {
     const targetValue = target[key];
-    // Only merge if both value and targetValue are plain objects (not arrays or proxies)
-    if (
-      typeof value === 'object' &&
-      value !== null &&
-      !isArray(value) &&
-      !PROXY_ID.has(value) &&
-      typeof targetValue === 'object' &&
-      targetValue !== null &&
-      !isArray(targetValue) &&
-      !PROXY_ID.has(targetValue)
-    ) {
-      mergeValues(targetValue as Record<string, unknown>, value as Record<string, unknown>);
+    if (isPlainObject(value) && !PROXY_ID.has(value) && isPlainObject(targetValue) && !PROXY_ID.has(targetValue)) {
+      mergeValues(targetValue, value);
     } else {
       target[key] = value;
     }

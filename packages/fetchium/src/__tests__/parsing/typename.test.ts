@@ -1,15 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
-import { parseEntities } from '../../parseEntities.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
 import {
+  parseEntities,
   setupParsingTests,
   testWithClient,
   getEntityKey,
   getDocument,
   getEntityRefs,
-  getShapeKey,
 } from './test-utils.js';
 
 /**
@@ -45,10 +44,10 @@ describe('t.typename', () => {
           user: { __typename: 'User', id: 1, name: 'Alice' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1, getShapeKey(t.entity(User)));
+        const key = getEntityKey('User', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -71,10 +70,10 @@ describe('t.typename', () => {
           user: { __typename: 'User', id: 1, name: 'Alice' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1, getShapeKey(t.entity(User)));
+        const key = getEntityKey('User', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -105,10 +104,10 @@ describe('t.typename', () => {
           pet: { __typename: 'Dog', id: 1, breed: 'Labrador' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Dog', 1, getShapeKey(t.entity(Dog)));
+        const key = getEntityKey('Dog', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -138,10 +137,10 @@ describe('t.typename', () => {
           pet: { __typename: 'Cat', id: 2, color: 'Orange' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Cat', 2, getShapeKey(t.entity(Cat)));
+        const key = getEntityKey('Cat', 2);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -171,7 +170,7 @@ describe('t.typename', () => {
           pet: { __typename: 'Bird', id: 3, species: 'Parrot' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
 
         expect(() => parseEntities(result, QueryResult, client, entityRefs)).toThrow(/Unknown typename 'Bird'/);
       });
@@ -204,18 +203,18 @@ describe('t.typename', () => {
           ],
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
         expect(entityRefs.size).toBe(3);
 
-        const dog1 = await getDocument(kv, getEntityKey('Dog', 1, getShapeKey(t.entity(Dog))));
+        const dog1 = await getDocument(kv, getEntityKey('Dog', 1));
         expect((dog1 as any).__typename).toBe('Dog');
 
-        const cat = await getDocument(kv, getEntityKey('Cat', 2, getShapeKey(t.entity(Cat))));
+        const cat = await getDocument(kv, getEntityKey('Cat', 2));
         expect((cat as any).__typename).toBe('Cat');
 
-        const dog3 = await getDocument(kv, getEntityKey('Dog', 3, getShapeKey(t.entity(Dog))));
+        const dog3 = await getDocument(kv, getEntityKey('Dog', 3));
         expect((dog3 as any).__typename).toBe('Dog');
       });
     });
@@ -246,15 +245,15 @@ describe('t.typename', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
         expect(entityRefs.size).toBe(2);
 
-        const dog = await getDocument(kv, getEntityKey('Dog', 1, getShapeKey(t.entity(Dog))));
+        const dog = await getDocument(kv, getEntityKey('Dog', 1));
         expect((dog as any).__typename).toBe('Dog');
 
-        const cat = await getDocument(kv, getEntityKey('Cat', 2, getShapeKey(t.entity(Cat))));
+        const cat = await getDocument(kv, getEntityKey('Cat', 2));
         expect((cat as any).__typename).toBe('Cat');
       });
     });
@@ -287,11 +286,11 @@ describe('t.typename', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const userKey = getEntityKey('User', 1, getShapeKey(t.entity(User)));
-        const addressKey = getEntityKey('Address', 100, getShapeKey(t.entity(Address)));
+        const userKey = getEntityKey('User', 1);
+        const addressKey = getEntityKey('Address', 100);
 
         const userRefs = await getEntityRefs(kv, userKey);
         expect(userRefs).toBeDefined();
@@ -317,7 +316,7 @@ describe('t.typename', () => {
             name = t.string;
           }
 
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             path = '/user';
             result = { user: t.entity(User) };
           }
@@ -353,7 +352,7 @@ describe('t.typename', () => {
 
           const PetUnion = t.union(t.entity(Dog), t.entity(Cat));
 
-          class GetPet extends JsonQuery {
+          class GetPet extends RESTQuery {
             path = '/pet';
             result = { pet: PetUnion };
           }
@@ -390,7 +389,7 @@ describe('t.typename', () => {
 
           const PetUnion = t.union(t.entity(Dog), t.entity(Cat));
 
-          class GetPets extends JsonQuery {
+          class GetPets extends RESTQuery {
             path = '/pets';
             result = { pets: t.array(PetUnion) };
           }
@@ -422,7 +421,7 @@ describe('t.typename', () => {
             name = t.string;
           }
 
-          class GetItems extends JsonQuery {
+          class GetItems extends RESTQuery {
             path = '/items';
             result = { items: t.array(t.entity(Item)) };
           }
@@ -454,7 +453,7 @@ describe('t.typename', () => {
             value = t.string;
           }
 
-          class GetConfigs extends JsonQuery {
+          class GetConfigs extends RESTQuery {
             path = '/configs';
             result = { configs: t.record(t.entity(Config)) };
           }

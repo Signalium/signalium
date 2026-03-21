@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { NoOpRefetchManager } from '../RefetchManager.js';
 import { NoOpGcManager } from '../GcManager.js';
 import { createMockFetch } from './utils.js';
 
@@ -22,15 +21,6 @@ describe('SSR Guard', () => {
     client?.destroy();
   });
 
-  it('should use NoOpRefetchManager on the server by default', () => {
-    const store = new SyncQueryStore(new MemoryPersistentStore());
-    const mockFetch = createMockFetch();
-    client = new QueryClient(store, { fetch: mockFetch as any });
-
-    expect(client.isServer).toBe(true);
-    expect(client.refetchManager).toBeInstanceOf(NoOpRefetchManager);
-  });
-
   it('should use NoOpGcManager on the server by default', () => {
     const store = new SyncQueryStore(new MemoryPersistentStore());
     const mockFetch = createMockFetch();
@@ -40,19 +30,17 @@ describe('SSR Guard', () => {
     expect(client.gcManager).toBeInstanceOf(NoOpGcManager);
   });
 
-  it('should allow overriding managers even on the server', () => {
+  it('should allow overriding gc manager even on the server', () => {
     const store = new SyncQueryStore(new MemoryPersistentStore());
     const mockFetch = createMockFetch();
-    const customRefetch = new NoOpRefetchManager();
     const customGc = new NoOpGcManager();
 
-    client = new QueryClient(store, { fetch: mockFetch as any }, undefined, customGc, customRefetch);
+    client = new QueryClient(store, { fetch: mockFetch as any }, undefined, customGc);
 
-    expect(client.refetchManager).toBe(customRefetch);
     expect(client.gcManager).toBe(customGc);
   });
 
-  it('should call destroy() safely on no-op managers', () => {
+  it('should call destroy() safely without subscription manager', () => {
     const store = new SyncQueryStore(new MemoryPersistentStore());
     const mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any });
