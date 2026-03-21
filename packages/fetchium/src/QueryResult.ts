@@ -1,5 +1,5 @@
 import { relay, type RelayState, DiscriminatedReactivePromise, notifier, type Notifier } from 'signalium';
-import { type InternalTypeDef, EntityDef, ComplexTypeDef, Mask, NetworkMode, type QueryResult } from './types.js';
+import { type InternalTypeDef, ComplexTypeDef, Mask, NetworkMode, type QueryResult } from './types.js';
 import { ValidatorDef } from './typeDefs.js';
 import {
   type QueryClient,
@@ -9,14 +9,7 @@ import {
   queryKeyFor,
 } from './QueryClient.js';
 import { CachedQuery } from './QueryClient.js';
-import {
-  Query,
-  QueryDefinition,
-  type StreamSubscribeFn,
-  type ResolvedStreamOptions,
-  type ResolvedRetryConfig,
-  resolveRetryConfig,
-} from './query.js';
+import { Query, QueryDefinition, type ResolvedRetryConfig, resolveRetryConfig } from './query.js';
 
 // ======================================================
 // QueryInstance
@@ -65,7 +58,6 @@ export class QueryInstance<T extends Query> {
 
   /** Resolved per-instance options (depend on actual params). */
   config: QueryConfigOptions | undefined = undefined;
-  stream: ResolvedStreamOptions | undefined = undefined;
   retryConfig: ResolvedRetryConfig = resolveRetryConfig(undefined);
 
   /** The raw fetch Response from the most recent successful fetch. */
@@ -156,6 +148,7 @@ export class QueryInstance<T extends Query> {
             this.runDebounced();
           }
         } else if (paramsDidChange) {
+          this.setupSubscription();
           this.runDebounced();
         }
       };
@@ -210,7 +203,9 @@ export class QueryInstance<T extends Query> {
     }
 
     try {
-      this.setupSubscription();
+      if (cached !== undefined) {
+        this.setupSubscription();
+      }
 
       if (cached === undefined || this.isStale) {
         await sleep(0);
@@ -225,20 +220,14 @@ export class QueryInstance<T extends Query> {
    * Handle stream updates for queries with stream options.
    */
   private setupSubscription(): void {
-    const stream = this.stream;
-
-    if (!stream) {
-      return;
-    }
-
     this.unsubscribe?.();
+    this.unsubscribe = undefined;
 
-    const shapeDef: EntityDef = stream.shape as EntityDef;
-    const subscribeFn: StreamSubscribeFn<any, any> = stream.subscribeFn;
+    const ctx = this._executionCtx;
+    if (!ctx?.subscribe) return;
 
-    const extractedParams = this.currentParams;
-    this.unsubscribe = subscribeFn(this.queryClient.getContext(), extractedParams as QueryParams, update => {
-      this.queryClient.parseEntities(update, shapeDef);
+    this.unsubscribe = ctx.subscribe(event => {
+      this.queryClient.applyMutationEvent(event);
     });
   }
 
@@ -260,7 +249,6 @@ export class QueryInstance<T extends Query> {
   private resolveAndApplyOptions(): void {
     const resolved = this.def.resolveOptions(this._executionCtx!);
     this.config = resolved.config;
-    this.stream = resolved.stream;
     this.retryConfig = resolved.retryConfig;
   }
 
@@ -301,6 +289,10 @@ export class QueryInstance<T extends Query> {
         this.entityRefs = entityRefs.size > 0 ? entityRefs : undefined;
 
         this._data = parsedData as QueryResult<T>;
+
+        if (this.unsubscribe === undefined) {
+          this.setupSubscription();
+        }
 
         if (this._useProxy) {
           this._notifier.notify();

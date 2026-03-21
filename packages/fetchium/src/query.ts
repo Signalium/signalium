@@ -3,6 +3,7 @@ import {
   InternalTypeDef,
   ExtractType,
   TypeDef,
+  MutationEvent,
   QueryRequestOptions,
   ResponseTypeDef,
   RetryConfig,
@@ -25,27 +26,6 @@ import {
   createExecutionContext as createExecutionContextUtil,
   type CapturedDefinition,
 } from './fieldRef.js';
-
-// ================================
-// Stream options
-// ================================
-
-export type StreamSubscribeFn<Params extends QueryParams | undefined, StreamType> = (
-  context: QueryContext,
-  params: Params,
-  onUpdate: (update: StreamType) => void,
-) => () => void;
-
-export interface StreamOptions<Event extends Record<string, TypeDef> | TypeDef = Record<string, TypeDef> | TypeDef> {
-  type: Event;
-  subscribe: StreamSubscribeFn<any, any>;
-}
-
-export interface ResolvedStreamOptions {
-  shape: InternalTypeDef;
-  shapeKey: number;
-  subscribeFn: StreamSubscribeFn<any, any>;
-}
 
 // ================================
 // Retry config
@@ -90,7 +70,6 @@ export abstract class Query {
   params?: Record<string, TypeDef>;
   abstract result: ResponseTypeDef;
   config?: QueryConfigOptions;
-  stream?: StreamOptions;
 
   declare context: QueryContext;
   declare response: Response | undefined;
@@ -102,9 +81,7 @@ export abstract class Query {
     return this.config;
   }
 
-  getStream(): StreamOptions | undefined {
-    return this.stream;
-  }
+  subscribe?(onEvent: (event: MutationEvent) => void): () => void;
 
   constructor() {
     return createDefinitionProxy(this);
@@ -207,7 +184,6 @@ const queryDefCache = new WeakMap<new () => Query, QueryDefinition<any, any, any
 
 export interface ResolvedQueryOptions {
   config: QueryConfigOptions | undefined;
-  stream: ResolvedStreamOptions | undefined;
   retryConfig: ResolvedRetryConfig;
 }
 
@@ -219,8 +195,6 @@ export interface QueryDefinitionStatics {
 }
 
 export class QueryDefinition<Params extends QueryParams | undefined, Result, StreamType> {
-  private _streamShape: { shape: InternalTypeDef; shapeKey: number } | undefined;
-
   readonly statics: QueryDefinitionStatics;
 
   constructor(
@@ -235,32 +209,12 @@ export class QueryDefinition<Params extends QueryParams | undefined, Result, Str
   }
 
   resolveOptions(ctx: Query): ResolvedQueryOptions {
-    const { methods, fields } = this.captured;
+    const { methods } = this.captured;
 
     const config = methods.getConfig?.call(ctx);
-    const rawStream = methods.getStream?.call(ctx);
-
-    let stream: ResolvedStreamOptions | undefined;
-    if (rawStream) {
-      if (!this._streamShape) {
-        const originalStream = methods.getStream?.call(fields) ?? fields.stream;
-        if (originalStream?.type) {
-          this._streamShape = resolveTypeDef(originalStream.type);
-        }
-      }
-      if (this._streamShape) {
-        const { shape, shapeKey } = this._streamShape;
-        stream = {
-          shape,
-          shapeKey,
-          subscribeFn: rawStream.subscribe,
-        };
-      }
-    }
-
     const retryConfig = resolveRetryConfig(config?.retry);
 
-    return { config, stream, retryConfig };
+    return { config, retryConfig };
   }
 
   static for(QueryClass: new () => Query): QueryDefinition<any, any, any> {

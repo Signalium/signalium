@@ -305,12 +305,10 @@ describe('Cache Error Handling', () => {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
-        stream = {
-          type: t.entity(User) as any,
-          subscribe: (context: any, params: any, onUpdate: any) => {
-            return () => {};
-          },
-        };
+
+        subscribe(onEvent: any) {
+          return () => {};
+        }
       }
 
       const queryKey = computeQueryKey(GetUser, { id: '1' });
@@ -450,25 +448,21 @@ describe('Cache Error Handling', () => {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
-          stream = {
-            type: t.entity(User) as any,
-            subscribe: (context: any, params: any, onUpdate: any) => {
-              subscribeCallCount++;
-              updateCallback = onUpdate;
 
-              // Send stream update after a delay
-              setTimeout(() => {
-                onUpdate({
-                  __typename: 'User',
-                  id: 1,
-                  name: 'Updated User',
-                  email: 'updated@example.com',
-                });
-              }, 30);
+          subscribe(onEvent: any) {
+            subscribeCallCount++;
+            updateCallback = onEvent;
 
-              return () => {};
-            },
-          };
+            setTimeout(() => {
+              onEvent({
+                type: 'update',
+                typename: 'User',
+                data: { id: 1, name: 'Updated User', email: 'updated@example.com' },
+              });
+            }, 30);
+
+            return () => {};
+          }
         }
 
         const relay = fetchQuery(GetUser, { id: '1' });
@@ -507,28 +501,24 @@ describe('Cache Error Handling', () => {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
-        stream = {
-          type: t.entity(User) as any,
-          subscribe: (context: any, params: any, onUpdate: any) => {
-            subscribeCallCount++;
-            updateCallback = onUpdate;
-
-            // Send stream update after a delay
-            setTimeout(() => {
-              onUpdate({
-                __typename: 'User',
-                id: 1,
-                name: 'Updated User',
-                email: 'updated@example.com',
-              });
-            }, 30);
-
-            return () => {};
-          },
-        };
         config = {
-          staleTime: 0, // Always stale to force refetch
+          staleTime: 0,
         };
+
+        subscribe(onEvent: any) {
+          subscribeCallCount++;
+          updateCallback = onEvent;
+
+          setTimeout(() => {
+            onEvent({
+              type: 'update',
+              typename: 'User',
+              data: { id: 1, name: 'Updated User', email: 'updated@example.com' },
+            });
+          }, 30);
+
+          return () => {};
+        }
       }
 
       const queryKey = computeQueryKey(GetUser, { id: '1' });
@@ -574,28 +564,24 @@ describe('Cache Error Handling', () => {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
-        stream = {
-          type: t.entity(User) as any,
-          subscribe: (context: any, params: any, onUpdate: any) => {
-            subscribeCallCount++;
-            updateCallback = onUpdate;
-
-            // Send stream update after a delay
-            setTimeout(() => {
-              onUpdate({
-                __typename: 'User',
-                id: 1,
-                name: 'Updated User',
-                email: 'updated@example.com',
-              });
-            }, 30);
-
-            return () => {};
-          },
-        };
         config = {
-          staleTime: 0, // Always stale to force refetch
+          staleTime: 0,
         };
+
+        subscribe(onEvent: any) {
+          subscribeCallCount++;
+          updateCallback = onEvent;
+
+          setTimeout(() => {
+            onEvent({
+              type: 'update',
+              typename: 'User',
+              data: { id: 1, name: 'Updated User', email: 'updated@example.com' },
+            });
+          }, 30);
+
+          return () => {};
+        }
       }
 
       const queryKey = computeQueryKey(GetUser, { id: '1' });
