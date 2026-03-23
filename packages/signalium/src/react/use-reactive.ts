@@ -1,10 +1,11 @@
 /* eslint-disable react-hooks/rules-of-hooks */
-import { useCallback, useSyncExternalStore } from 'react';
-import { ReactiveValue, Signal, ReactivePromise } from '../types.js';
-import { getReactiveFnAndDefinition } from '../internals/core-api.js';
+import { useCallback, useRef, useSyncExternalStore } from 'react';
+import { ReactiveValue, Signal, ReactivePromise, ReadonlySignal } from '../types.js';
+import { getReactiveFnAndDefinition, reactive, reactiveSignal } from '../internals/core-api.js';
 import { getCurrentConsumer } from '../internals/consumer.js';
 import { ReactiveSignal } from '../internals/reactive.js';
 import { isReactivePromise, isRelay, ReactivePromiseImpl } from '../internals/async.js';
+import { snapshot } from '../internals/utils/snapshot.js';
 import { StateSignal } from '../internals/signal.js';
 import { useScope } from './context.js';
 import { useSignalsSuspended } from './suspend-signals-context.js';
@@ -99,4 +100,45 @@ export function useReactive<R, Args extends readonly Narrowable[]>(
   } else {
     return useStateSignal(signal as Signal<R>);
   }
+}
+
+export function useReactiveDeep<R, Args extends readonly Narrowable[]>(fn: (...args: Args) => R, ...args: Args): R {
+  if (getCurrentConsumer()) {
+    throw new Error(
+      'useReactiveDeep cannot be used inside of a reactive context. You can use the signal/function directly instead.',
+    );
+  }
+
+  const suspended = useSignalsSuspended();
+
+  const scope = useScope() ?? getGlobalScope();
+  const signalRef = useRef<ReadonlySignal<R> | undefined>();
+  const cloneSignalRef = useRef<ReactiveSignal<R, any>>();
+  const valueRef = useRef<R>();
+
+  const [, def] = getReactiveFnAndDefinition(fn as any);
+
+  const signal = scope.get(def, args as any) as ReactiveSignal<R, any>;
+
+  if (signalRef.current !== signal) {
+    signalRef.current = signal;
+
+    cloneSignalRef.current = reactiveSignal(() => {
+      const next = snapshot(signal.value, valueRef.current) as R;
+
+      valueRef.current = next;
+
+      return next;
+    }) as ReactiveSignal<R, any>;
+  }
+
+  const cloneSignal = cloneSignalRef.current!;
+
+  cloneSignal.setSuspended(suspended);
+
+  return useSyncExternalStore(
+    cloneSignal.addListenerLazy(),
+    () => cloneSignal.value as R,
+    () => cloneSignal.value as R,
+  );
 }
