@@ -1,5 +1,15 @@
 # signalium
 
+## 2.3.0
+
+### Minor Changes
+
+- 90f9b8b: Add useReactiveDeep
+
+### Patch Changes
+
+- 01714fe: Fix some small issues with the build, add some tests
+
 ## 2.2.3
 
 ### Patch Changes
