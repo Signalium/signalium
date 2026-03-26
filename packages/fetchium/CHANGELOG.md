@@ -1,5 +1,11 @@
 # fetchium
 
+## 0.1.0
+
+### Minor Changes
+
+- c92035c: Initial pre-release of Fetchium
+
 ## 1.1.2
 
 ### Patch Changes

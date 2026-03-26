@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.41
+
+### Patch Changes
+
+- Updated dependencies [c92035c]
+  - signalium@2.3.1
+
 ## 0.0.40
 
 ### Patch Changes
