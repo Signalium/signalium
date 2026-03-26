@@ -127,6 +127,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   _value: ReactiveValue<T> | undefined = undefined;
 
   tracerMeta?: TracerMeta;
+  desc: string | undefined;
 
   // Reference to the shared definition
   def: ReactiveDefinition<T, Args>;
@@ -137,6 +138,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     this.key = key;
     this.args = args;
     this.def = def;
+    this.desc = def.desc;
 
     if (IS_DEV) {
       this.tracerMeta = {

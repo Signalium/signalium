@@ -1,260 +1,72 @@
-/**
- * Query Client with Entity Caching and Deduplication
- *
- * Features:
- * - Global entity map for deduplication
- * - Entity definitions with cached sub-entity paths
- * - Eager entity discovery and caching
- * - Permanent proxy cache for entities
- * - Response caching for offline access
- * - Signalium-based reactivity for entity updates
- * - Self-contained validator (no external dependencies except Signalium)
- */
-
 import { context, ReactiveTask, type Context } from 'signalium';
 import { hashValue } from 'signalium/utils';
-import {
-  EntityDef,
-  RefetchInterval,
-  NetworkMode,
-  RetryConfig,
-  BaseUrlValue,
-  QueryRequestInit,
-  MutationResultValue,
-  MutationEvent,
-  QueryPromise,
-  ComplexTypeDef,
-  Mask,
-  TypeDef,
-  InternalTypeDef,
-} from './types.js';
-import { EntityStore } from './EntityMap.js';
+import { EntityDef, MutationEvent, QueryPromise, ComplexTypeDef, InternalTypeDef, QUERY_ID } from './types.js';
+import { PROXY_ID } from './proxyId.js';
+import { EntityStore } from './EntityStore.js';
 import { EntityInstance } from './EntityInstance.js';
 import { NetworkManager } from './NetworkManager.js';
 import { QueryInstance } from './QueryResult.js';
 import { MutationResultImpl } from './MutationResult.js';
 import { MutationDefinition } from './mutation.js';
-import { RefetchManager, NoOpRefetchManager } from './RefetchManager.js';
 import { GcManager, NoOpGcManager, GcKeyType } from './GcManager.js';
 import { DEFAULT_GC_TIME } from './stores/shared.js';
-import { type Signal } from 'signalium';
 import { Query, QueryDefinition } from './query.js';
-import { parseEntities } from './parseEntities.js';
-import { parseValue } from './proxy.js';
+import { ParseContext, parseEntities, parseEntity, type ParseResult } from './parseEntities.js';
+import { applyEntityRefs, type ApplyResult } from './applyEntities.js';
 import { ValidatorDef } from './typeDefs.js';
+import { ConstraintMatcher, EVENT_SOURCE_FIELD } from './ConstraintMatcher.js';
+import { LiveCollectionBinding } from './LiveCollection.js';
+import {
+  type QueryContext,
+  type QueryStore,
+  type QueryParams,
+  type PreloadedEntityMap,
+  queryKeyFor,
+} from './query-types.js';
 
-// -----------------------------------------------------------------------------
-// Query Types
-// -----------------------------------------------------------------------------
-
-export interface QueryContext {
-  fetch: (url: string, init?: QueryRequestInit) => Promise<Response>;
-  baseUrl?: BaseUrlValue;
-  log?: {
-    error?: (message: string, error?: unknown) => void;
-    warn?: (message: string, error?: unknown) => void;
-    info?: (message: string) => void;
-    debug?: (message: string) => void;
-  };
-  evictionMultiplier?: number;
-  refetchMultiplier?: number;
-}
-
-/**
- * Resolves a BaseUrlValue to a string.
- * Handles static strings, Signals, and functions.
- */
-export function resolveBaseUrl(baseUrl: BaseUrlValue | undefined): string | undefined {
-  if (baseUrl === undefined) return undefined;
-  if (typeof baseUrl === 'string') return baseUrl;
-  if (typeof baseUrl === 'function') return baseUrl();
-  return baseUrl.value; // Signal
-}
-
-export interface QueryCacheOptions {
-  maxCount?: number;
-  cacheTime?: number; // minutes - on-disk/persistent storage expiration. Default: 1440 (24 hours)
-}
-
-export interface QueryConfigOptions {
-  gcTime?: number; // minutes - in-memory eviction time. Default: 5. Use 0 for next-tick, Infinity to never GC.
-  staleTime?: number; // milliseconds - how long data is considered fresh. Default: 0 (always stale)
-  debounce?: number; // milliseconds - debounce delay for param-change refetches. Default: 0
-  refetchInterval?: RefetchInterval;
-  networkMode?: NetworkMode; // default: NetworkMode.Online
-  retry?: RetryConfig | number | boolean; // default: 3 on client, 0 on server
-  refreshStaleOnReconnect?: boolean; // default: true
-}
-
-export type QueryParams = Record<
-  string,
-  | string
-  | number
-  | boolean
-  | undefined
-  | null
-  | Signal<string | number | boolean | undefined | null>
-  | unknown[] // For body array params
-  | Record<string, unknown> // For body object params
->;
-
-// -----------------------------------------------------------------------------
-// QueryStore Interface
-// -----------------------------------------------------------------------------
-
-export type PreloadedEntityMap = Map<number, Record<string, unknown>>;
-
-export interface CachedQuery {
-  value: unknown;
-  refIds: Set<number> | undefined;
-  updatedAt: number;
-  preloadedEntities?: PreloadedEntityMap;
-}
-
-export interface QueryStore {
-  /**
-   * Asynchronously retrieves a document by key.
-   * Returns a CachedQuery with preloaded entity data if entities are referenced.
-   */
-  loadQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): MaybePromise<CachedQuery | undefined>;
-
-  /**
-   * Synchronously stores a document with optional reference IDs.
-   * This is fire-and-forget for async implementations.
-   */
-  saveQuery(
-    queryDef: QueryDefinition<any, any, any>,
-    queryKey: number,
-    value: unknown,
-    updatedAt: number,
-    refIds?: Set<number>,
-  ): void;
-
-  /**
-   * Synchronously stores an entity with optional reference IDs.
-   * This is fire-and-forget for async implementations.
-   */
-  saveEntity(entityKey: number, value: unknown, refIds?: Set<number>): void;
-
-  /**
-   * Marks a query as accessed, updating the LRU queue.
-   * Handles eviction internally when the cache is full.
-   */
-  activateQuery(queryDef: QueryDefinition<any, any, any>, queryKey: number): void;
-
-  deleteQuery(queryKey: number): void;
-
-  /**
-   * Scans all persisted query types and purges those whose data has expired
-   * based on their cacheTime. Called on startup to clean up stale entries
-   * from previous sessions (e.g., after shapeKey changes or removed queries).
-   */
-  purgeStaleQueries?(): MaybePromise<void>;
-}
-
-export type MaybePromise<T> = T | Promise<T>;
-
-/**
- * Checks if a value is a Signal instance.
- * Signals are objects with a `value` property and internal `_id` property.
- * Arrays and plain objects are NOT Signals.
- */
-function isSignal(value: unknown): value is Signal<any> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) && 'value' in value && '_id' in value;
-}
-
-/**
- * Extracts actual values from params that may contain Signals.
- * Supports primitive values, arrays, and objects (for body params).
- */
-export function extractParamsForKey(params: QueryParams | undefined): Record<string, unknown> | undefined {
-  if (params === undefined) {
-    return undefined;
-  }
-
-  const extracted: Record<string, unknown> = {};
-
-  for (const [key, value] of Object.entries(params)) {
-    if (isSignal(value)) {
-      extracted[key] = value.value;
-    } else {
-      extracted[key] = value;
-    }
-  }
-
-  return extracted;
-}
-
-/**
- * Computes the query key for instance lookup. This is used for two different keys:
- *
- * - Query instance key
- * - Query storage key
- *
- * Instance keys are created by passing in the query definition and parameters WITHOUT
- * extracting the Signal values, whereas storage keys are created by extracting the Signal values.
- * This way, we can reuse the same instance for given Signals, but different underlying values
- * will be stored and put into the LRU cache separately.
- */
-export const queryKeyFor = (queryDef: QueryDefinition<any, any, any>, params: unknown): number => {
-  return hashValue([queryDef.statics.id, queryDef.statics.shapeKey, params]);
-};
-
-function fieldAllowsUndefined(fieldDef: unknown): boolean {
-  if (typeof fieldDef === 'number') return (fieldDef & Mask.UNDEFINED) !== 0;
-  if (fieldDef instanceof ValidatorDef) return (fieldDef.mask & Mask.UNDEFINED) !== 0;
-  return false;
-}
-
-function payloadSatisfiesShape(data: Record<string, unknown>, def: ValidatorDef<any>): boolean {
-  const shape = def.shape as Record<string, unknown>;
-  const typenameField = def.typenameField;
-
-  for (const key of Object.keys(shape)) {
-    if (key === typenameField) continue;
-    if (!(key in data) && !fieldAllowsUndefined(shape[key])) return false;
-  }
-
-  return true;
-}
-
-function fieldTypesCompatible(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a === 'number' && typeof b === 'number') return a === b;
-  if (typeof a === 'string' && typeof b === 'string') return a === b;
-  if (a instanceof ValidatorDef && b instanceof ValidatorDef) return a.shapeKey === b.shapeKey;
-  return false;
-}
+export {
+  type QueryContext,
+  type QueryCacheOptions,
+  type QueryConfigOptions,
+  type LoadNextConfig,
+  type QueryParams,
+  type QueryStore,
+  type CachedQuery,
+  type PreloadedEntityMap,
+  type MaybePromise,
+  resolveBaseUrl,
+  extractParamsForKey,
+  queryKeyFor,
+} from './query-types.js';
 
 export class QueryClient {
-  private entityMap: EntityStore;
+  entityMap: EntityStore;
   queryInstances = new Map<number, QueryInstance<any>>();
   mutationInstances = new Map<string, MutationResultImpl<unknown, unknown>>();
   gcManager: GcManager | NoOpGcManager;
-  refetchManager: RefetchManager | NoOpRefetchManager;
   networkManager: NetworkManager;
   isServer: boolean;
+  store: QueryStore;
 
   currentParseId: number = 0;
 
   private typenameRegistry = new Map<string, ValidatorDef<any>[]>();
-  private typenameIdFields = new Map<string, string>();
+  private constraintRegistry = new Map<string, ConstraintMatcher>();
+  private mergedDefCache = new Map<string, ValidatorDef<any>>();
 
   constructor(
-    private store: QueryStore,
+    store: QueryStore,
     private context: QueryContext = { fetch, log: console },
     networkManager?: NetworkManager,
     gcManager?: GcManager | NoOpGcManager,
-    refetchManager?: RefetchManager | NoOpRefetchManager,
   ) {
     this.isServer = typeof window === 'undefined';
-    this.entityMap = new EntityStore(this);
+    this.store = store;
     this.gcManager =
       gcManager ??
       (this.isServer ? new NoOpGcManager() : new GcManager(this.handleEviction, this.context.evictionMultiplier));
-    this.refetchManager =
-      refetchManager ?? (this.isServer ? new NoOpRefetchManager() : new RefetchManager(this.context.refetchMultiplier));
     this.networkManager = networkManager ?? new NetworkManager();
+    this.entityMap = new EntityStore((key, data, refs) => this.store.saveEntity(key, data, refs));
 
     this.store.purgeStaleQueries?.();
   }
@@ -270,52 +82,35 @@ export class QueryClient {
   private registerEntityDef(def: ValidatorDef<any>): void {
     const typename = def.typenameValue;
     if (typename === undefined) return;
+    if (def._entityClass === undefined) return;
 
     const existing = this.typenameRegistry.get(typename);
 
     if (existing !== undefined) {
       if (existing.indexOf(def) !== -1) return;
 
-      const expectedIdField = this.typenameIdFields.get(typename);
-
-      if (expectedIdField === undefined && def.idField !== undefined) {
-        this.typenameIdFields.set(typename, def.idField);
-      } else if (IS_DEV && expectedIdField !== undefined && def.idField !== expectedIdField) {
-        console.warn(
-          `[fetchium] Entity typename '${typename}' has conflicting id fields: '${expectedIdField}' vs '${def.idField}'`,
-        );
-      }
-
-      if (IS_DEV) {
-        const newShape = def.shape as Record<string, unknown>;
-        for (const other of existing) {
-          const otherShape = other.shape as Record<string, unknown>;
-          for (const key of Object.keys(newShape)) {
-            if (key in otherShape && !fieldTypesCompatible(newShape[key], otherShape[key])) {
-              console.warn(
-                `[fetchium] Entity typename '${typename}' has conflicting type for field '${key}' across different entity definitions`,
-              );
-              break;
-            }
-          }
-        }
-      }
-
       existing.push(def);
+      this.mergedDefCache.delete(typename);
+      this.getMergedDef(typename);
     } else {
       this.typenameRegistry.set(typename, [def]);
-      if (def.idField !== undefined) {
-        this.typenameIdFields.set(typename, def.idField);
-      }
     }
   }
 
-  private getEntityDefsForTypename(typename: string): ValidatorDef<any>[] | undefined {
+  getEntityDefsForTypename(typename: string): ValidatorDef<any>[] | undefined {
     return this.typenameRegistry.get(typename);
   }
 
-  private getEntityIdField(typename: string): string | undefined {
-    return this.typenameIdFields.get(typename);
+  getMergedDef(typename: string): ValidatorDef<any> | undefined {
+    let merged = this.mergedDefCache.get(typename);
+    if (merged !== undefined) return merged;
+
+    const defs = this.typenameRegistry.get(typename);
+    if (defs === undefined) return undefined;
+
+    merged = ValidatorDef.merge(defs);
+    this.mergedDefCache.set(typename, merged);
+    return merged;
   }
 
   saveQueryData(
@@ -323,21 +118,18 @@ export class QueryClient {
     queryKey: number,
     data: unknown,
     updatedAt: number,
-    entityRefs?: Set<number>,
+    entityRefs?: Map<EntityInstance, number>,
   ): void {
-    // Clone entityRefs to avoid mutation in setValue
-    const clonedRefs = entityRefs !== undefined ? new Set(entityRefs) : undefined;
-    // QueryStore expects the base definition structure
-    this.store.saveQuery(queryDef as any, queryKey, data, updatedAt, clonedRefs);
+    const refKeys =
+      entityRefs !== undefined && entityRefs.size > 0
+        ? new Set<number>([...entityRefs.keys()].map(e => e.key))
+        : undefined;
+    this.store.saveQuery(queryDef as any, queryKey, data, updatedAt, refKeys);
   }
 
   activateQuery(queryInstance: QueryInstance<any>): void {
     const { def, queryKey, storageKey, config } = queryInstance;
     this.store.activateQuery(def as any, storageKey);
-
-    if (config?.refetchInterval) {
-      this.refetchManager.addQuery(queryInstance);
-    }
 
     const gcTime = config?.gcTime ?? DEFAULT_GC_TIME;
     this.gcManager.cancel(queryKey, gcTime);
@@ -345,10 +137,6 @@ export class QueryClient {
 
   loadCachedQuery(queryDef: QueryDefinition<QueryParams | undefined, unknown, unknown>, queryKey: number) {
     return this.store.loadQuery(queryDef as any, queryKey);
-  }
-
-  deleteCachedQuery(queryKey: number): void {
-    this.store.deleteQuery(queryKey);
   }
 
   /**
@@ -380,7 +168,7 @@ export class QueryClient {
    */
   getMutation<Request, Response>(
     mutationDef: MutationDefinition<Request, Response>,
-  ): ReactiveTask<MutationResultValue<Response>, [Request]> {
+  ): ReactiveTask<Response, [Request]> {
     const mutationId = mutationDef.id;
 
     let mutationInstance = this.mutationInstances.get(mutationId) as MutationResultImpl<Request, Response> | undefined;
@@ -396,54 +184,63 @@ export class QueryClient {
     return mutationInstance.task;
   }
 
-  getEntity(key: number): EntityInstance | undefined {
-    return this.entityMap.getEntity(key);
+  /**
+   * Parse data: validates, formats, produces parsed entity data objects.
+   * Does NOT touch the entity store. Call applyRefs() after to commit entities.
+   */
+  parseData(obj: unknown, shape: InternalTypeDef, preloadedEntities?: PreloadedEntityMap): ParseResult {
+    const warn = this.context.log?.warn ?? (() => {});
+    const ctx = new ParseContext();
+    ctx.reset(this, preloadedEntities, warn);
+    const data = parseEntities(obj, shape as unknown as ComplexTypeDef, ctx);
+    return { data, ctx };
   }
 
-  parseEntities(
+  /**
+   * Apply entities from parseData() via a single depth-first walk: creates/
+   * updates EntityInstances, replaces parsed data with proxies, counts child
+   * refs. Returns the reified data and root-level entity refs.
+   */
+  applyRefs(parseResult: ParseResult, persist: boolean = true, appendMode: boolean = false): ApplyResult {
+    return applyEntityRefs(parseResult.ctx, parseResult.data, persist, appendMode);
+  }
+
+  /**
+   * Parse and apply data as a root entity. For non-entity results, injects
+   * QUERY_ID onto the payload. Returns the root EntityInstance (created or
+   * found in the store by the standard entity pipeline).
+   */
+  parseAndApplyRootEntity(
     obj: unknown,
-    shape: InternalTypeDef,
-    entityRefs?: Set<number>,
+    queryId: number,
+    rootEntityShape: ValidatorDef<any>,
+    persist: boolean,
+    appendMode: boolean = false,
     preloadedEntities?: PreloadedEntityMap,
-  ): unknown {
-    this.currentParseId++;
-    const result = parseEntities(obj, shape as unknown as ComplexTypeDef, this, entityRefs, preloadedEntities);
-    return parseValue(result, shape as unknown as TypeDef, '', false);
+  ): EntityInstance {
+    // For non-entity results (QUERY_ID idField), inject the query id onto
+    // fresh data payloads. Cached data arrives as { __entityRef } so
+    // parseEntityData reads the key directly from that instead.
+    if (
+      typeof rootEntityShape.idField === 'symbol' &&
+      typeof obj === 'object' &&
+      obj !== null &&
+      !('__entityRef' in (obj as Record<string, unknown>))
+    ) {
+      (obj as Record<string | symbol, unknown>)[QUERY_ID] = queryId;
+    }
+
+    const parseResult = this.parseData(obj, rootEntityShape as unknown as InternalTypeDef, preloadedEntities);
+    const result = applyEntityRefs(parseResult.ctx, parseResult.data, persist, appendMode);
+
+    // Discover the root entity from the returned proxy
+    const proxyKey = PROXY_ID.get(result.data as object);
+    return this.entityMap.getEntity(proxyKey!)!;
   }
 
-  saveEntity(
-    key: number,
-    obj: Record<string, unknown>,
-    shape: EntityDef,
-    entityRefs?: Set<number>,
-    persist?: boolean,
-  ): EntityInstance {
+  prepareEntity(key: number, obj: Record<string, unknown>, shape: EntityDef): EntityInstance {
     this.registerEntityDef(shape as unknown as ValidatorDef<any>);
-    const instance = this.entityMap.getOrCreateEntity(key, obj, shape);
-
-    // Diff old vs new child entity refs
-    const oldRefs = instance.entityRefs;
-    if (entityRefs !== undefined && entityRefs.size > 0) {
-      for (const childKey of entityRefs) {
-        if (oldRefs === undefined || !oldRefs.has(childKey)) {
-          this.entityMap.incrementRefCount(childKey);
-        }
-      }
-    }
-    if (oldRefs !== undefined && oldRefs.size > 0) {
-      for (const childKey of oldRefs) {
-        if (entityRefs === undefined || !entityRefs.has(childKey)) {
-          this.decrementEntityRef(childKey);
-        }
-      }
-    }
-    instance.entityRefs = entityRefs;
-
-    if (persist) {
-      this.store.saveEntity(key, obj, entityRefs);
-    }
-
-    return instance;
+    return this.entityMap.getOrCreateEntity(key, obj, shape, this);
   }
 
   // ======================================================
@@ -453,59 +250,63 @@ export class QueryClient {
   applyMutationEvent(event: MutationEvent): void {
     const { type, typename } = event;
 
-    const defs = this.getEntityDefsForTypename(typename);
-    if (defs === undefined) return;
+    const mergedDef = this.getMergedDef(typename);
+    if (mergedDef === undefined) return;
 
-    const idField = this.getEntityIdField(typename);
-    if (idField === undefined) return;
+    const idField = mergedDef.idField;
+    if (idField === undefined || typeof idField === 'symbol') return;
 
     const rawData = event.data;
     const id =
-      type === 'delete' && (typeof rawData === 'string' || typeof rawData === 'number')
-        ? rawData
-        : (rawData as Record<string, unknown>)[idField];
+      event.id !== undefined
+        ? event.id
+        : type === 'delete' && (typeof rawData === 'string' || typeof rawData === 'number')
+          ? rawData
+          : (rawData as Record<string, unknown>)[idField];
 
-    if (typeof id !== 'string' && typeof id !== 'number') return;
+    if (id === undefined) return;
 
-    const entityDesc = `${typename}:${id}`;
+    const key = hashValue([typename, id]);
+    const eventSource = event.__eventSource;
+    const data = (typeof rawData === 'object' && rawData !== null ? rawData : {}) as Record<string, unknown>;
 
-    switch (type) {
-      case 'update': {
-        const data = event.data as Record<string, unknown>;
-        for (const def of defs) {
-          const key = hashValue([entityDesc, def.shapeKey]);
-          const existing = this.entityMap.getEntity(key);
-          if (existing !== undefined) {
-            existing.update(data);
-            this.store.saveEntity(key, existing.data);
-          }
-        }
-        break;
+    const existing = this.entityMap.getEntity(key);
+
+    if (type === 'delete') {
+      const entityData = existing !== undefined ? existing.data : data;
+      this.routeEvent(typename, entityData, key, type, eventSource, undefined, entityData);
+      return;
+    }
+
+    try {
+      const warn = this.context.log?.warn ?? (() => {});
+      const parseCtx = new ParseContext();
+      parseCtx.reset(this, undefined, warn, /* isPartialEvent */ true);
+      const parsedData = parseEntity(data, mergedDef as unknown as EntityDef, parseCtx);
+      applyEntityRefs(parseCtx, parsedData, true);
+    } catch (e) {
+      this.context.log?.warn?.('Failed to apply mutation event', e);
+      if (existing === undefined) {
+        const created = this.entityMap.getEntity(key);
+        if (created !== undefined) created.evict();
       }
+      return;
+    }
 
-      case 'create': {
-        const data = event.data as Record<string, unknown>;
-        for (const def of defs) {
-          const key = hashValue([entityDesc, def.shapeKey]);
-          const existing = this.entityMap.getEntity(key);
+    const entity = this.entityMap.getEntity(key);
+    if (entity === undefined) return;
 
-          if (existing !== undefined) {
-            existing.update(data);
-            this.store.saveEntity(key, existing.data);
-          } else if (payloadSatisfiesShape(data, def)) {
-            this.entityMap.getOrCreateEntity(key, data, def as EntityDef);
-          }
-        }
-        break;
-      }
+    this.entityMap.save(entity);
 
-      case 'delete': {
-        for (const def of defs) {
-          const key = hashValue([entityDesc, def.shapeKey]);
-          this.evictEntity(key);
-        }
-        break;
-      }
+    const wasNew = existing === undefined;
+    let matched = false;
+
+    this.routeEvent(typename, entity.data, key, type, eventSource, () => {
+      matched = true;
+    });
+
+    if (wasNew && !matched) {
+      entity.evict();
     }
   }
 
@@ -513,83 +314,71 @@ export class QueryClient {
   // In-Memory GC
   // ======================================================
 
-  scheduleQueryEviction(queryInstance: QueryInstance<any>): void {
-    const gcTime = queryInstance.config?.gcTime ?? DEFAULT_GC_TIME;
-    this.gcManager.schedule(queryInstance.queryKey, gcTime, GcKeyType.Query);
-  }
-
-  /**
-   * Diff old vs new entity refs and update in-memory ref counts accordingly.
-   */
-  updateEntityRefs(oldRefs: Set<number> | undefined, newRefs: Set<number>): void {
-    if (oldRefs !== undefined) {
-      for (const key of oldRefs) {
-        if (!newRefs.has(key)) {
-          this.decrementEntityRef(key);
-        }
-      }
-    }
-    for (const key of newRefs) {
-      if (oldRefs === undefined || !oldRefs.has(key)) {
-        this.entityMap.incrementRefCount(key);
-
-        const entityGcTime = this.getEntityShapeDef(key)?._entityCache?.gcTime;
-        if (entityGcTime !== undefined) {
-          this.gcManager.cancel(key, entityGcTime);
-        }
-      }
-    }
-  }
-
-  private decrementEntityRef(entityKey: number): void {
-    const reachedZero = this.entityMap.decrementRefCount(entityKey);
-    if (!reachedZero) return;
-
-    const shapeDef = this.getEntityShapeDef(entityKey);
-    const entityGcTime = shapeDef?._entityCache?.gcTime;
-
-    if (entityGcTime !== undefined) {
-      this.gcManager.schedule(entityKey, entityGcTime, GcKeyType.Entity);
-    } else {
-      this.evictEntity(entityKey);
-    }
-  }
-
-  private evictEntity(entityKey: number): void {
-    const childRefs = this.entityMap.removeEntity(entityKey);
-    if (childRefs !== undefined) {
-      for (const childKey of childRefs) {
-        this.decrementEntityRef(childKey);
-      }
-    }
-  }
-
-  private getEntityShapeDef(entityKey: number): ValidatorDef<unknown> | undefined {
-    return this.entityMap.getEntity(entityKey)?.shapeDef;
-  }
-
   private handleEviction = (key: number, type: GcKeyType): void => {
     if (type === GcKeyType.Query) {
       const instance = this.queryInstances.get(key);
       if (instance === undefined) return;
-
+      instance.rootEntity?.evict();
       this.queryInstances.delete(key);
-
-      if (instance.entityRefs !== undefined) {
-        for (const entityKey of instance.entityRefs) {
-          this.decrementEntityRef(entityKey);
-        }
-      }
       return;
     }
-
-    this.evictEntity(key);
+    const entity = this.entityMap.getEntity(key);
+    if (entity !== undefined) entity.evict();
   };
 
+  // ======================================================
+  // Constraint Registry (Live Collections)
+  // ======================================================
+
+  getOrCreateMatcher(typename: string): ConstraintMatcher {
+    let matcher = this.constraintRegistry.get(typename);
+    if (matcher === undefined) {
+      matcher = new ConstraintMatcher();
+      this.constraintRegistry.set(typename, matcher);
+    }
+    return matcher;
+  }
+
+  registerLiveCollection(binding: LiveCollectionBinding): void {
+    for (const [typename, def] of binding._entityDefsByTypename) {
+      this.registerEntityDef(def);
+      this.getOrCreateMatcher(typename).registerBinding(binding, typename);
+    }
+  }
+
+  unregisterLiveCollection(binding: LiveCollectionBinding): void {
+    for (const typename of binding._entityDefsByTypename.keys()) {
+      const matcher = this.constraintRegistry.get(typename);
+      if (matcher !== undefined) {
+        matcher.unregisterBinding(binding, typename);
+      }
+    }
+  }
+
+  private routeEvent(
+    typename: string,
+    entityData: Record<string, unknown>,
+    entityKey: number,
+    eventType: 'create' | 'update' | 'delete',
+    eventSource: number | undefined,
+    onMatch?: () => void,
+    deleteData?: Record<string, unknown>,
+  ): void {
+    const matcher = this.constraintRegistry.get(typename);
+    if (matcher === undefined) return;
+
+    const data = eventSource !== undefined ? { ...entityData, [EVENT_SOURCE_FIELD]: eventSource } : entityData;
+    matcher.routeEvent(typename, data, entityKey, eventType, onMatch, deleteData);
+  }
+
   destroy(): void {
-    this.refetchManager.destroy();
     this.gcManager.destroy();
     this.networkManager.destroy();
+    this.queryInstances.clear();
+    this.mutationInstances.clear();
+    this.constraintRegistry.clear();
+    this.typenameRegistry.clear();
+    this.mergedDefCache.clear();
   }
 }
 

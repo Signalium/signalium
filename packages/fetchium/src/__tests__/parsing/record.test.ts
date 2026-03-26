@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
-import { Entity, parseValue } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
-import { parseEntities } from '../../parseEntities.js';
+import { Entity } from '../../proxy.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
 import {
+  parseValue,
+  parseEntities,
   setupParsingTests,
   testWithClient,
   getEntityKey,
   getDocument,
   getEntityRefs,
-  getShapeKey,
 } from './test-utils.js';
 
 /**
@@ -203,7 +203,7 @@ describe('t.record', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetConfig extends JsonQuery {
+          class GetConfig extends RESTQuery {
             path = '/config';
             result = { settings: t.record(t.string) };
           }
@@ -221,7 +221,7 @@ describe('t.record', () => {
         mockFetch.get('/empty', { data: {} });
 
         await testWithClient(client, async () => {
-          class GetEmpty extends JsonQuery {
+          class GetEmpty extends RESTQuery {
             path = '/empty';
             result = { data: t.record(t.string) };
           }
@@ -246,7 +246,7 @@ describe('t.record', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUserMap extends JsonQuery {
+          class GetUserMap extends RESTQuery {
             path = '/users/map';
             result = {
               users: t.record(t.object({ id: t.number, name: t.string, active: t.boolean })),
@@ -273,7 +273,7 @@ describe('t.record', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetPermissions extends JsonQuery {
+          class GetPermissions extends RESTQuery {
             path = '/permissions';
             result = { permissions: t.record(t.record(t.boolean)) };
           }
@@ -298,7 +298,7 @@ describe('t.record', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetTags extends JsonQuery {
+          class GetTags extends RESTQuery {
             path = '/tags';
             result = { tagsByCategory: t.record(t.array(t.string)) };
           }
@@ -323,7 +323,7 @@ describe('t.record', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetTimestamps extends JsonQuery {
+          class GetTimestamps extends RESTQuery {
             path = '/timestamps';
             result = { events: t.record(t.format('date-time')) };
           }
@@ -361,10 +361,10 @@ describe('t.record', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Config', 1, getShapeKey(t.entity(Config)));
+        const key = getEntityKey('Config', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -392,13 +392,13 @@ describe('t.record', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
         expect(entityRefs.size).toBe(2);
 
-        const key1 = getEntityKey('User', 1, getShapeKey(t.entity(User)));
-        const key2 = getEntityKey('User', 2, getShapeKey(t.entity(User)));
+        const key1 = getEntityKey('User', 1);
+        const key2 = getEntityKey('User', 2);
 
         expect(await getDocument(kv, key1)).toBeDefined();
         expect(await getDocument(kv, key2)).toBeDefined();
@@ -423,18 +423,18 @@ describe('t.record', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
         expect(entityRefs.size).toBe(3);
 
-        const key1 = getEntityKey('EntityValue', 1, getShapeKey(t.entity(EntityValue)));
-        const key2 = getEntityKey('EntityValue', 2, getShapeKey(t.entity(EntityValue)));
-        const key3 = getEntityKey('EntityValue', 3, getShapeKey(t.entity(EntityValue)));
+        const key1 = getEntityKey('EntityValue', 1);
+        const key2 = getEntityKey('EntityValue', 2);
+        const key3 = getEntityKey('EntityValue', 3);
 
-        expect(entityRefs.has(key1)).toBe(true);
-        expect(entityRefs.has(key2)).toBe(true);
-        expect(entityRefs.has(key3)).toBe(true);
+        expect([...entityRefs.keys()].some(e => e.key === key1)).toBe(true);
+        expect([...entityRefs.keys()].some(e => e.key === key2)).toBe(true);
+        expect([...entityRefs.keys()].some(e => e.key === key3)).toBe(true);
 
         expect(await getEntityRefs(kv, key1)).toBeUndefined();
         expect(await getEntityRefs(kv, key2)).toBeUndefined();
@@ -464,10 +464,10 @@ describe('t.record', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Profile', 1, getShapeKey(t.entity(Profile)));
+        const key = getEntityKey('Profile', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -498,10 +498,10 @@ describe('t.record', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Container', 1, getShapeKey(t.entity(Container)));
+        const key = getEntityKey('Container', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -532,10 +532,10 @@ describe('t.record', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Flexible', 1, getShapeKey(t.entity(Flexible)));
+        const key = getEntityKey('Flexible', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();

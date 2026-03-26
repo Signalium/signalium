@@ -1,9 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
-import { Entity, parseValue } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
-import { parseEntities } from '../../parseEntities.js';
-import { setupParsingTests, testWithClient, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
+import { Entity } from '../../proxy.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
+import {
+  parseValue,
+  parseEntities,
+  setupParsingTests,
+  testWithClient,
+  getEntityKey,
+  getDocument,
+} from './test-utils.js';
 
 /**
  * t.number Tests
@@ -69,7 +75,7 @@ describe('t.number', () => {
       });
 
       it('should filter invalid items in array with warning callback', () => {
-        const result = parseValue([1, 'invalid', 3], t.array(t.number), 'test', false, () => {});
+        const result = parseValue([1, 'invalid', 3], t.array(t.number), 'test', () => {});
         expect(result).toEqual([1, 3]);
       });
     });
@@ -130,7 +136,7 @@ describe('t.number', () => {
         mockFetch.get('/item', { count: 42, price: 19.99 });
 
         await testWithClient(client, async () => {
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = { count: t.number, price: t.number };
           }
@@ -153,7 +159,7 @@ describe('t.number', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetNumbers extends JsonQuery {
+          class GetNumbers extends RESTQuery {
             path = '/numbers';
             result = {
               zero: t.number,
@@ -176,7 +182,7 @@ describe('t.number', () => {
         mockFetch.get('/numbers', { zero: 0, negative: -42, float: -3.14 });
 
         await testWithClient(client, async () => {
-          class GetNumbers extends JsonQuery {
+          class GetNumbers extends RESTQuery {
             path = '/numbers';
             result = { zero: t.number, negative: t.number, float: t.number };
           }
@@ -199,7 +205,7 @@ describe('t.number', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetItem extends JsonQuery {
+          class GetItem extends RESTQuery {
             path = '/item';
             result = {
               item: t.object({
@@ -226,7 +232,7 @@ describe('t.number', () => {
         mockFetch.get('/numbers', { values: [1, 2, 3, 4, 5] });
 
         await testWithClient(client, async () => {
-          class GetNumbers extends JsonQuery {
+          class GetNumbers extends RESTQuery {
             path = '/numbers';
             result = { values: t.array(t.number) };
           }
@@ -244,7 +250,7 @@ describe('t.number', () => {
         mockFetch.get('/numbers', { numbers: largeArray });
 
         await testWithClient(client, async () => {
-          class GetNumbers extends JsonQuery {
+          class GetNumbers extends RESTQuery {
             path = '/numbers';
             result = { numbers: t.array(t.number) };
           }
@@ -267,7 +273,7 @@ describe('t.number', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetMetrics extends JsonQuery {
+          class GetMetrics extends RESTQuery {
             path = '/metrics';
             result = { counts: t.record(t.number) };
           }
@@ -287,7 +293,7 @@ describe('t.number', () => {
         mockFetch.get('/value', { value: 42 });
 
         await testWithClient(client, async () => {
-          class GetValue extends JsonQuery {
+          class GetValue extends RESTQuery {
             path = '/value';
             result = { value: t.union(t.string, t.number) };
           }
@@ -320,10 +326,10 @@ describe('t.number', () => {
           user: { __typename: 'User', id: 1, age: 30 },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1, getShapeKey(t.entity(User)));
+        const key = getEntityKey('User', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -354,10 +360,10 @@ describe('t.number', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Product', 1, getShapeKey(t.entity(Product)));
+        const key = getEntityKey('Product', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -386,10 +392,10 @@ describe('t.number', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Stats', 1, getShapeKey(t.entity(Stats)));
+        const key = getEntityKey('Stats', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -417,10 +423,10 @@ describe('t.number', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Metrics', 1, getShapeKey(t.entity(Metrics)));
+        const key = getEntityKey('Metrics', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -448,10 +454,10 @@ describe('t.number', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Item', 1, getShapeKey(t.entity(Item)));
+        const key = getEntityKey('Item', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();

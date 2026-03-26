@@ -2,14 +2,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { JsonQuery, fetchQuery, queryKeyForClass } from '../query.js';
-import { t, getShapeKey } from '../typeDefs.js';
+import { RESTQuery, fetchQuery, queryKeyForClass } from '../query.js';
+import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import { hashValue } from 'signalium/utils';
 import { valueKeyFor } from '../stores/shared.js';
 import { GcManager } from '../GcManager.js';
-import { RefetchManager } from '../RefetchManager.js';
 
 /**
  * GC Time Tests
@@ -32,7 +31,6 @@ describe('cacheTime (disk expiration)', () => {
     mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any, evictionMultiplier: 0.001 });
     client.gcManager = new GcManager(client['handleEviction'], 0.001);
-    client.refetchManager = new RefetchManager();
   });
 
   afterEach(() => {
@@ -40,7 +38,7 @@ describe('cacheTime (disk expiration)', () => {
   });
 
   it('should evict queries from disk after cacheTime expires', async () => {
-    class GetItem extends JsonQuery {
+    class GetItem extends RESTQuery {
       static cache = { cacheTime: 100 / 60_000 };
       params = { id: t.id };
       path = `/item/${this.params.id}`;
@@ -81,7 +79,7 @@ describe('cacheTime (disk expiration)', () => {
   });
 
   it('should NOT evict queries with active subscribers', async () => {
-    class GetItem extends JsonQuery {
+    class GetItem extends RESTQuery {
       static cache = { cacheTime: 50 / 60_000 };
       path = '/active';
       result = { data: t.string };
@@ -114,7 +112,6 @@ describe('GC Time (in-memory eviction)', () => {
     mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any, evictionMultiplier: 0.001 });
     client.gcManager = new GcManager(client['handleEviction'], 0.001);
-    client.refetchManager = new RefetchManager();
   });
 
   afterEach(() => {
@@ -122,7 +119,7 @@ describe('GC Time (in-memory eviction)', () => {
   });
 
   it('should evict queries from memory after gcTime bucket rotates', async () => {
-    class GetItem extends JsonQuery {
+    class GetItem extends RESTQuery {
       path = '/gc-item';
       result = { value: t.string };
       config = { gcTime: 1 }; // 1 minute → ~60ms at 0.001 multiplier
@@ -145,7 +142,7 @@ describe('GC Time (in-memory eviction)', () => {
   });
 
   it('should cancel eviction when reactivated before bucket fires', async () => {
-    class GetItem extends JsonQuery {
+    class GetItem extends RESTQuery {
       path = '/reactivate';
       result = { n: t.number };
       config = { gcTime: 1 };
@@ -179,7 +176,7 @@ describe('GC Time (in-memory eviction)', () => {
   });
 
   it('should evict on next tick when gcTime is 0', async () => {
-    class GetItem extends JsonQuery {
+    class GetItem extends RESTQuery {
       path = '/instant-gc';
       result = { v: t.number };
       config = { gcTime: 0 };
@@ -201,7 +198,7 @@ describe('GC Time (in-memory eviction)', () => {
   });
 
   it('should never evict when gcTime is Infinity', async () => {
-    class GetItem extends JsonQuery {
+    class GetItem extends RESTQuery {
       path = '/forever';
       result = { data: t.string };
       config = { gcTime: Infinity };
@@ -222,13 +219,13 @@ describe('GC Time (in-memory eviction)', () => {
   });
 
   it('should use separate buckets for different gcTime values', async () => {
-    class FastQuery extends JsonQuery {
+    class FastQuery extends RESTQuery {
       path = '/fast';
       result = { x: t.number };
       config = { gcTime: 1 }; // ~60ms at 0.001
     }
 
-    class SlowQuery extends JsonQuery {
+    class SlowQuery extends RESTQuery {
       path = '/slow';
       result = { y: t.number };
       config = { gcTime: 2 }; // ~120ms at 0.001
@@ -268,7 +265,6 @@ describe('GC with Entities', () => {
     mockFetch = createMockFetch();
     client = new QueryClient(store, { fetch: mockFetch as any, evictionMultiplier: 0.001 });
     client.gcManager = new GcManager(client['handleEviction'], 0.001);
-    client.refetchManager = new RefetchManager();
   });
 
   afterEach(() => {
@@ -289,7 +285,7 @@ describe('GC with Entities', () => {
       post = t.entity(Post);
     }
 
-    class GetUser extends JsonQuery {
+    class GetUser extends RESTQuery {
       path = '/user';
       result = { user: t.entity(User) };
       config = { gcTime: 1 };
@@ -308,22 +304,22 @@ describe('GC with Entities', () => {
       },
     });
 
-    const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
-    const postKey = hashValue(['Post:10', getShapeKey(t.entity(Post))]);
+    const userKey = hashValue(['User', 1]);
+    const postKey = hashValue(['Post', 10]);
 
     await testWithClient(client, async () => {
       const relay = fetchQuery(GetUser);
       await relay;
 
-      expect(client.getEntity(userKey)).toBeDefined();
-      expect(client.getEntity(postKey)).toBeDefined();
+      expect(client.entityMap.getEntity(userKey)).toBeDefined();
+      expect(client.entityMap.getEntity(postKey)).toBeDefined();
     });
 
     // After query is GC'd, entities with no other references should also be removed
     await sleep(200);
     expect(client.queryInstances.has(queryKeyForClass(GetUser, undefined))).toBe(false);
-    expect(client.getEntity(userKey)).toBeUndefined();
-    expect(client.getEntity(postKey)).toBeUndefined();
+    expect(client.entityMap.getEntity(userKey)).toBeUndefined();
+    expect(client.entityMap.getEntity(postKey)).toBeUndefined();
   });
 
   it('should keep entities alive when referenced by multiple queries', async () => {
@@ -333,13 +329,13 @@ describe('GC with Entities', () => {
       name = t.string;
     }
 
-    class GetUser1 extends JsonQuery {
+    class GetUser1 extends RESTQuery {
       path = '/user1';
       result = { user: t.entity(User) };
       config = { gcTime: 1 };
     }
 
-    class GetUser2 extends JsonQuery {
+    class GetUser2 extends RESTQuery {
       path = '/user2';
       result = { user: t.entity(User) };
       config = { gcTime: 1 };
@@ -349,19 +345,19 @@ describe('GC with Entities', () => {
     mockFetch.get('/user1', { user: sharedUserData });
     mockFetch.get('/user2', { user: sharedUserData });
 
-    const userKey = hashValue(['SharedUser:42', getShapeKey(t.entity(User))]);
+    const userKey = hashValue(['SharedUser', 42]);
 
     // Activate both queries
     await testWithClient(client, async () => {
       await fetchQuery(GetUser1);
       await fetchQuery(GetUser2);
 
-      expect(client.getEntity(userKey)).toBeDefined();
+      expect(client.entityMap.getEntity(userKey)).toBeDefined();
     });
 
     // Both deactivated. After GC of both queries, entity should finally be removed.
     await sleep(200);
-    expect(client.getEntity(userKey)).toBeUndefined();
+    expect(client.entityMap.getEntity(userKey)).toBeUndefined();
   });
 
   it('should respect entity-level gcTime before removing', async () => {
@@ -373,7 +369,7 @@ describe('GC with Entities', () => {
       value = t.string;
     }
 
-    class GetDelayed extends JsonQuery {
+    class GetDelayed extends RESTQuery {
       path = '/delayed';
       result = { item: t.entity(DelayedEntity) };
       config = { gcTime: 1 }; // query GC is faster
@@ -383,21 +379,21 @@ describe('GC with Entities', () => {
       item: { __typename: 'Delayed', id: 1, value: 'hello' },
     });
 
-    const entityKey = hashValue(['Delayed:1', getShapeKey(t.entity(DelayedEntity))]);
+    const entityKey = hashValue(['Delayed', 1]);
 
     await testWithClient(client, async () => {
       await fetchQuery(GetDelayed);
-      expect(client.getEntity(entityKey)).toBeDefined();
+      expect(client.entityMap.getEntity(entityKey)).toBeDefined();
     });
 
     // Query should be evicted quickly (~120ms), but entity stays because it has gcTime: 2
     await sleep(200);
     expect(client.queryInstances.has(queryKeyForClass(GetDelayed, undefined))).toBe(false);
-    expect(client.getEntity(entityKey)).toBeDefined();
+    expect(client.entityMap.getEntity(entityKey)).toBeDefined();
 
     // Eventually the entity's own GC bucket fires
     await sleep(300);
-    expect(client.getEntity(entityKey)).toBeUndefined();
+    expect(client.entityMap.getEntity(entityKey)).toBeUndefined();
   });
 
   it('should cancel entity GC when re-referenced by a new query', async () => {
@@ -409,13 +405,13 @@ describe('GC with Entities', () => {
       name = t.string;
     }
 
-    class GetCancel1 extends JsonQuery {
+    class GetCancel1 extends RESTQuery {
       path = '/cancel1';
       result = { item: t.entity(CancelEntity) };
       config = { gcTime: 1 };
     }
 
-    class GetCancel2 extends JsonQuery {
+    class GetCancel2 extends RESTQuery {
       path = '/cancel2';
       result = { item: t.entity(CancelEntity) };
       config = { gcTime: 1 };
@@ -425,32 +421,32 @@ describe('GC with Entities', () => {
     mockFetch.get('/cancel1', { item: entityData });
     mockFetch.get('/cancel2', { item: entityData });
 
-    const entityKey = hashValue(['CancelEnt:1', getShapeKey(t.entity(CancelEntity))]);
+    const entityKey = hashValue(['CancelEnt', 1]);
 
     // First query fetches entity, then deactivates
     await testWithClient(client, async () => {
       await fetchQuery(GetCancel1);
-      expect(client.getEntity(entityKey)).toBeDefined();
+      expect(client.entityMap.getEntity(entityKey)).toBeDefined();
     });
 
     // Wait for query GC (~120ms) — entity is now scheduled for its own gcTime: 2
     await sleep(200);
-    expect(client.getEntity(entityKey)).toBeDefined();
+    expect(client.entityMap.getEntity(entityKey)).toBeDefined();
 
     // Before entity GC fires, a new query references the same entity
     await testWithClient(client, async () => {
       await fetchQuery(GetCancel2);
-      expect(client.getEntity(entityKey)).toBeDefined();
+      expect(client.entityMap.getEntity(entityKey)).toBeDefined();
 
       // Wait past the entity's gcTime bucket — entity should survive
       // because re-referencing incremented the ref count back above 0
       await sleep(300);
-      expect(client.getEntity(entityKey)).toBeDefined();
+      expect(client.entityMap.getEntity(entityKey)).toBeDefined();
     });
 
     // After second query deactivates + both GC cycles, entity should finally go
     await sleep(500);
-    expect(client.getEntity(entityKey)).toBeUndefined();
+    expect(client.entityMap.getEntity(entityKey)).toBeUndefined();
   });
 
   it('should respect entity gcTime when entity type is wrapped (e.g. t.optional)', async () => {
@@ -462,7 +458,7 @@ describe('GC with Entities', () => {
       value = t.string;
     }
 
-    class GetWrapped extends JsonQuery {
+    class GetWrapped extends RESTQuery {
       path = '/wrapped';
       result = { item: t.optional(t.entity(WrappedEntity)) };
       config = { gcTime: 1 };
@@ -472,21 +468,21 @@ describe('GC with Entities', () => {
       item: { __typename: 'Wrapped', id: 1, value: 'hello' },
     });
 
-    const entityKey = hashValue(['Wrapped:1', getShapeKey(t.entity(WrappedEntity))]);
+    const entityKey = hashValue(['Wrapped', 1]);
 
     await testWithClient(client, async () => {
       await fetchQuery(GetWrapped);
-      expect(client.getEntity(entityKey)).toBeDefined();
+      expect(client.entityMap.getEntity(entityKey)).toBeDefined();
     });
 
     // Query GC fires (~120ms), but entity should survive because its
     // gcTime: 2 is preserved through the t.optional() wrapper.
     await sleep(200);
-    expect(client.getEntity(entityKey)).toBeDefined();
+    expect(client.entityMap.getEntity(entityKey)).toBeDefined();
 
     // Eventually the entity's own GC bucket fires
     await sleep(300);
-    expect(client.getEntity(entityKey)).toBeUndefined();
+    expect(client.entityMap.getEntity(entityKey)).toBeUndefined();
   });
 
   it('should evict child entities when parent entity children change on refetch', async () => {
@@ -503,7 +499,7 @@ describe('GC with Entities', () => {
       tags = t.array(t.entity(Tag));
     }
 
-    class GetPost extends JsonQuery {
+    class GetPost extends RESTQuery {
       path = '/gc-post';
       result = { post: t.entity(Post) };
       config = { gcTime: 1 };
@@ -521,16 +517,16 @@ describe('GC with Entities', () => {
       },
     });
 
-    const tag1Key = hashValue(['GcTag:1', getShapeKey(t.entity(Tag))]);
-    const tag2Key = hashValue(['GcTag:2', getShapeKey(t.entity(Tag))]);
-    const tag3Key = hashValue(['GcTag:3', getShapeKey(t.entity(Tag))]);
+    const tag1Key = hashValue(['GcTag', 1]);
+    const tag2Key = hashValue(['GcTag', 2]);
+    const tag3Key = hashValue(['GcTag', 3]);
 
     await testWithClient(client, async () => {
       const relay = fetchQuery(GetPost);
       await relay;
 
-      expect(client.getEntity(tag1Key)).toBeDefined();
-      expect(client.getEntity(tag2Key)).toBeDefined();
+      expect(client.entityMap.getEntity(tag1Key)).toBeDefined();
+      expect(client.entityMap.getEntity(tag2Key)).toBeDefined();
 
       // Refetch with different children — tag 2 removed, tag 3 added
       mockFetch.get('/gc-post', {
@@ -548,11 +544,11 @@ describe('GC with Entities', () => {
       await relay.value!.__refetch();
 
       // Tag 1 still referenced, tag 3 newly added
-      expect(client.getEntity(tag1Key)).toBeDefined();
-      expect(client.getEntity(tag3Key)).toBeDefined();
+      expect(client.entityMap.getEntity(tag1Key)).toBeDefined();
+      expect(client.entityMap.getEntity(tag3Key)).toBeDefined();
 
       // Tag 2 should be evicted — no gcTime on Tag, so immediate removal
-      expect(client.getEntity(tag2Key)).toBeUndefined();
+      expect(client.entityMap.getEntity(tag2Key)).toBeUndefined();
     });
   });
 
@@ -563,7 +559,7 @@ describe('GC with Entities', () => {
       name = t.string;
     }
 
-    class GetUser extends JsonQuery {
+    class GetUser extends RESTQuery {
       static cache = { maxCount: 2, cacheTime: 5000 / 60_000 };
       params = { id: t.id };
       path = `/users/${this.params.id}`;

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientContext } from '../QueryClient.js';
 import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
-import { JsonQuery, fetchQuery } from '../query.js';
+import { RESTQuery, fetchQuery } from '../query.js';
 import { NetworkManager } from '../NetworkManager.js';
 import { NetworkMode } from '../types.js';
 import { createMockFetch, testWithClient, sleep, createTestWatcher } from './utils.js';
@@ -30,7 +30,7 @@ describe('Network Mode', () => {
     it('should fetch when online', async () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
       }
@@ -48,7 +48,7 @@ describe('Network Mode', () => {
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = { networkMode: NetworkMode.Online };
@@ -68,7 +68,7 @@ describe('Network Mode', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
       mockFetch.get('/users/1', { id: '1', name: 'Alice Updated' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = {
@@ -112,7 +112,7 @@ describe('Network Mode', () => {
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = { networkMode: NetworkMode.Always };
@@ -130,7 +130,7 @@ describe('Network Mode', () => {
     it('should never be paused', async () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = { networkMode: NetworkMode.Always };
@@ -153,7 +153,7 @@ describe('Network Mode', () => {
     it('should fetch when online and no cache', async () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = { networkMode: NetworkMode.OfflineFirst };
@@ -174,7 +174,7 @@ describe('Network Mode', () => {
 
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = { networkMode: NetworkMode.OfflineFirst };
@@ -192,7 +192,7 @@ describe('Network Mode', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
       mockFetch.get('/users/1', { id: '1', name: 'Alice Updated' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = {
@@ -224,7 +224,7 @@ describe('Network Mode', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
       mockFetch.get('/users/1', { id: '1', name: 'Alice Updated' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = {
@@ -259,7 +259,7 @@ describe('Network Mode', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
       mockFetch.get('/users/1', { id: '1', name: 'Alice Updated' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = {
@@ -293,7 +293,7 @@ describe('Network Mode', () => {
       mockFetch.get('/users/1', { id: '1', name: 'Alice' });
       mockFetch.get('/users/1', { id: '1', name: 'Alice Updated' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = {
@@ -340,7 +340,7 @@ describe('Network Mode', () => {
         return { id: '1', name: 'Alice' };
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = {
@@ -380,7 +380,7 @@ describe('Network Mode', () => {
         throw new Error('Network error');
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
       }
@@ -418,7 +418,7 @@ describe('Network Mode', () => {
         return { id: '1', name: 'Alice' };
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = {
@@ -446,7 +446,7 @@ describe('Network Mode', () => {
         throw new Error('Network error');
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = { retry: false as const };
@@ -478,7 +478,7 @@ describe('Network Mode', () => {
         return { id: '1', name: 'Alice' };
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = {
@@ -514,7 +514,7 @@ describe('Network Mode', () => {
         throw new Error('Network error');
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = {
@@ -553,7 +553,7 @@ describe('Network Mode', () => {
         return { id: '1', name: 'Alice' };
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/users/1';
         result = t.object({ id: t.string, name: t.string });
         config = {

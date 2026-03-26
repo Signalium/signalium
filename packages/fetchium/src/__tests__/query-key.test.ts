@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { JsonQuery, queryKeyForClass } from '../query.js';
-import { JsonMutation, mutationKeyForClass, getMutation } from '../mutation.js';
+import { RESTQuery, queryKeyForClass } from '../query.js';
+import { RESTMutation, mutationKeyForClass, getMutation } from '../mutation.js';
 import { createMockFetch, testWithClient } from './utils.js';
 
 /**
@@ -25,7 +25,7 @@ describe('queryKeyForClass', () => {
   });
 
   it('should return a stable key for the same class and params', () => {
-    class GetUser extends JsonQuery {
+    class GetUser extends RESTQuery {
       readonly params = { id: t.id };
       readonly path = `/users/${this.params.id}`;
       readonly result = { name: t.string };
@@ -39,7 +39,7 @@ describe('queryKeyForClass', () => {
   });
 
   it('should return different keys for different params', () => {
-    class GetUser extends JsonQuery {
+    class GetUser extends RESTQuery {
       readonly params = { id: t.id };
       readonly path = `/users/${this.params.id}`;
       readonly result = { name: t.string };
@@ -52,13 +52,13 @@ describe('queryKeyForClass', () => {
   });
 
   it('should return different keys for different query classes', () => {
-    class GetUser extends JsonQuery {
+    class GetUser extends RESTQuery {
       readonly params = { id: t.id };
       readonly path = `/users/${this.params.id}`;
       readonly result = { name: t.string };
     }
 
-    class GetPost extends JsonQuery {
+    class GetPost extends RESTQuery {
       readonly params = { id: t.id };
       readonly path = `/posts/${this.params.id}`;
       readonly result = { title: t.string };
@@ -71,7 +71,7 @@ describe('queryKeyForClass', () => {
   });
 
   it('should return a consistent key for undefined params', () => {
-    class GetItems extends JsonQuery {
+    class GetItems extends RESTQuery {
       readonly path = '/items';
       readonly result = { items: t.array(t.string) };
     }
@@ -98,7 +98,7 @@ describe('mutationKeyForClass', () => {
   });
 
   it('should throw for unregistered mutation class', () => {
-    class UnusedMutation extends JsonMutation {
+    class UnusedMutation extends RESTMutation {
       readonly params = { name: t.string };
       readonly path = '/unused';
       readonly method = 'POST' as const;
@@ -110,7 +110,7 @@ describe('mutationKeyForClass', () => {
   });
 
   it('should return a stable ID after the mutation is registered via getMutation', async () => {
-    class CreateUser extends JsonMutation {
+    class CreateUser extends RESTMutation {
       readonly params = { name: t.string };
       readonly path = '/users';
       readonly method = 'POST' as const;
@@ -134,7 +134,7 @@ describe('mutationKeyForClass', () => {
   });
 
   it('should return different IDs for different mutation classes', async () => {
-    class CreateUser extends JsonMutation {
+    class CreateUser extends RESTMutation {
       readonly params = { name: t.string };
       readonly path = '/users';
       readonly method = 'POST' as const;
@@ -142,7 +142,7 @@ describe('mutationKeyForClass', () => {
       readonly result = { id: t.number };
     }
 
-    class DeleteUser extends JsonMutation {
+    class DeleteUser extends RESTMutation {
       readonly params = { id: t.id };
       readonly path = `/users/${this.params.id}`;
       readonly method = 'DELETE' as const;

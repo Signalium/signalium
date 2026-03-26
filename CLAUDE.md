@@ -145,7 +145,7 @@ See `SIGNALIUM_TRANSFORMS.md` for details when working on transforms.
 
 Data-fetching layer built on signalium's reactive primitives. Provides `Query`, `Entity`, `Mutation`, and a type DSL (`t`).
 
-See `QUERIUS.md` for detailed architecture when working in this package.
+See `FETCHIUM.md` for detailed architecture when working in this package.
 
 Key concepts at a glance:
 

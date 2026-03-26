@@ -1,21 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { JsonQuery, fetchQuery } from '../query.js';
-import { RefetchInterval } from '../types.js';
+import { RESTQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import { t } from '../typeDefs.js';
-import { RefetchManager } from '../RefetchManager.js';
 import { GcManager } from '../GcManager.js';
+import { poll } from '../subscriptions/polling.js';
 
 /**
- * RefetchInterval Tests
+ * Poll-based Subscription Tests
  *
- * Tests refetchInterval with dynamic GCD-based timer management,
- * subscriber tracking, exponential backoff, and no overlapping fetches
+ * Tests poll() subscribe factory with per-query timers,
+ * subscriber tracking, no overlapping fetches, and getInterval support.
  */
 
-describe('RefetchInterval', () => {
+describe('Poll Subscribe', () => {
   let client: QueryClient;
   let mockFetch: ReturnType<typeof createMockFetch>;
   let kv: any;
@@ -26,8 +25,7 @@ describe('RefetchInterval', () => {
     kv = new MemoryPersistentStore();
     store = new SyncQueryStore(kv);
     mockFetch = createMockFetch();
-    client = new QueryClient(store, { fetch: mockFetch as any, refetchMultiplier: 0.1 });
-    client.refetchManager = new RefetchManager(0.1);
+    client = new QueryClient(store, { fetch: mockFetch as any });
     client.gcManager = new GcManager(() => {}, 0.001);
   });
 
@@ -35,15 +33,15 @@ describe('RefetchInterval', () => {
     client?.destroy();
   });
 
-  describe('Basic Refetch Interval', () => {
+  describe('Basic Polling', () => {
     it('should refetch at specified interval', async () => {
       let callCount = 0;
       mockFetch.get('/counter', () => ({ count: ++callCount }));
 
-      class GetCounter extends JsonQuery {
+      class GetCounter extends RESTQuery {
         path = '/counter';
         result = { count: t.number };
-        config = { refetchInterval: RefetchInterval.Every1Second };
+        config = { subscribe: poll({ interval: 100 }) };
       }
 
       await testWithClient(client, async () => {
@@ -51,24 +49,22 @@ describe('RefetchInterval', () => {
         await relay;
         expect(relay.value!).toMatchObject({ count: 1 });
 
-        // Wait for interval to trigger (100ms with 0.1 multiplier + buffer)
         await sleep(120);
         expect(relay.value?.count).toBeGreaterThan(1);
 
-        // Wait for another interval
         await sleep(110);
         expect(relay.value?.count).toBeGreaterThan(2);
       });
     });
 
-    it('should stop refetching when query is no longer accessed', async () => {
+    it('should stop polling when query is no longer accessed', async () => {
       let callCount = 0;
       mockFetch.get('/item', () => ({ n: ++callCount }));
 
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/item';
         result = { n: t.number };
-        config = { refetchInterval: RefetchInterval.Every1Second };
+        config = { subscribe: poll({ interval: 100 }) };
       }
 
       await testWithClient(client, async () => {
@@ -76,35 +72,27 @@ describe('RefetchInterval', () => {
         await relay;
         const initialCount = relay.value!.n;
 
-        // Wait a bit (250ms with 0.1 multiplier = ~2.5 intervals)
         await sleep(250);
         const afterCount = relay.value!.n;
 
         expect(afterCount).toBeGreaterThan(initialCount);
-
-        await sleep(250);
       });
 
-      // After context ends, wait and check that no more calls happen
       const countBeforeWait = callCount;
       await sleep(200);
-
-      // Note: This test is simplified - in a real implementation,
-      // subscriber tracking would need proper cleanup
-      // For now we just verify the basic interval works
+      expect(callCount).toBe(countBeforeWait);
     });
 
-    it('should resume refetching after deactivation and re-activation', async () => {
+    it('should resume polling after deactivation and re-activation', async () => {
       let callCount = 0;
       mockFetch.get('/reactivate', () => ({ n: ++callCount }));
 
-      class GetReactivate extends JsonQuery {
+      class GetReactivate extends RESTQuery {
         path = '/reactivate';
         result = { n: t.number };
-        config = { refetchInterval: RefetchInterval.Every1Second, gcTime: Infinity };
+        config = { gcTime: Infinity, subscribe: poll({ interval: 100 }) };
       }
 
-      // Phase 1: activate, verify refetching works
       await testWithClient(client, async () => {
         const relay = fetchQuery(GetReactivate);
         await relay;
@@ -112,12 +100,10 @@ describe('RefetchInterval', () => {
         expect(callCount).toBeGreaterThan(1);
       });
 
-      // Phase 2: deactivated — verify no more refetches
       const countAfterDeactivation = callCount;
       await sleep(200);
       expect(callCount).toBe(countAfterDeactivation);
 
-      // Phase 3: re-activate — verify refetching resumes
       await testWithClient(client, async () => {
         const relay = fetchQuery(GetReactivate);
         // eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -128,87 +114,44 @@ describe('RefetchInterval', () => {
     });
   });
 
-  describe('Multiple Intervals with GCD', () => {
-    it('should handle multiple queries with different intervals efficiently', async () => {
+  describe('Multiple Intervals', () => {
+    it('should handle multiple queries with different intervals independently', async () => {
       let count1 = 0;
       let count5 = 0;
 
-      mockFetch.get('/every1s', () => ({ count: ++count1 }));
-      mockFetch.get('/every5s', () => ({ count: ++count5 }));
+      mockFetch.get('/every100ms', () => ({ count: ++count1 }));
+      mockFetch.get('/every500ms', () => ({ count: ++count5 }));
 
-      class GetEvery1s extends JsonQuery {
-        path = '/every1s';
+      class GetEvery100ms extends RESTQuery {
+        path = '/every100ms';
         result = { count: t.number };
-        config = { refetchInterval: RefetchInterval.Every1Second };
+        config = { subscribe: poll({ interval: 100 }) };
       }
 
-      class GetEvery5s extends JsonQuery {
-        path = '/every5s';
+      class GetEvery500ms extends RESTQuery {
+        path = '/every500ms';
         result = { count: t.number };
-        config = { refetchInterval: RefetchInterval.Every5Seconds };
+        config = { subscribe: poll({ interval: 500 }) };
       }
 
       await testWithClient(client, async () => {
-        const relay1s = fetchQuery(GetEvery1s);
-        const relay5s = fetchQuery(GetEvery5s);
+        const relay100 = fetchQuery(GetEvery100ms);
+        const relay500 = fetchQuery(GetEvery500ms);
 
-        await relay1s;
-        await relay5s;
+        await relay100;
+        await relay500;
 
-        // Wait and verify different refetch rates (350ms = 3.5 intervals of 1s)
         await sleep(350);
 
-        // 1s query should have refetched ~3 times
         expect(count1).toBeGreaterThanOrEqual(3);
         expect(count1).toBeLessThanOrEqual(5);
 
-        // 5s query should have refetched 0-1 times
         expect(count5).toBeGreaterThanOrEqual(1);
         expect(count5).toBeLessThanOrEqual(2);
 
-        // Wait for 5s interval (200ms more)
         await sleep(200);
 
-        // 5s query should now have refetched
         expect(count5).toBeGreaterThanOrEqual(2);
-      });
-    });
-
-    it('should use GCD for multiple queries with compatible intervals', async () => {
-      // Every5Seconds and Every10Seconds should use GCD of 5s
-      let count5 = 0;
-      let count10 = 0;
-
-      mockFetch.get('/5s', () => ({ n: ++count5 }));
-      mockFetch.get('/10s', () => ({ n: ++count10 }));
-
-      class Get5s extends JsonQuery {
-        path = '/5s';
-        result = { n: t.number };
-        config = { refetchInterval: RefetchInterval.Every5Seconds };
-      }
-
-      class Get10s extends JsonQuery {
-        path = '/10s';
-        result = { n: t.number };
-        config = { refetchInterval: RefetchInterval.Every10Seconds };
-      }
-
-      await testWithClient(client, async () => {
-        const relay5 = fetchQuery(Get5s);
-        const relay10 = fetchQuery(Get10s);
-
-        await Promise.all([relay5, relay10]);
-
-        // Wait 1100ms (11 seconds at 0.1x = 1.1s)
-        await sleep(1100);
-
-        // 5s should refetch ~2 times
-        expect(count5).toBeGreaterThanOrEqual(2);
-
-        // 10s should refetch ~1 time
-        expect(count10).toBeGreaterThanOrEqual(1);
-        expect(count10).toBeLessThanOrEqual(2);
       });
     });
   });
@@ -223,42 +166,37 @@ describe('RefetchInterval', () => {
         activeFetches++;
         maxConcurrent = Math.max(maxConcurrent, activeFetches);
         fetchCount++;
-        await sleep(80); // Slow fetch (80ms = 800ms at 0.1x)
+        await sleep(80);
         activeFetches--;
         return { count: fetchCount };
       });
 
-      class GetSlow extends JsonQuery {
+      class GetSlow extends RESTQuery {
         path = '/slow';
         result = { count: t.number };
-        config = { refetchInterval: RefetchInterval.Every1Second };
+        config = { subscribe: poll({ interval: 100 }) };
       }
 
       await testWithClient(client, async () => {
         const relay = fetchQuery(GetSlow);
         await relay;
 
-        // Wait for several intervals (350ms = 3.5 intervals)
         await sleep(350);
 
-        // Should never have overlapping fetches
         expect(maxConcurrent).toBe(1);
-
-        // Should have attempted multiple fetches but not overlapping
         expect(fetchCount).toBeGreaterThan(1);
       });
     });
   });
 
   describe('Edge Cases', () => {
-    it('should handle query without refetchInterval', async () => {
+    it('should handle query without poll subscribe', async () => {
       let callCount = 0;
       mockFetch.get('/no-interval', () => ({ n: ++callCount }));
 
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/no-interval';
         result = { n: t.number };
-        // No refetchInterval
       }
 
       await testWithClient(client, async () => {
@@ -266,108 +204,74 @@ describe('RefetchInterval', () => {
         await relay;
         expect(relay.value!).toMatchObject({ n: 1 });
 
-        // Wait a bit (200ms = 2s at 0.1x)
         await sleep(200);
 
-        // Should not have refetched
         expect(callCount).toBe(1);
       });
     });
 
-    it('should handle very fast intervals', async () => {
+    it('should handle fast intervals', async () => {
       let callCount = 0;
       mockFetch.get('/fast', () => ({ count: ++callCount }));
 
-      class GetFast extends JsonQuery {
+      class GetFast extends RESTQuery {
         path = '/fast';
         result = { count: t.number };
-        config = { refetchInterval: RefetchInterval.Every1Second };
+        config = { subscribe: poll({ interval: 50 }) };
       }
 
       await testWithClient(client, async () => {
         const relay = fetchQuery(GetFast);
         await relay;
 
-        // Wait 250ms (2.5 intervals at 0.1x)
         await sleep(250);
 
-        // Should have refetched at least twice
-        expect(callCount).toBeGreaterThanOrEqual(2);
+        expect(callCount).toBeGreaterThanOrEqual(3);
       });
     });
   });
 
-  describe('Response-dependent refetchInterval', () => {
-    it('should change refetchInterval based on this.response status', async () => {
+  describe('getConfig subscribe', () => {
+    it('supports getConfig() for dynamic poll configuration', async () => {
       let callCount = 0;
-      // First call returns 500, subsequent calls return 200
-      mockFetch.get('/health', () => {
-        callCount++;
-        return { status: callCount === 1 ? 'unhealthy' : 'ok' };
-      });
+      mockFetch.get('/gs-dynamic', () => ({ v: ++callCount }));
 
-      const intervalLog: number[] = [];
-
-      class GetHealth extends JsonQuery {
-        path = '/health';
-        result = { status: t.string };
+      class GetGsDynamic extends RESTQuery {
+        path = '/gs-dynamic';
+        result = { v: t.number };
 
         getConfig() {
-          // Poll fast (Every1Second = 100ms at 0.1x) when healthy or unknown,
-          // slow down (Every5Seconds = 500ms at 0.1x) after errors
-          const interval = this.response?.ok === false ? RefetchInterval.Every5Seconds : RefetchInterval.Every1Second;
-          intervalLog.push(interval);
-          return { refetchInterval: interval };
+          return { subscribe: poll({ interval: 100 }) };
         }
       }
 
       await testWithClient(client, async () => {
-        const relay = fetchQuery(GetHealth);
+        const relay = fetchQuery(GetGsDynamic);
         await relay;
-
-        // First fetch completed — response is 200 (mock always returns 200 status)
-        // getConfig should have been called with ok=true → Every1Second
-        expect(intervalLog[intervalLog.length - 1]).toBe(RefetchInterval.Every1Second);
-
-        // Wait for a couple of fast refetch intervals (100ms each at 0.1x)
         await sleep(250);
-
-        // Should have refetched multiple times at the fast interval
-        expect(callCount).toBeGreaterThanOrEqual(2);
+        expect(callCount).toBeGreaterThanOrEqual(3);
       });
     });
 
-    it('should slow down polling after error and speed up after recovery', async () => {
-      const intervalLog: number[] = [];
+    it('getConfig can access this.response', async () => {
+      let seenStatus: number | undefined;
+      mockFetch.get('/gs-ctx', () => ({ v: 1 }));
 
-      class GetStatus extends JsonQuery {
-        path = '/status';
-        result = { value: t.string };
+      class GetGsCtx extends RESTQuery {
+        path = '/gs-ctx';
+        result = { v: t.number };
 
         getConfig() {
-          const interval = this.response?.ok === false ? RefetchInterval.Every5Seconds : RefetchInterval.Every1Second;
-          intervalLog.push(interval);
-          return { refetchInterval: interval };
+          seenStatus = this.response?.status;
+          return { subscribe: poll({ interval: 100 }) };
         }
       }
 
-      // First fetch: 500 error
-      mockFetch.get('/status', { value: 'error' }, { status: 500 });
-
       await testWithClient(client, async () => {
-        const relay = fetchQuery(GetStatus);
+        const relay = fetchQuery(GetGsCtx);
         await relay;
-
-        // After 500 response, getConfig should set slow interval
-        expect(intervalLog[intervalLog.length - 1]).toBe(RefetchInterval.Every5Seconds);
-
-        // Refetch explicitly with a 200 response
-        intervalLog.length = 0;
-        mockFetch.get('/status', { value: 'recovered' });
-        await relay.value!.__refetch();
-
-        // After 200 response, getConfig should set fast interval
-        expect(intervalLog[intervalLog.length - 1]).toBe(RefetchInterval.Every1Second);
+        await sleep(150);
+        expect(seenStatus).toBe(200);
       });
     });
   });

@@ -1,15 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
-import { parseEntities } from '../../parseEntities.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
 import {
+  parseEntities,
   setupParsingTests,
   testWithClient,
   getEntityKey,
   getDocument,
   getEntityRefs,
-  getShapeKey,
 } from './test-utils.js';
 
 /**
@@ -44,10 +43,10 @@ describe('t.id', () => {
           user: { __typename: 'User', id: 'user-123', name: 'Alice' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 'user-123', getShapeKey(t.entity(User)));
+        const key = getEntityKey('User', 'user-123');
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -70,10 +69,10 @@ describe('t.id', () => {
           user: { __typename: 'User', id: 123, name: 'Bob' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 123, getShapeKey(t.entity(User)));
+        const key = getEntityKey('User', 123);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -97,10 +96,10 @@ describe('t.id', () => {
           user: { __typename: 'User', id: uuid, name: 'Carol' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', uuid, getShapeKey(t.entity(User)));
+        const key = getEntityKey('User', uuid);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -128,14 +127,14 @@ describe('t.id', () => {
           ],
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
         expect(entityRefs.size).toBe(3);
 
-        expect(await getDocument(kv, getEntityKey('Item', 1, getShapeKey(t.entity(Item))))).toBeDefined();
-        expect(await getDocument(kv, getEntityKey('Item', 'item-2', getShapeKey(t.entity(Item))))).toBeDefined();
-        expect(await getDocument(kv, getEntityKey('Item', 3, getShapeKey(t.entity(Item))))).toBeDefined();
+        expect(await getDocument(kv, getEntityKey('Item', 1))).toBeDefined();
+        expect(await getDocument(kv, getEntityKey('Item', 'item-2'))).toBeDefined();
+        expect(await getDocument(kv, getEntityKey('Item', 3))).toBeDefined();
       });
     });
 
@@ -158,13 +157,13 @@ describe('t.id', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
         expect(entityRefs.size).toBe(2);
 
-        expect(await getDocument(kv, getEntityKey('User', 'u-1', getShapeKey(t.entity(User))))).toBeDefined();
-        expect(await getDocument(kv, getEntityKey('User', 2, getShapeKey(t.entity(User))))).toBeDefined();
+        expect(await getDocument(kv, getEntityKey('User', 'u-1'))).toBeDefined();
+        expect(await getDocument(kv, getEntityKey('User', 2))).toBeDefined();
       });
     });
 
@@ -191,10 +190,10 @@ describe('t.id', () => {
           pet: { __typename: 'Dog', id: 'dog-1', breed: 'Labrador' },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Dog', 'dog-1', getShapeKey(t.entity(Dog)));
+        const key = getEntityKey('Dog', 'dog-1');
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -227,12 +226,12 @@ describe('t.id', () => {
           ],
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
         expect(entityRefs.size).toBe(2);
-        expect(await getDocument(kv, getEntityKey('Dog', 1, getShapeKey(t.entity(Dog))))).toBeDefined();
-        expect(await getDocument(kv, getEntityKey('Cat', 'cat-1', getShapeKey(t.entity(Cat))))).toBeDefined();
+        expect(await getDocument(kv, getEntityKey('Dog', 1))).toBeDefined();
+        expect(await getDocument(kv, getEntityKey('Cat', 'cat-1'))).toBeDefined();
       });
     });
 
@@ -264,11 +263,11 @@ describe('t.id', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const userKey = getEntityKey('User', 'u-1', getShapeKey(t.entity(User)));
-        const addressKey = getEntityKey('Address', 'addr-100', getShapeKey(t.entity(Address)));
+        const userKey = getEntityKey('User', 'u-1');
+        const addressKey = getEntityKey('Address', 'addr-100');
 
         const userRefs = await getEntityRefs(kv, userKey);
         expect(userRefs).toBeDefined();
@@ -294,7 +293,7 @@ describe('t.id', () => {
             name = t.string;
           }
 
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             path = '/user';
             result = { user: t.entity(User) };
           }
@@ -325,7 +324,7 @@ describe('t.id', () => {
             name = t.string;
           }
 
-          class GetUsers extends JsonQuery {
+          class GetUsers extends RESTQuery {
             path = '/users';
             result = { users: t.array(t.entity(User)) };
           }
@@ -357,7 +356,7 @@ describe('t.id', () => {
             name = t.string;
           }
 
-          class GetUsers extends JsonQuery {
+          class GetUsers extends RESTQuery {
             path = '/users/map';
             result = { users: t.record(t.entity(User)) };
           }

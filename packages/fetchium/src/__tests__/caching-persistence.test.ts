@@ -2,9 +2,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { t, getShapeKey, ValidatorDef } from '../typeDefs.js';
+import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { JsonQuery, fetchQuery, queryKeyForClass } from '../query.js';
+import { RESTQuery, fetchQuery, queryKeyForClass, getQueryDefinition } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import {
@@ -130,32 +130,37 @@ function deleteDocument(kv: any, key: number) {
  * Compute a query key from a Query class without needing the class to be registered
  * via fetchQuery(). This mirrors the internal logic of getQueryDefinition + queryKeyFor.
  */
-function computeQueryKey(QueryClass: new () => JsonQuery, params: unknown): number {
+function computeQueryKey(QueryClass: new () => RESTQuery, params: unknown): number {
   const instance = new QueryClass();
-  const { path, method, response } = instance as any;
+  const { path, method } = instance as any;
   const id = `${method ?? 'GET'}:${path}`;
-
-  let shapeKey: number;
-  if (response instanceof ValidatorDef) {
-    shapeKey = response.shapeKey;
-  } else if (response instanceof Set) {
-    shapeKey = hashValue(response);
-  } else if (typeof response === 'object' && response !== null) {
-    const shape = t.object(response);
-    shapeKey = (shape as any).shapeKey;
-  } else {
-    shapeKey = hashValue(response);
-  }
 
   if (typeof params === 'object' && params !== null && Object.keys(params as any).length === 0) {
     params = undefined;
   }
 
-  return hashValue([id, shapeKey, params]);
+  return hashValue([id, params]);
+}
+
+/**
+ * Compute the root entity key for a non-entity query result.
+ * The root entity's typename is the query's statics.id string, and the key is
+ * hashValue([typename, paramsId]) where paramsId = hashValue(extractedParams).
+ */
+function computeRootEntityKey(QueryClass: new () => RESTQuery, params: unknown): number {
+  const def = getQueryDefinition(QueryClass);
+  const id = def.statics.id;
+
+  if (typeof params === 'object' && params !== null && Object.keys(params as any).length === 0) {
+    params = undefined;
+  }
+
+  const paramsId = params !== undefined ? hashValue(params) : 0;
+  return hashValue([id, paramsId]);
 }
 
 // Helper to set up a query result in the store
-function setQuery(kv: any, QueryClass: new () => JsonQuery, params: unknown, result: unknown, refIds?: Set<number>) {
+function setQuery(kv: any, QueryClass: new () => RESTQuery, params: unknown, result: unknown, refIds?: Set<number>) {
   if (typeof params === 'object' && params !== null && Object.keys(params as any).length === 0) {
     params = undefined;
   }
@@ -185,7 +190,7 @@ describe('Caching and Persistence', () => {
       mockFetch.get('/items/[id]', { id: 1, name: 'Test' });
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           params = { id: t.id };
           path = `/items/${this.params.id}`;
           result = { id: t.number, name: t.string };
@@ -198,13 +203,19 @@ describe('Caching and Persistence', () => {
         // Verify data is in document store
         const queryKey = queryKeyForClass(GetItem, { id: '1' });
         const cached = getDocument(kv, queryKey);
+        const rootEntityKey = computeRootEntityKey(GetItem, { id: '1' });
 
-        expect(cached).toMatchObject({ id: 1, name: 'Test' });
+        // Query value is now a ref to the root entity
+        expect(cached).toMatchObject({ __entityRef: rootEntityKey });
+
+        // Root entity data is stored separately
+        const rootEntityData = getDocument(kv, rootEntityKey);
+        expect(rootEntityData).toMatchObject({ id: 1, name: 'Test' });
       });
     });
 
     it('should load query results from cache', async () => {
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         params = { id: t.id };
         path = `/items/${this.params.id}`;
         result = { id: t.number, name: t.string };
@@ -251,7 +262,7 @@ describe('Caching and Persistence', () => {
     it('should persist across QueryClient instances', async () => {
       mockFetch.get('/item', { id: 1, value: 'Persistent' });
 
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/item';
         result = { id: t.number, value: t.string };
       }
@@ -305,7 +316,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -315,7 +326,7 @@ describe('Caching and Persistence', () => {
         await relay;
 
         // Verify entity is persisted
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+        const userKey = hashValue(['User', 1]);
         const entityData = getDocument(kv, userKey);
 
         expect(entityData).toBeDefined();
@@ -334,13 +345,13 @@ describe('Caching and Persistence', () => {
         name = t.string;
       }
 
-      class GetDocument extends JsonQuery {
+      class GetDocument extends RESTQuery {
         path = '/document';
         result = { user: t.entity(User) };
       }
 
       // Pre-populate entity
-      const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+      const userKey = hashValue(['User', 1]);
       const userData = {
         __typename: 'User',
         id: 1,
@@ -349,11 +360,16 @@ describe('Caching and Persistence', () => {
 
       setDocument(kv, userKey, userData);
 
-      // Set up the query result with reference to the user
-      const queryResult = {
+      // Set up the root entity data (wrapping the query result)
+      const rootEntityKey = computeRootEntityKey(GetDocument, {});
+      const rootEntityData = {
+        __queryId: rootEntityKey,
         user: { __entityRef: userKey },
       };
-      setQuery(kv, GetDocument, {}, queryResult, new Set([userKey]));
+      setDocument(kv, rootEntityKey, rootEntityData, new Set([userKey]));
+
+      // Set up the query result as a ref to the root entity
+      setQuery(kv, GetDocument, {}, { __entityRef: rootEntityKey }, new Set([rootEntityKey]));
 
       // Query returns entity reference
       mockFetch.get(
@@ -396,14 +412,14 @@ describe('Caching and Persistence', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
       }
 
       // Pre-populate the entity in cache (simulating persistent storage preload)
-      const userKey = hashValue('User:1');
+      const userKey = hashValue(['User', 1]);
       const preloadedUserData = {
         __typename: 'User',
         id: 1,
@@ -411,11 +427,16 @@ describe('Caching and Persistence', () => {
       };
       setDocument(kv, userKey, preloadedUserData);
 
-      // Set up query result that references the preloaded entity
-      const queryResult = {
+      // Set up root entity data (wrapping the query result)
+      const rootEntityKey = computeRootEntityKey(GetUser, { id: '1' });
+      const rootEntityData = {
+        __queryId: rootEntityKey,
         user: { __entityRef: userKey },
       };
-      setQuery(kv, GetUser, { id: '1' }, queryResult, new Set([userKey]));
+      setDocument(kv, rootEntityKey, rootEntityData, new Set([userKey]));
+
+      // Set up query result as a ref to the root entity
+      setQuery(kv, GetUser, { id: '1' }, { __entityRef: rootEntityKey }, new Set([rootEntityKey]));
 
       // Mock fetch returns updated data
       mockFetch.get(
@@ -459,14 +480,14 @@ describe('Caching and Persistence', () => {
         category = t.entity(Category);
       }
 
-      class GetArticle extends JsonQuery {
+      class GetArticle extends RESTQuery {
         params = { id: t.id };
         path = `/articles/${this.params.id}`;
         result = { article: t.entity(Article) };
       }
 
       // Pre-populate nested entity (Category) in cache
-      const categoryKey = hashValue('Category:100');
+      const categoryKey = hashValue(['Category', 100]);
       const categoryData = {
         __typename: 'Category',
         id: 100,
@@ -475,7 +496,7 @@ describe('Caching and Persistence', () => {
       setDocument(kv, categoryKey, categoryData);
 
       // Pre-populate parent entity (Article) with __entityRef to nested entity
-      const articleKey = hashValue('Article:1');
+      const articleKey = hashValue(['Article', 1]);
       const articleData = {
         __typename: 'Article',
         id: 1,
@@ -484,11 +505,16 @@ describe('Caching and Persistence', () => {
       };
       setDocument(kv, articleKey, articleData, new Set([categoryKey]));
 
-      // Set up query result
-      const queryResult = {
+      // Set up root entity data (wrapping the query result)
+      const rootEntityKey = computeRootEntityKey(GetArticle, { id: '1' });
+      const rootEntityData = {
+        __queryId: rootEntityKey,
         article: { __entityRef: articleKey },
       };
-      setQuery(kv, GetArticle, { id: '1' }, queryResult, new Set([articleKey]));
+      setDocument(kv, rootEntityKey, rootEntityData, new Set([articleKey]));
+
+      // Set up query result as a ref to the root entity
+      setQuery(kv, GetArticle, { id: '1' }, { __entityRef: rootEntityKey }, new Set([rootEntityKey]));
 
       // Mock fetch returns data with delay so we can test cache-loaded data first
       mockFetch.get(
@@ -554,14 +580,14 @@ describe('Caching and Persistence', () => {
         latestPost = t.entity(Post);
       }
 
-      class GetAuthor extends JsonQuery {
+      class GetAuthor extends RESTQuery {
         params = { id: t.id };
         path = `/authors/${this.params.id}`;
         result = { author: t.entity(Author) };
       }
 
       // Pre-populate deeply nested entity (Tag) in cache
-      const tagKey = hashValue('Tag:999');
+      const tagKey = hashValue(['Tag', 999]);
       setDocument(kv, tagKey, {
         __typename: 'Tag',
         id: 999,
@@ -569,7 +595,7 @@ describe('Caching and Persistence', () => {
       });
 
       // Pre-populate middle entity (Post) with __entityRef to Tag
-      const postKey = hashValue('Post:50');
+      const postKey = hashValue(['Post', 50]);
       setDocument(
         kv,
         postKey,
@@ -583,7 +609,7 @@ describe('Caching and Persistence', () => {
       );
 
       // Pre-populate parent entity (Author) with __entityRef to Post
-      const authorKey = hashValue('Author:10');
+      const authorKey = hashValue(['Author', 10]);
       setDocument(
         kv,
         authorKey,
@@ -596,8 +622,17 @@ describe('Caching and Persistence', () => {
         new Set([postKey]),
       );
 
-      // Set up query result
-      setQuery(kv, GetAuthor, { id: '10' }, { author: { __entityRef: authorKey } }, new Set([authorKey]));
+      // Set up root entity data (wrapping the query result)
+      const rootEntityKey = computeRootEntityKey(GetAuthor, { id: '10' });
+      setDocument(
+        kv,
+        rootEntityKey,
+        { __queryId: rootEntityKey, author: { __entityRef: authorKey } },
+        new Set([authorKey]),
+      );
+
+      // Set up query result as a ref to the root entity
+      setQuery(kv, GetAuthor, { id: '10' }, { __entityRef: rootEntityKey }, new Set([rootEntityKey]));
 
       // Mock fetch with delay
       mockFetch.get(
@@ -654,23 +689,23 @@ describe('Caching and Persistence', () => {
         items = t.array(t.entity(Item));
       }
 
-      class GetContainer extends JsonQuery {
+      class GetContainer extends RESTQuery {
         params = { id: t.id };
         path = `/containers/${this.params.id}`;
         result = { container: t.entity(Container) };
       }
 
       // Pre-populate array items in cache
-      const item1Key = hashValue('Item:1');
-      const item2Key = hashValue('Item:2');
-      const item3Key = hashValue('Item:3');
+      const item1Key = hashValue(['Item', 1]);
+      const item2Key = hashValue(['Item', 2]);
+      const item3Key = hashValue(['Item', 3]);
 
       setDocument(kv, item1Key, { __typename: 'Item', id: 1, value: 'Cached Item 1' });
       setDocument(kv, item2Key, { __typename: 'Item', id: 2, value: 'Cached Item 2' });
       setDocument(kv, item3Key, { __typename: 'Item', id: 3, value: 'Cached Item 3' });
 
       // Pre-populate container with array of __entityRef
-      const containerKey = hashValue('Container:100');
+      const containerKey = hashValue(['Container', 100]);
       setDocument(
         kv,
         containerKey,
@@ -682,8 +717,17 @@ describe('Caching and Persistence', () => {
         new Set([item1Key, item2Key, item3Key]),
       );
 
-      // Set up query result
-      setQuery(kv, GetContainer, { id: '100' }, { container: { __entityRef: containerKey } }, new Set([containerKey]));
+      // Set up root entity data (wrapping the query result)
+      const rootEntityKey = computeRootEntityKey(GetContainer, { id: '100' });
+      setDocument(
+        kv,
+        rootEntityKey,
+        { __queryId: rootEntityKey, container: { __entityRef: containerKey } },
+        new Set([containerKey]),
+      );
+
+      // Set up query result as a ref to the root entity
+      setQuery(kv, GetContainer, { id: '100' }, { __entityRef: rootEntityKey }, new Set([rootEntityKey]));
 
       mockFetch.get('/containers/[id]', { container: { __typename: 'Container', id: 100, items: [] } }, { delay: 100 });
 
@@ -723,21 +767,21 @@ describe('Caching and Persistence', () => {
         posts = t.array(t.entity(Post));
       }
 
-      class GetBlog extends JsonQuery {
+      class GetBlog extends RESTQuery {
         params = { id: t.id };
         path = `/blogs/${this.params.id}`;
         result = { blog: t.entity(Blog) };
       }
 
       // Pre-populate authors
-      const author1Key = hashValue('Author:1');
-      const author2Key = hashValue('Author:2');
+      const author1Key = hashValue(['Author', 1]);
+      const author2Key = hashValue(['Author', 2]);
       setDocument(kv, author1Key, { __typename: 'Author', id: 1, name: 'Alice' });
       setDocument(kv, author2Key, { __typename: 'Author', id: 2, name: 'Bob' });
 
       // Pre-populate posts with nested author __entityRef
-      const post1Key = hashValue('Post:10');
-      const post2Key = hashValue('Post:20');
+      const post1Key = hashValue(['Post', 10]);
+      const post2Key = hashValue(['Post', 20]);
       setDocument(
         kv,
         post1Key,
@@ -752,7 +796,7 @@ describe('Caching and Persistence', () => {
       );
 
       // Pre-populate blog with array of post __entityRef
-      const blogKey = hashValue('Blog:1');
+      const blogKey = hashValue(['Blog', 1]);
       setDocument(
         kv,
         blogKey,
@@ -764,8 +808,12 @@ describe('Caching and Persistence', () => {
         new Set([post1Key, post2Key]),
       );
 
-      // Set up query result
-      setQuery(kv, GetBlog, { id: '1' }, { blog: { __entityRef: blogKey } }, new Set([blogKey]));
+      // Set up root entity data (wrapping the query result)
+      const rootEntityKey = computeRootEntityKey(GetBlog, { id: '1' });
+      setDocument(kv, rootEntityKey, { __queryId: rootEntityKey, blog: { __entityRef: blogKey } }, new Set([blogKey]));
+
+      // Set up query result as a ref to the root entity
+      setQuery(kv, GetBlog, { id: '1' }, { __entityRef: rootEntityKey }, new Set([rootEntityKey]));
 
       mockFetch.get('/blogs/[id]', { blog: { __typename: 'Blog', id: 1, posts: [] } }, { delay: 100 });
 
@@ -814,22 +862,22 @@ describe('Caching and Persistence', () => {
         threads = t.array(t.entity(Thread));
       }
 
-      class GetForum extends JsonQuery {
+      class GetForum extends RESTQuery {
         params = { id: t.id };
         path = `/forums/${this.params.id}`;
         result = { forum: t.entity(Forum) };
       }
 
       // Pre-populate tags
-      const tag1Key = hashValue('Tag:1');
-      const tag2Key = hashValue('Tag:2');
+      const tag1Key = hashValue(['Tag', 1]);
+      const tag2Key = hashValue(['Tag', 2]);
       setDocument(kv, tag1Key, { __typename: 'Tag', id: 1, label: 'question' });
       setDocument(kv, tag2Key, { __typename: 'Tag', id: 2, label: 'answer' });
 
       // Pre-populate comments with nested tag __entityRef
-      const comment1Key = hashValue('Comment:100');
-      const comment2Key = hashValue('Comment:200');
-      const comment3Key = hashValue('Comment:300');
+      const comment1Key = hashValue(['Comment', 100]);
+      const comment2Key = hashValue(['Comment', 200]);
+      const comment3Key = hashValue(['Comment', 300]);
       setDocument(
         kv,
         comment1Key,
@@ -850,8 +898,8 @@ describe('Caching and Persistence', () => {
       );
 
       // Pre-populate threads with array of comment __entityRef
-      const thread1Key = hashValue('Thread:10');
-      const thread2Key = hashValue('Thread:20');
+      const thread1Key = hashValue(['Thread', 10]);
+      const thread2Key = hashValue(['Thread', 20]);
       setDocument(
         kv,
         thread1Key,
@@ -876,7 +924,7 @@ describe('Caching and Persistence', () => {
       );
 
       // Pre-populate forum with array of thread __entityRef
-      const forumKey = hashValue('Forum:1');
+      const forumKey = hashValue(['Forum', 1]);
       setDocument(
         kv,
         forumKey,
@@ -888,8 +936,17 @@ describe('Caching and Persistence', () => {
         new Set([thread1Key, thread2Key]),
       );
 
-      // Set up query result
-      setQuery(kv, GetForum, { id: '1' }, { forum: { __entityRef: forumKey } }, new Set([forumKey]));
+      // Set up root entity data (wrapping the query result)
+      const rootEntityKey = computeRootEntityKey(GetForum, { id: '1' });
+      setDocument(
+        kv,
+        rootEntityKey,
+        { __queryId: rootEntityKey, forum: { __entityRef: forumKey } },
+        new Set([forumKey]),
+      );
+
+      // Set up query result as a ref to the root entity
+      setQuery(kv, GetForum, { id: '1' }, { __entityRef: rootEntityKey }, new Set([rootEntityKey]));
 
       mockFetch.get('/forums/[id]', { forum: { __typename: 'Forum', id: 1, threads: [] } }, { delay: 100 });
 
@@ -935,7 +992,7 @@ describe('Caching and Persistence', () => {
         favoritePost = t.entity(Post);
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -959,7 +1016,7 @@ describe('Caching and Persistence', () => {
         await relay;
 
         // Check reference count
-        const postKey = hashValue(['Post:1', getShapeKey(t.entity(Post))]);
+        const postKey = hashValue(['Post', 1]);
         const refCount = await kv.getNumber(refCountKeyFor(postKey));
 
         expect(refCount).toBe(1);
@@ -981,12 +1038,12 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser1 extends JsonQuery {
+        class GetUser1 extends RESTQuery {
           path = '/user/profile';
           result = { user: t.entity(User) };
         }
 
-        class GetUser2 extends JsonQuery {
+        class GetUser2 extends RESTQuery {
           path = '/user/details';
           result = { user: t.entity(User) };
         }
@@ -998,10 +1055,12 @@ describe('Caching and Persistence', () => {
         await relay2;
 
         // Entity should have references from queries
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+        // Each query stores refs to [rootEntity, userEntity], and each root entity
+        // also stores refs to [userEntity], so the user has 4 total refs.
+        const userKey = hashValue(['User', 1]);
         const refCount = await kv.getNumber(refCountKeyFor(userKey));
 
-        expect(refCount).toBe(2);
+        expect(refCount).toBe(4);
       });
     });
   });
@@ -1019,7 +1078,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -1030,7 +1089,7 @@ describe('Caching and Persistence', () => {
 
         // Check that query and entity are stored
         const queryKey = queryKeyForClass(GetUser, { id: '1' });
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+        const userKey = hashValue(['User', 1]);
 
         const queryValue = getDocument(kv, queryKey);
         expect(queryValue).toBeDefined();
@@ -1063,7 +1122,7 @@ describe('Caching and Persistence', () => {
         favoritePost = t.entity(Post);
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -1086,8 +1145,8 @@ describe('Caching and Persistence', () => {
         const relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
-        const postKey = hashValue(['Post:42', getShapeKey(t.entity(Post))]);
+        const userKey = hashValue(['User', 1]);
+        const postKey = hashValue(['Post', 42]);
 
         // User should reference Post
         const userRefs = await kv.getBuffer(refIdsKeyFor(userKey));
@@ -1109,7 +1168,7 @@ describe('Caching and Persistence', () => {
       }
 
       // Set up a query cache with maxCount of 2
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         static cache = { maxCount: 2 };
         params = { id: t.id };
         path = `/users/${this.params.id}`;
@@ -1132,9 +1191,9 @@ describe('Caching and Persistence', () => {
         const query2Key = queryKeyForClass(GetUser, { id: '2' });
         const query3Key = queryKeyForClass(GetUser, { id: '3' });
 
-        const user1Key = hashValue(['User:1', getShapeKey(t.entity(User))]);
-        const user2Key = hashValue(['User:2', getShapeKey(t.entity(User))]);
-        const user3Key = hashValue(['User:3', getShapeKey(t.entity(User))]);
+        const user1Key = hashValue(['User', 1]);
+        const user2Key = hashValue(['User', 2]);
+        const user3Key = hashValue(['User', 3]);
 
         // Query 1 and 2 should exist
         expect(getDocument(kv, query1Key)).toBeDefined();
@@ -1167,14 +1226,14 @@ describe('Caching and Persistence', () => {
         name = t.string;
       }
 
-      class GetProfile extends JsonQuery {
+      class GetProfile extends RESTQuery {
         static cache = { maxCount: 1 };
         params = { id: t.id };
         path = `/user/profile/${this.params.id}`;
         result = { user: t.entity(User) };
       }
 
-      class GetDetails extends JsonQuery {
+      class GetDetails extends RESTQuery {
         params = { id: t.id };
         path = `/user/details/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -1195,10 +1254,11 @@ describe('Caching and Persistence', () => {
         const relay2 = fetchQuery(GetDetails, { id: '1' });
         await relay2;
 
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+        const userKey = hashValue(['User', 1]);
 
-        // User should have ref count of 2
-        expect(await kv.getNumber(refCountKeyFor(userKey))).toBe(2);
+        // User should have ref count of 4 (each query refs [rootEntity, user],
+        // and each root entity also refs [user])
+        expect(await kv.getNumber(refCountKeyFor(userKey))).toBe(4);
 
         // Force eviction of first query by making another profile request
         mockFetch.get('/user/profile/2', {
@@ -1209,8 +1269,9 @@ describe('Caching and Persistence', () => {
         await relay3;
 
         // Original user should still exist (referenced by details query)
+        // Ref count drops by 2 (query ref + cascade-deleted root entity ref)
         expect(getDocument(kv, userKey)).toBeDefined();
-        expect(await kv.getNumber(refCountKeyFor(userKey))).toBe(1);
+        expect(await kv.getNumber(refCountKeyFor(userKey))).toBe(2);
       });
     });
 
@@ -1253,7 +1314,7 @@ describe('Caching and Persistence', () => {
         },
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         static cache = { maxCount: 1 };
         params = { id: t.id };
         path = `/users/${this.params.id}`;
@@ -1264,9 +1325,9 @@ describe('Caching and Persistence', () => {
         const relay1 = fetchQuery(GetUser, { id: '1' });
         await relay1;
 
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
-        const postKey = hashValue(['Post:10', getShapeKey(t.entity(Post))]);
-        const tagKey = hashValue(['Tag:100', getShapeKey(t.entity(Tag))]);
+        const userKey = hashValue(['User', 1]);
+        const postKey = hashValue(['Post', 10]);
+        const tagKey = hashValue(['Tag', 100]);
 
         // All entities should exist
         expect(getDocument(kv, userKey)).toBeDefined();
@@ -1318,7 +1379,7 @@ describe('Caching and Persistence', () => {
         favoritePost = t.entity(Post);
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -1346,7 +1407,7 @@ describe('Caching and Persistence', () => {
         relay = fetchQuery(GetUser, { id: '1' });
         await relay;
 
-        post10Key = hashValue(['Post:10', getShapeKey(t.entity(Post))]);
+        post10Key = hashValue(['Post', 10]);
 
         // Post 10 should have 1 reference
         expect(await kv.getNumber(refCountKeyFor(post10Key))).toBe(1);
@@ -1369,7 +1430,7 @@ describe('Caching and Persistence', () => {
       const result = await relay!.value!.__refetch();
 
       await testWithClient(client, async () => {
-        const post20Key = hashValue(['Post:20', getShapeKey(t.entity(Post))]);
+        const post20Key = hashValue(['Post', 20]);
 
         expect(result).toMatchObject({
           user: {
@@ -1406,7 +1467,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetPosts extends JsonQuery {
+        class GetPosts extends RESTQuery {
           path = '/posts';
           result = { posts: t.array(t.entity(Post)) };
         }
@@ -1416,16 +1477,16 @@ describe('Caching and Persistence', () => {
 
         expect(result.posts.length).toEqual(3);
 
-        const postKey = hashValue(['Post:1', getShapeKey(t.entity(Post))]);
+        const postKey = hashValue(['Post', 1]);
         const queryKey = queryKeyForClass(GetPosts, undefined);
 
-        // Query should reference post 1
+        // Query should reference post 1 (and root entity)
         const refs = await kv.getBuffer(refIdsKeyFor(queryKey));
         expect(refs).toBeDefined();
         expect(Array.from(refs!).filter(id => id === postKey).length).toBe(1);
 
-        // Post should have ref count of 1 (deduplicated)
-        expect(await kv.getNumber(refCountKeyFor(postKey))).toBe(1);
+        // Post should have ref count of 2 (one from query refs, one from root entity refs)
+        expect(await kv.getNumber(refCountKeyFor(postKey))).toBe(2);
       });
     });
   });
@@ -1454,7 +1515,7 @@ describe('Caching and Persistence', () => {
         },
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         static cache = { maxCount: 1 };
         params = { id: t.id };
         path = `/users/${this.params.id}`;
@@ -1516,7 +1577,7 @@ describe('Caching and Persistence', () => {
         },
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         static cache = { maxCount: 1 };
         params = { id: t.id };
         path = `/users/${this.params.id}`;
@@ -1527,8 +1588,8 @@ describe('Caching and Persistence', () => {
         const relay1 = fetchQuery(GetUser, { id: '1' });
         await relay1;
 
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
-        const postKey = hashValue(['Post:10', getShapeKey(t.entity(Post))]);
+        const userKey = hashValue(['User', 1]);
+        const postKey = hashValue(['Post', 10]);
 
         // Verify all keys exist for entities
         expect(await kv.getString(valueKeyFor(userKey))).toBeDefined();
@@ -1574,7 +1635,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetPositionV1 extends JsonQuery {
+        class GetPositionV1 extends RESTQuery {
           params = { id: t.id };
           path = `/positions/${this.params.id}`;
           result = { position: t.entity(PositionV1) };
@@ -1615,7 +1676,7 @@ describe('Caching and Persistence', () => {
       const client2 = new QueryClient(store, { fetch: mockFetch as any });
 
       await testWithClient(client2, async () => {
-        class GetPositionV2 extends JsonQuery {
+        class GetPositionV2 extends RESTQuery {
           params = { id: t.id };
           path = `/positions/${this.params.id}`;
           result = { position: t.entity(PositionV2) };
@@ -1653,7 +1714,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUserV1 extends JsonQuery {
+        class GetUserV1 extends RESTQuery {
           path = '/users/v1';
           result = { user: t.entity(UserV1) };
         }
@@ -1668,7 +1729,7 @@ describe('Caching and Persistence', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUserV2 extends JsonQuery {
+        class GetUserV2 extends RESTQuery {
           path = '/users/v2';
           result = { user: t.entity(UserV2) };
         }
@@ -1677,22 +1738,14 @@ describe('Caching and Persistence', () => {
         await relay2;
       });
 
-      // Both entities should exist in the store with different keys
-      const keyV1 = hashValue(['User:1', getShapeKey(t.entity(UserV1))]);
-      const keyV2 = hashValue(['User:1', getShapeKey(t.entity(UserV2))]);
+      // Both shapes share the same unified entity key
+      const entityKey = hashValue(['User', 1]);
+      const entity = getDocument(kv, entityKey);
 
-      expect(keyV1).not.toBe(keyV2);
-
-      const entityV1 = getDocument(kv, keyV1);
-      const entityV2 = getDocument(kv, keyV2);
-
-      expect(entityV1).toBeDefined();
-      expect(entityV2).toBeDefined();
-      expect((entityV1 as any).name).toBe('Alice');
-      expect((entityV2 as any).name).toBe('Alice');
-      expect((entityV2 as any).email).toBe('alice@example.com');
-      // V1 entity should not have email field
-      expect((entityV1 as any).email).toBeUndefined();
+      expect(entity).toBeDefined();
+      expect((entity as any).name).toBe('Alice');
+      // V2 data is merged into the unified entity
+      expect((entity as any).email).toBe('alice@example.com');
     });
   });
 
@@ -1701,7 +1754,7 @@ describe('Caching and Persistence', () => {
       mockFetch.get('/items/[id]', { id: 1, name: 'Test' });
 
       await testWithClient(client, async () => {
-        class GetItem extends JsonQuery {
+        class GetItem extends RESTQuery {
           params = { id: t.id };
           path = `/items/${this.params.id}`;
           result = { id: t.number, name: t.string };
@@ -1721,7 +1774,7 @@ describe('Caching and Persistence', () => {
     });
 
     it('should purge expired queries on purgeStaleQueries', () => {
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         params = { id: t.id };
         path = `/purge-items/${this.params.id}`;
         result = { id: t.number, name: t.string };
@@ -1752,7 +1805,7 @@ describe('Caching and Persistence', () => {
     });
 
     it('should not purge fresh queries', () => {
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         params = { id: t.id };
         path = `/fresh-items/${this.params.id}`;
         result = { id: t.number, name: t.string };
@@ -1779,7 +1832,7 @@ describe('Caching and Persistence', () => {
     });
 
     it('should cascade-delete orphaned entities when purging stale queries', () => {
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/purge-users/${this.params.id}`;
         result = { id: t.number, name: t.string };
@@ -1787,7 +1840,7 @@ describe('Caching and Persistence', () => {
 
       const queryDefId = 'GET:/purge-users/[params.id]';
       const queryKey = queryKeyForClass(GetUser, { id: '1' });
-      const entityKey = hashValue(['User:1', getShapeKey(t.object({ id: t.number, name: t.string }))]);
+      const entityKey = hashValue(['User', 1]);
 
       // Set entity data (no manual ref count -- setDocument below handles it)
       setDocument(kv, entityKey, { id: 1, name: 'Entity Data' });
@@ -1814,7 +1867,7 @@ describe('Caching and Persistence', () => {
     });
 
     it('should respect custom cacheTime when purging', () => {
-      class GetLongLived extends JsonQuery {
+      class GetLongLived extends RESTQuery {
         static cache = { cacheTime: 60 * 24 * 30 }; // 30 days
         params = { id: t.id };
         path = `/long-lived/${this.params.id}`;
@@ -1841,7 +1894,7 @@ describe('Caching and Persistence', () => {
     });
 
     it('should purge multiple entries from the same queue', () => {
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         params = { id: t.id };
         path = `/multi-purge/${this.params.id}`;
         result = { id: t.number, name: t.string };

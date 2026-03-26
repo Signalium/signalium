@@ -67,6 +67,20 @@
       "require": "./dist/cjs/production/stores/sync.js",
       "default": "./dist/esm/production/stores/sync.js"
     },
+    "./subscriptions/polling": {
+      "types": "./dist/esm/subscriptions/polling.d.ts",
+      "development": {
+        "import": "./dist/esm/development/subscriptions/polling.js",
+        "require": "./dist/cjs/development/subscriptions/polling.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/subscriptions/polling.js",
+        "require": "./dist/cjs/production/subscriptions/polling.js"
+      },
+      "import": "./dist/esm/production/subscriptions/polling.js",
+      "require": "./dist/cjs/production/subscriptions/polling.js",
+      "default": "./dist/esm/production/subscriptions/polling.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

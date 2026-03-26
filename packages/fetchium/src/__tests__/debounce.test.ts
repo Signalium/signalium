@@ -3,7 +3,7 @@ import { signal } from 'signalium';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
-import { JsonQuery, fetchQuery } from '../query.js';
+import { RESTQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, getEntityMapSize, sleep } from './utils.js';
 
 /**
@@ -31,7 +31,7 @@ describe('Debounce', () => {
     it('should not delay initial fetch when debounce is configured', async () => {
       mockFetch.get('/users', { users: [] });
 
-      class ListUsers extends JsonQuery {
+      class ListUsers extends RESTQuery {
         path = '/users';
         result = {
           users: t.array(t.object({ id: t.number })),
@@ -49,7 +49,7 @@ describe('Debounce', () => {
     it('should not delay when debounce is not configured', async () => {
       mockFetch.get('/users', { users: [] });
 
-      class ListUsers extends JsonQuery {
+      class ListUsers extends RESTQuery {
         path = '/users';
         result = {
           users: t.array(t.object({ id: t.number })),
@@ -68,7 +68,7 @@ describe('Debounce', () => {
       mockFetch.get('/users/[id]', { id: 123, name: 'User 123' });
       mockFetch.get('/users/[id]', { id: 456, name: 'User 456' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = {
@@ -111,7 +111,7 @@ describe('Debounce', () => {
       mockFetch.get('/users/[id]', { id: 456, name: 'User 456' });
       mockFetch.get('/users/[id]', { id: 789, name: 'User 789' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = {
@@ -155,7 +155,7 @@ describe('Debounce', () => {
     it('should handle debounce with 0ms delay (no debounce)', async () => {
       mockFetch.get('/users', { users: [] });
 
-      class ListUsers extends JsonQuery {
+      class ListUsers extends RESTQuery {
         path = '/users';
         result = {
           users: t.array(t.object({ id: t.number })),
@@ -175,7 +175,7 @@ describe('Debounce', () => {
       mockFetch.get('/users', null, { status: 500 });
       mockFetch.get('/users', { users: [] });
 
-      class ListUsers extends JsonQuery {
+      class ListUsers extends RESTQuery {
         path = '/users';
         result = {
           users: t.array(t.object({ id: t.number })),

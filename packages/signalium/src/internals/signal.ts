@@ -8,7 +8,14 @@ import { FALSE_EQUALS } from './utils/equals.js';
 
 let STATE_ID = 0;
 
+const SIGNAL_BRAND = Symbol.for('signalium.signal');
+
+export function isSignal(value: unknown): value is Signal<unknown> {
+  return typeof value === 'object' && value !== null && (value as any)[SIGNAL_BRAND] === true;
+}
+
 export class StateSignal<T> implements Signal<T> {
+  readonly [SIGNAL_BRAND] = true;
   private _value: T;
   private _equals: Equals<T>;
   private _subs = new Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, number>();

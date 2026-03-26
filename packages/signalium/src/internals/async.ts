@@ -19,6 +19,10 @@ import { getCurrentConsumer } from './consumer.js';
 import { createCallback } from './callback.js';
 import { getTracerProxy, TracerEventType } from './trace.js';
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
 const enum AsyncFlags {
   // ======= Notifiers ========
 
@@ -269,8 +273,10 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
       }
     }
 
-    if (baseFlags & AsyncFlags.Pending) {
-      trackPendingStart();
+    if (IS_LOCAL_DEV) {
+      if (baseFlags & AsyncFlags.Pending) {
+        trackPendingStart();
+      }
     }
 
     this._flags = baseFlags;
@@ -296,6 +302,11 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
     const signal = this._signal as ReactiveSignal<any, any>;
 
     const currentConsumer = getCurrentConsumer();
+
+    // A relay's update function may read its own ReactivePromise (e.g. to check
+    // isPending/value). Skip self-subscription to avoid a dependency cycle.
+    if (currentConsumer === signal) return;
+
     if (currentConsumer?.watchCount === 0) {
       const { ref, computedCount, deps } = currentConsumer;
       const prevEdge = deps.get(signal);
@@ -477,6 +488,11 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
   }
 
   private _setError(nextError: unknown, awaitSubs = this._awaitSubs) {
+    if (nextError !== this._error && !isAbortError(nextError)) {
+      const desc = this._signal?.desc ?? (IS_DEV ? this._signal?.tracerMeta?.desc : undefined);
+      console.error(`[signalium] Unhandled async error${desc ? ` in "${desc}"` : ''}:`, nextError);
+    }
+
     let error = this._error;
 
     let notifyFlags = 0;

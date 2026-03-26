@@ -1,5 +1,4 @@
 import { DiscriminatedReactivePromise, type Signal } from 'signalium';
-import { Prettify } from './type-utils.js';
 import type { Query } from './query.js';
 
 // ================================
@@ -41,15 +40,6 @@ export interface QueryRequestOptions {
 // ================================
 // Type Definitions
 // ================================
-
-export enum RefetchInterval {
-  Every1Second = 1000,
-  Every5Seconds = 5000,
-  Every10Seconds = 10000,
-  Every30Seconds = 30000,
-  Every1Minute = 60000,
-  Every5Minutes = 300000,
-}
 
 export enum NetworkMode {
   /**
@@ -95,10 +85,10 @@ export const enum Mask {
   ENTITY = 1 << 10,
 
   // Flags
-  HAS_SUB_ENTITY = 1 << 11,
-  HAS_NUMBER_FORMAT = 1 << 12,
-  HAS_STRING_FORMAT = 1 << 13,
+  HAS_FORMAT = 1 << 12,
+  IS_EAGER_FORMAT = 1 << 13,
   PARSE_RESULT = 1 << 14,
+  LIVE = 1 << 15,
 }
 
 // ================================
@@ -168,6 +158,7 @@ export type InternalObjectShape = Record<string, InternalObjectFieldTypeDef>;
 
 export const ARRAY_KEY = Symbol('array');
 export const RECORD_KEY = Symbol('record');
+export const QUERY_ID = Symbol('QUERY_ID');
 
 export interface UnionTypeDefs {
   [ARRAY_KEY]?: InternalTypeDef;
@@ -177,34 +168,20 @@ export interface UnionTypeDefs {
 
 export interface BaseTypeDef {
   mask: Mask;
-  shapeKey: number;
   typenameField: string;
   typenameValue: string;
-  idField: string;
-  subEntityPaths: undefined | string | string[];
+  idField: string | symbol;
   values: Set<string | boolean | number> | undefined;
 }
 
 export type EntityMethods = Record<string, (...args: any[]) => any>;
 
-// Helper type to conditionally include methods - unknown (invisible) when M is the default EntityMethods
-// We check if M has an index signature by seeing if it allows any string key
-export type IncludeMethods<M> = string extends keyof M ? unknown : M;
-
 // Entity configuration options
-export interface EntityConfig<T extends Record<string, TypeDef>> {
-  stream: {
-    subscribe: (
-      context: import('./QueryClient.js').QueryContext,
-      id: string | number,
-      onUpdate: (update: Partial<ExtractTypesFromShape<T>>) => void,
-    ) => (() => void) | undefined;
-  };
+export interface EntityConfig {
+  hasSubscribe: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface EntityDef<T extends InternalObjectShape = InternalObjectShape, M extends EntityMethods = {}>
-  extends BaseTypeDef {
+export interface EntityDef<T extends InternalObjectShape = InternalObjectShape> extends BaseTypeDef {
   mask: Mask.ENTITY;
   shape: T;
 }
@@ -250,12 +227,6 @@ declare global {
   }
 }
 
-declare const FormattedSymbol: unique symbol;
-
-export type Formatted<T> = number & {
-  [FormattedSymbol]: T;
-};
-
 export interface APITypes {
   format: <K extends keyof SignaliumQuery.FormatRegistry>(format: K) => TypeDef<SignaliumQuery.FormatRegistry[K]>;
   typename: <T extends string>(value: T) => TypeDef<T>;
@@ -273,7 +244,7 @@ export interface APITypes {
   undefined: TypeDef<undefined>;
 
   array: <T extends TypeDef>(shape: T) => TypeDef<ExtractType<T>[]>;
-  object: <T extends Record<string, TypeDef>>(shape: T) => TypeDef<Prettify<ExtractTypesFromShape<T>>>;
+  object: <T extends TypeDefShape>(shape: T) => TypeDef<ExtractType<T>>;
   record: <T extends TypeDef>(shape: T) => TypeDef<Record<string, ExtractType<T>>>;
   union: <VS extends readonly TypeDef[]>(...types: VS) => TypeDef<ExtractType<VS[number]>>;
 
@@ -284,48 +255,57 @@ export interface APITypes {
   result: <T extends TypeDef>(type: T) => TypeDef<ParseResult<ExtractType<T>>>;
 
   entity: <T extends import('./proxy.js').Entity>(cls: new () => T) => TypeDef<T>;
+
+  liveArray: {
+    <E extends import('./proxy.js').Entity>(entity: new () => E, opts?: LiveArrayOptions<E>): TypeDef<E[]>;
+    <E extends import('./proxy.js').Entity>(entities: (new () => E)[], opts?: LiveArrayOptions<E>): TypeDef<E[]>;
+  };
+
+  liveValue: {
+    <V, E extends import('./proxy.js').Entity>(
+      type: TypeDef<V>,
+      entity: new () => E,
+      opts: LiveValueOptions<V, E>,
+    ): TypeDef<V>;
+    <V, E extends import('./proxy.js').Entity>(
+      type: TypeDef<V>,
+      entities: (new () => E)[],
+      opts: LiveValueOptions<V, E>,
+    ): TypeDef<V>;
+  };
 }
 
 // ================================
 // Type Extraction
 // ================================
 
-export type ExtractType<T> = T extends TypeDef<infer U> ? U : never;
+type IsAny<T> = 0 extends 1 & T ? true : false;
 
-export type ExtractTypesFromShape<S extends Record<string, TypeDef>> = {
-  [K in keyof S]: ExtractType<S[K]>;
-};
+export type ExtractType<T> =
+  IsAny<T> extends true
+    ? any
+    : T extends TypeDef<infer U>
+      ? ExtractType<U>
+      : T extends (...args: infer V) => infer Q
+        ? (...args: V) => ExtractType<Q>
+        : T extends object
+          ? { [K in keyof T]: ExtractType<T[K]> }
+          : T;
 
-export type ResponseTypeDef = Record<string, TypeDef> | TypeDef;
-
-export type ExtractTypesFromObjectOrEntity<S extends ResponseTypeDef> =
-  S extends TypeDef<infer T>
-    ? T
-    : S extends Record<string, TypeDef>
-      ? { [K in keyof S]: ExtractType<S[K]> }
-      : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-        {};
-
-export type ExtractTypesFromEntityOrUndefined<S extends TypeDef | undefined = undefined> =
-  S extends TypeDef<infer T> ? T : undefined;
+export type TypeDefShape = Record<string, TypeDef> | TypeDef;
 
 // ================================
 // Query Types
 // ================================
 
-export type QueryResult<T extends Query> = ExtractTypesFromObjectOrEntity<T['result']> & {
-  __refetch(): Promise<QueryResult<T>>;
+export type QueryResult<T extends Query> = ExtractType<T['result']> & {
+  __refetch(): DiscriminatedReactivePromise<QueryResult<T>>;
+  __loadNext(): Promise<QueryResult<T>>;
+  __hasNext: boolean;
+  __isLoadingNext: boolean;
 };
 
 export type QueryPromise<T extends Query> = DiscriminatedReactivePromise<QueryResult<T>>;
-
-// ================================
-// Mutation Types
-// ================================
-
-export type ParseAndApply = 'both' | 'request' | 'response' | 'none';
-
-export type MutationResultValue<Response> = Response;
 
 // ================================
 // Mutation Events
@@ -335,18 +315,129 @@ export interface CreateEvent {
   type: 'create';
   typename: string;
   data: Record<string, unknown>;
+  id?: unknown;
+  __eventSource?: number;
 }
 
 export interface UpdateEvent {
   type: 'update';
   typename: string;
   data: Record<string, unknown>;
+  id?: unknown;
+  __eventSource?: number;
 }
 
 export interface DeleteEvent {
   type: 'delete';
   typename: string;
   data: string | number | Record<string, unknown>;
+  id?: unknown;
+  __eventSource?: number;
 }
 
 export type MutationEvent = CreateEvent | UpdateEvent | DeleteEvent;
+
+// ================================
+// LiveArray / LiveValue
+// ================================
+
+export type ConstraintMap = Record<string, unknown>;
+
+export type ConstraintDef<E extends import('./proxy.js').Entity> = ConstraintMap | Array<[new () => E, ConstraintMap]>;
+
+export interface LiveArrayOptions<E extends import('./proxy.js').Entity> {
+  constraints?: ConstraintDef<E>;
+  sort?: (a: E, b: E) => number;
+}
+
+export interface LiveValueOptions<V, E extends import('./proxy.js').Entity> {
+  constraints?: ConstraintDef<E>;
+  onCreate: (value: V, entity: E) => V;
+  onUpdate: (value: V, entity: E) => V;
+  onDelete: (value: V, entity: E) => V;
+}
+
+export const enum LiveFieldType {
+  Array = 0,
+  Value = 1,
+}
+
+export class LiveFieldConfig {
+  type: LiveFieldType;
+  entityDefs: import('./typeDefs.js').ValidatorDef<any>[];
+  constraintFieldRefs: Map<string, Array<[string, unknown]>> | undefined;
+  sort: ((a: unknown, b: unknown) => number) | undefined;
+  valueType: InternalTypeDef | undefined;
+  onCreate: ((value: unknown, entity: unknown) => unknown) | undefined;
+  onUpdate: ((value: unknown, entity: unknown) => unknown) | undefined;
+  onDelete: ((value: unknown, entity: unknown) => unknown) | undefined;
+
+  constructor(
+    type: LiveFieldType,
+    entityDefs: import('./typeDefs.js').ValidatorDef<any>[],
+    constraintFieldRefs: Map<string, Array<[string, unknown]>> | undefined,
+    sort: ((a: unknown, b: unknown) => number) | undefined,
+    valueType: InternalTypeDef | undefined,
+    onCreate: ((value: unknown, entity: unknown) => unknown) | undefined,
+    onUpdate: ((value: unknown, entity: unknown) => unknown) | undefined,
+    onDelete: ((value: unknown, entity: unknown) => unknown) | undefined,
+  ) {
+    this.type = type;
+    this.entityDefs = entityDefs;
+    this.constraintFieldRefs = constraintFieldRefs;
+    this.sort = sort;
+    this.valueType = valueType;
+    this.onCreate = onCreate;
+    this.onUpdate = onUpdate;
+    this.onDelete = onDelete;
+  }
+
+  static array(
+    entityDefs: import('./typeDefs.js').ValidatorDef<any>[],
+    constraintFieldRefs: Map<string, Array<[string, unknown]>> | undefined,
+    sort?: (a: unknown, b: unknown) => number,
+  ): LiveFieldConfig {
+    return new LiveFieldConfig(
+      LiveFieldType.Array,
+      entityDefs,
+      constraintFieldRefs,
+      sort,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
+  }
+
+  static value(
+    entityDefs: import('./typeDefs.js').ValidatorDef<any>[],
+    constraintFieldRefs: Map<string, Array<[string, unknown]>> | undefined,
+    valueType: InternalTypeDef,
+    onCreate: (value: unknown, entity: unknown) => unknown,
+    onUpdate: (value: unknown, entity: unknown) => unknown,
+    onDelete: (value: unknown, entity: unknown) => unknown,
+  ): LiveFieldConfig {
+    return new LiveFieldConfig(
+      LiveFieldType.Value,
+      entityDefs,
+      constraintFieldRefs,
+      undefined,
+      valueType,
+      onCreate,
+      onUpdate,
+      onDelete,
+    );
+  }
+}
+
+// ================================
+// Mutation Effects
+// ================================
+
+export type EntityClassOrTypename = string | (new () => import('./proxy.js').Entity);
+
+export interface MutationEffects {
+  readonly creates?: ReadonlyArray<readonly [EntityClassOrTypename, unknown]>;
+  readonly updates?: ReadonlyArray<readonly [EntityClassOrTypename, unknown]>;
+  readonly deletes?: ReadonlyArray<readonly [EntityClassOrTypename, unknown]>;
+}

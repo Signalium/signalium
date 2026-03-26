@@ -1,11 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { t, getShapeKey } from '../typeDefs.js';
+import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { JsonQuery, fetchQuery } from '../query.js';
-import { parseObjectEntities, parseArrayEntities, parseEntities, parseEntity } from '../parseEntities.js';
-import { createMockFetch, getClientEntityMap, getEntityMapSize, testWithClient } from './utils.js';
+import { RESTQuery, fetchQuery } from '../query.js';
+import {
+  createMockFetch,
+  getClientEntityMap,
+  getEntityMapSize,
+  testWithClient,
+  parseEntities,
+  parseEntity,
+} from './utils.js';
 import { hashValue } from 'signalium/utils';
 import type { ExtractType } from '../types.js';
 
@@ -51,7 +57,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -66,7 +72,7 @@ describe('Entity System', () => {
 
         // Verify entity is in the entity map
         const entityMap = getClientEntityMap(client);
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+        const userKey = hashValue(['User', 1]);
         const entityRecord = entityMap.getEntity(userKey);
 
         expect(entityRecord).toBeDefined();
@@ -86,7 +92,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -107,13 +113,12 @@ describe('Entity System', () => {
         expect(name2).toBe('Alice');
         expect(name3).toBe('Alice');
 
-        // Verify caching by checking the entity's cache
+        // Non-format fields are read directly from data, not cached
         const entityMap = getClientEntityMap(client);
-        const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
+        const userKey = hashValue(['User', 1]);
         const entityRecord = entityMap.getEntity(userKey);
 
-        expect(entityRecord!.cache.has('name')).toBe(true);
-        expect(entityRecord!.cache.get('name')).toBe('Alice');
+        expect(entityRecord!.data['name']).toBe('Alice');
       });
     });
 
@@ -129,7 +134,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -162,9 +167,6 @@ describe('Entity System', () => {
 
       const def = t.entity(MyExtendedEntity);
       expect(def).toBeDefined();
-      const shapeKey = getShapeKey(def);
-      expect(shapeKey).toBeDefined();
-      // Empty subclass produces empty shape; used as base or for instanceof only
       const shape = (def as any).shape;
       expect(shape).toBeDefined();
       expect(Object.keys(shape)).toEqual([]);
@@ -193,7 +195,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(ExtendedUser) };
@@ -211,7 +213,7 @@ describe('Entity System', () => {
         expect(result.user).toBeInstanceOf(BaseUser);
         expect(result.user).toBeInstanceOf(ExtendedUser);
 
-        expect(getEntityMapSize(client)).toBe(1);
+        expect(getEntityMapSize(client)).toBe(2);
       });
     });
 
@@ -226,7 +228,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(MinimalUser) };
@@ -402,7 +404,7 @@ describe('Entity System', () => {
       expect(shape.tags).toBeDefined();
     });
 
-    it('should generate different shape keys for base and extended entity', () => {
+    it('should produce different defs for base and extended entity', () => {
       class BaseUser extends Entity {
         __typename = t.typename('User');
         id = t.id;
@@ -415,11 +417,7 @@ describe('Entity System', () => {
 
       const baseDef = t.entity(BaseUser);
       const extendedDef = t.entity(ExtendedUser);
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      (baseDef as any).shape;
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      (extendedDef as any).shape;
-      expect(getShapeKey(baseDef)).not.toBe(getShapeKey(extendedDef));
+      expect(baseDef).not.toBe(extendedDef);
     });
 
     it('should work with enum and const fields in subclass', () => {
@@ -502,7 +500,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUsers extends JsonQuery {
+        class GetUsers extends RESTQuery {
           path = '/users';
           result = {
             users: t.array(t.entity(User)),
@@ -543,18 +541,18 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
         }
 
-        class ListUsers extends JsonQuery {
+        class ListUsers extends RESTQuery {
           path = '/users';
           result = { users: t.array(t.entity(User)) };
         }
 
-        class GetAuthor extends JsonQuery {
+        class GetAuthor extends RESTQuery {
           path = '/author';
           result = { author: t.entity(User) };
         }
@@ -618,7 +616,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -630,8 +628,8 @@ describe('Entity System', () => {
         // Access deeply nested property
         expect((result.user.company as any).address.city).toBe('San Francisco');
 
-        // All three entities should be in the map
-        expect(getEntityMapSize(client)).toBe(3);
+        // All three entities should be in the map (+ 1 for root query entity)
+        expect(getEntityMapSize(client)).toBe(4);
       });
     });
 
@@ -670,7 +668,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -698,7 +696,7 @@ describe('Entity System', () => {
         name = t.string;
       }
 
-      const entityRefs = new Set<number>();
+      const entityRefs = new Map();
       const data = {
         __typename: 'User',
         id: 1,
@@ -712,8 +710,8 @@ describe('Entity System', () => {
       expect(entityRefs.size).toBe(1);
 
       // Result should be a proxy
-      const userKey = hashValue(['User:1', getShapeKey(t.entity(User))]);
-      expect(entityRefs.has(userKey)).toBe(true);
+      const userKey = hashValue(['User', 1]);
+      expect([...entityRefs.keys()].some(e => e.key === userKey)).toBe(true);
     });
 
     it('should parse array entities correctly', async () => {
@@ -723,13 +721,13 @@ describe('Entity System', () => {
         name = t.string;
       }
 
-      const entityRefs = new Set<number>();
+      const entityRefs = new Map();
       const data = [
         { __typename: 'User', id: 1, name: 'Alice' },
         { __typename: 'User', id: 2, name: 'Bob' },
       ];
 
-      const result = await parseArrayEntities(data, t.entity(User) as any, client, entityRefs);
+      const result = await parseEntities(data, t.array(t.entity(User)) as any, client, entityRefs);
 
       // Should have parsed 2 entities
       expect(getEntityMapSize(client)).toBe(2);
@@ -748,7 +746,7 @@ describe('Entity System', () => {
         admin: t.entity(User),
       });
 
-      const entityRefs = new Set<number>();
+      const entityRefs = new Map();
       const data = {
         users: [
           { __typename: 'User', id: 1, name: 'Alice' },
@@ -778,7 +776,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUserMap extends JsonQuery {
+        class GetUserMap extends RESTQuery {
           path = '/users/map';
           result = {
             userMap: t.record(t.entity(User)),
@@ -791,7 +789,7 @@ describe('Entity System', () => {
         expect(result.userMap.alice.name).toBe('Alice');
         expect(result.userMap.bob.name).toBe('Bob');
 
-        expect(getEntityMapSize(client)).toBe(2);
+        expect(getEntityMapSize(client)).toBe(3);
       });
     });
 
@@ -819,7 +817,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetPosts extends JsonQuery {
+        class GetPosts extends RESTQuery {
           path = '/posts';
           result = {
             posts: t.array(PostUnion),
@@ -840,7 +838,7 @@ describe('Entity System', () => {
         expect(post2.__typename).toBe('ImagePost');
         expect(post2.url).toBe('/img.jpg');
 
-        expect(getEntityMapSize(client)).toBe(3);
+        expect(getEntityMapSize(client)).toBe(4);
       });
     });
   });
@@ -861,7 +859,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class ListUsers extends JsonQuery {
+        class ListUsers extends RESTQuery {
           path = '/users';
           result = { users: t.array(t.entity(User)) };
         }
@@ -870,7 +868,7 @@ describe('Entity System', () => {
         const relay = fetchQuery(ListUsers);
         await relay;
 
-        expect(getEntityMapSize(client)).toBe(2);
+        expect(getEntityMapSize(client)).toBe(3);
 
         mockFetch.get('/users', {
           users: [
@@ -882,8 +880,8 @@ describe('Entity System', () => {
         const result = await relay.value!.__refetch();
 
         // After refetch, old entities (id 1, 2) are no longer referenced and
-        // get GC'd. Only the two new entities remain.
-        expect(getEntityMapSize(client)).toBe(2);
+        // get GC'd. Only the two new entities remain (+ 1 for root query entity).
+        expect(getEntityMapSize(client)).toBe(3);
       });
     });
   });
@@ -922,7 +920,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -992,7 +990,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -1057,7 +1055,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -1128,7 +1126,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -1200,13 +1198,13 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUserBasic extends JsonQuery {
+        class GetUserBasic extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}/basic`;
           result = { user: t.entity(User) };
         }
 
-        class GetUserProfile extends JsonQuery {
+        class GetUserProfile extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}/profile`;
           result = { user: t.entity(User) };
@@ -1251,7 +1249,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -1294,7 +1292,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -1323,7 +1321,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
@@ -1358,7 +1356,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetPosts extends JsonQuery {
+        class GetPosts extends RESTQuery {
           path = '/posts';
           result = {
             posts: t.array(PostUnion),
@@ -1389,7 +1387,7 @@ describe('Entity System', () => {
       });
 
       await testWithClient(client, async () => {
-        class GetUsers extends JsonQuery {
+        class GetUsers extends RESTQuery {
           path = '/users';
           result = { users: t.array(t.entity(User)) };
         }

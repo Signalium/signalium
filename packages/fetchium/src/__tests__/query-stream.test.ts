@@ -4,7 +4,7 @@ import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { JsonQuery, fetchQuery } from '../query.js';
+import { RESTQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, sleep, sendStreamUpdate } from './utils.js';
 import type { MutationEvent } from '../types.js';
 
@@ -51,16 +51,20 @@ describe('Query Stream Option', () => {
         ],
       });
 
-      class GetPosts extends JsonQuery {
+      class GetPosts extends RESTQuery {
         path = '/posts';
         result = {
           posts: t.array(t.entity(Post)),
         };
 
-        subscribe(onEvent: (event: MutationEvent) => void) {
-          subscribeCallCount++;
-          return () => {
-            unsubscribeCallCount++;
+        getConfig() {
+          return {
+            subscribe: (onEvent: (event: MutationEvent) => void) => {
+              subscribeCallCount++;
+              return () => {
+                unsubscribeCallCount++;
+              };
+            },
           };
         }
       }
@@ -95,7 +99,7 @@ describe('Query Stream Option', () => {
         messages: [{ __typename: 'StreamMessage', id: '1', text: 'Hello', userId: '123' }],
       });
 
-      class GetUserMessages extends JsonQuery {
+      class GetUserMessages extends RESTQuery {
         params = { userId: t.id, limit: t.number };
         path = `/users/${this.params.userId}/messages`;
         searchParams = { limit: this.params.limit };
@@ -103,9 +107,13 @@ describe('Query Stream Option', () => {
           messages: t.array(t.entity(Message)),
         };
 
-        subscribe(onEvent: (event: MutationEvent) => void) {
-          receivedUserId = this.params.userId;
-          return () => {};
+        getConfig() {
+          return {
+            subscribe: (onEvent: (event: MutationEvent) => void) => {
+              receivedUserId = this.params.userId;
+              return () => {};
+            },
+          };
         }
       }
 
@@ -136,15 +144,19 @@ describe('Query Stream Option', () => {
         ],
       });
 
-      class GetPosts extends JsonQuery {
+      class GetPosts extends RESTQuery {
         path = '/posts';
         result = {
           posts: t.array(t.entity(Post)),
         };
 
-        subscribe(onEvent: (event: MutationEvent) => void) {
-          streamCallback = onEvent;
-          return () => {};
+        getConfig() {
+          return {
+            subscribe: (onEvent: (event: MutationEvent) => void) => {
+              streamCallback = onEvent;
+              return () => {};
+            },
+          };
         }
       }
 
@@ -193,15 +205,19 @@ describe('Query Stream Option', () => {
         ],
       });
 
-      class GetPosts extends JsonQuery {
+      class GetPosts extends RESTQuery {
         path = '/posts';
         result = {
           posts: t.array(t.entity(StreamNestedPost)),
         };
 
-        subscribe(onEvent: (event: MutationEvent) => void) {
-          streamCallback = onEvent;
-          return () => {};
+        getConfig() {
+          return {
+            subscribe: (onEvent: (event: MutationEvent) => void) => {
+              streamCallback = onEvent;
+              return () => {};
+            },
+          };
         }
       }
 
@@ -237,16 +253,20 @@ describe('Query Stream Option', () => {
         posts: [{ __typename: 'StreamLifecyclePost', id: '1', title: 'Post 1' }],
       });
 
-      class GetPosts extends JsonQuery {
+      class GetPosts extends RESTQuery {
         path = '/posts';
         result = {
           posts: t.array(t.entity(Post)),
         };
 
-        subscribe(onEvent: (event: MutationEvent) => void) {
-          subscribeCount++;
-          return () => {
-            unsubscribeCount++;
+        getConfig() {
+          return {
+            subscribe: (onEvent: (event: MutationEvent) => void) => {
+              subscribeCount++;
+              return () => {
+                unsubscribeCount++;
+              };
+            },
           };
         }
       }
@@ -278,16 +298,20 @@ describe('Query Stream Option', () => {
         posts: [{ __typename: 'StreamResubPost', id: '1', title: 'Post 1' }],
       });
 
-      class GetPosts extends JsonQuery {
+      class GetPosts extends RESTQuery {
         path = '/posts';
         result = {
           posts: t.array(t.entity(Post)),
         };
 
-        subscribe(onEvent: (event: MutationEvent) => void) {
-          subscribeCount++;
-          return () => {
-            unsubscribeCount++;
+        getConfig() {
+          return {
+            subscribe: (onEvent: (event: MutationEvent) => void) => {
+              subscribeCount++;
+              return () => {
+                unsubscribeCount++;
+              };
+            },
           };
         }
       }
@@ -322,7 +346,7 @@ describe('Query Stream Option', () => {
         posts: [{ id: '1', title: 'Post 1' }],
       });
 
-      class GetPosts extends JsonQuery {
+      class GetPosts extends RESTQuery {
         path = '/posts';
         result = {
           posts: t.array(
@@ -361,15 +385,19 @@ describe('Query Stream Option', () => {
         ],
       });
 
-      class GetPosts extends JsonQuery {
+      class GetPosts extends RESTQuery {
         path = '/posts';
         result = {
           posts: t.array(t.entity(Post)),
         };
 
-        subscribe(onEvent: (event: MutationEvent) => void) {
-          streamCallback = onEvent;
-          return () => {};
+        getConfig() {
+          return {
+            subscribe: (onEvent: (event: MutationEvent) => void) => {
+              streamCallback = onEvent;
+              return () => {};
+            },
+          };
         }
       }
 
@@ -410,18 +438,22 @@ describe('Query Stream Option', () => {
         items: [{ __typename: 'StreamResubItem', id: '1', name: 'Item 1' }],
       });
 
-      class GetChannelItems extends JsonQuery {
+      class GetChannelItems extends RESTQuery {
         params = { channelId: t.id };
         path = `/channels/${this.params.channelId}/items`;
         result = {
           items: t.array(t.entity(Item)),
         };
 
-        subscribe(onEvent: (event: MutationEvent) => void) {
-          const sub = { channelId: this.params.channelId, unsubscribed: false };
-          subscriptions.push(sub);
-          return () => {
-            sub.unsubscribed = true;
+        getConfig() {
+          return {
+            subscribe: (onEvent: (event: MutationEvent) => void) => {
+              const sub = { channelId: this.params.channelId, unsubscribed: false };
+              subscriptions.push(sub);
+              return () => {
+                sub.unsubscribed = true;
+              };
+            },
           };
         }
       }
@@ -473,17 +505,21 @@ describe('Query Stream Option', () => {
         items: [{ __typename: 'StreamNewSubItem', id: '1', name: 'Original' }],
       });
 
-      class GetChannelItems extends JsonQuery {
+      class GetChannelItems extends RESTQuery {
         params = { channelId: t.id };
         path = `/channels/${this.params.channelId}/items`;
         result = {
           items: t.array(t.entity(Item)),
         };
 
-        subscribe(onEvent: (event: MutationEvent) => void) {
-          subscribeCount++;
-          latestOnEvent = onEvent;
-          return () => {};
+        getConfig() {
+          return {
+            subscribe: (onEvent: (event: MutationEvent) => void) => {
+              subscribeCount++;
+              latestOnEvent = onEvent;
+              return () => {};
+            },
+          };
         }
       }
 
@@ -533,15 +569,19 @@ describe('Query Stream Option', () => {
         posts: [{ __typename: 'StreamCtxPost', id: '1', title: 'Post 1' }],
       });
 
-      class GetPosts extends JsonQuery {
+      class GetPosts extends RESTQuery {
         path = '/posts';
         result = {
           posts: t.array(t.entity(Post)),
         };
 
-        subscribe(onEvent: (event: MutationEvent) => void) {
-          receivedContext = this.context;
-          return () => {};
+        getConfig() {
+          return {
+            subscribe: (onEvent: (event: MutationEvent) => void) => {
+              receivedContext = this.context;
+              return () => {};
+            },
+          };
         }
       }
 

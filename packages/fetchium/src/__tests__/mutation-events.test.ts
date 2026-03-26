@@ -5,7 +5,7 @@ import { SyncQueryStore, MemoryPersistentStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t, getEntityDef } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { JsonQuery, fetchQuery } from '../query.js';
+import { RESTQuery, fetchQuery } from '../query.js';
 import { createMockFetch, testWithClient, getEntityMapSize, sleep } from './utils.js';
 import type { MutationEvent } from '../types.js';
 
@@ -51,7 +51,7 @@ describe('Mutation Events', () => {
         email = t.string;
       }
 
-      class GetMutUser extends JsonQuery {
+      class GetMutUser extends RESTQuery {
         params = { id: t.id };
         path = `/mut-user/${this.params.id}`;
         result = { user: t.entity(MutUser) };
@@ -95,7 +95,7 @@ describe('Mutation Events', () => {
         name = t.string;
       }
 
-      class GetMutUserNoExist extends JsonQuery {
+      class GetMutUserNoExist extends RESTQuery {
         params = { id: t.id };
         path = `/mut-user-noexist/${this.params.id}`;
         result = { user: t.entity(MutUserNoExist) };
@@ -135,13 +135,13 @@ describe('Mutation Events', () => {
         description = t.string;
       }
 
-      class GetMutItemBase extends JsonQuery {
+      class GetMutItemBase extends RESTQuery {
         params = { id: t.id };
         path = `/mut-item-base/${this.params.id}`;
         result = { item: t.entity(MutItemBase) };
       }
 
-      class GetMutItemDetail extends JsonQuery {
+      class GetMutItemDetail extends RESTQuery {
         params = { id: t.id };
         path = `/mut-item-detail/${this.params.id}`;
         result = { item: t.entity(MutItemDetail) };
@@ -186,14 +186,14 @@ describe('Mutation Events', () => {
   // ============================================================
 
   describe('Create Events', () => {
-    it('should create an entity when payload satisfies the shape', async () => {
+    it('should NOT create an entity in the store without a live collection destination', async () => {
       class MutCreateItem extends Entity {
         __typename = t.typename('MutCreateItem');
         id = t.id;
         title = t.string;
       }
 
-      class GetMutCreateItem extends JsonQuery {
+      class GetMutCreateItem extends RESTQuery {
         params = { id: t.id };
         path = `/mut-create-item/${this.params.id}`;
         result = { item: t.entity(MutCreateItem) };
@@ -202,8 +202,6 @@ describe('Mutation Events', () => {
       mockFetch.get('/mut-create-item/[id]', {
         item: { __typename: 'MutCreateItem', id: '1', title: 'Existing' },
       });
-
-      const def = getEntityDef(MutCreateItem);
 
       await testWithClient(client, async () => {
         const relay = fetchQuery(GetMutCreateItem, { id: '1' });
@@ -217,12 +215,7 @@ describe('Mutation Events', () => {
           data: { id: '10', title: 'New Item' },
         });
 
-        expect(getEntityMapSize(client)).toBe(sizeBefore + 1);
-
-        const key = hashValue([`MutCreateItem:10`, def.shapeKey]);
-        const instance = client.getEntity(key);
-        expect(instance).toBeDefined();
-        expect(instance!.data.title).toBe('New Item');
+        expect(getEntityMapSize(client)).toBe(sizeBefore);
       });
     });
 
@@ -234,7 +227,7 @@ describe('Mutation Events', () => {
         requiredField = t.number;
       }
 
-      class GetMutCreateStrict extends JsonQuery {
+      class GetMutCreateStrict extends RESTQuery {
         params = { id: t.id };
         path = `/mut-create-strict/${this.params.id}`;
         result = { item: t.entity(MutCreateStrict) };
@@ -267,7 +260,7 @@ describe('Mutation Events', () => {
         name = t.string;
       }
 
-      class GetMutCreateExisting extends JsonQuery {
+      class GetMutCreateExisting extends RESTQuery {
         params = { id: t.id };
         path = `/mut-create-existing/${this.params.id}`;
         result = { item: t.entity(MutCreateExisting) };
@@ -295,7 +288,7 @@ describe('Mutation Events', () => {
       });
     });
 
-    it('should only create for shapes the payload satisfies when multiple views exist', async () => {
+    it('should NOT create entities without a live collection destination even with multiple views', async () => {
       class MutCreatePartialBase extends Entity {
         __typename = t.typename('MutCreatePartial');
         id = t.id;
@@ -309,13 +302,13 @@ describe('Mutation Events', () => {
         bio = t.string;
       }
 
-      class GetMutCreatePartialBase extends JsonQuery {
+      class GetMutCreatePartialBase extends RESTQuery {
         params = { id: t.id };
         path = `/mut-create-partial-base/${this.params.id}`;
         result = { item: t.entity(MutCreatePartialBase) };
       }
 
-      class GetMutCreatePartialDetail extends JsonQuery {
+      class GetMutCreatePartialDetail extends RESTQuery {
         params = { id: t.id };
         path = `/mut-create-partial-detail/${this.params.id}`;
         result = { item: t.entity(MutCreatePartialDetail) };
@@ -327,9 +320,6 @@ describe('Mutation Events', () => {
       mockFetch.get('/mut-create-partial-detail/[id]', {
         item: { __typename: 'MutCreatePartial', id: '1', name: 'Existing', bio: 'Has bio' },
       });
-
-      const baseDef = getEntityDef(MutCreatePartialBase);
-      const detailDef = getEntityDef(MutCreatePartialDetail);
 
       await testWithClient(client, async () => {
         const relayBase = fetchQuery(GetMutCreatePartialBase, { id: '1' });
@@ -344,75 +334,7 @@ describe('Mutation Events', () => {
           data: { id: '5', name: 'Partial' },
         });
 
-        // Only the base shape should be created (name is present)
-        // Detail shape requires bio, which is missing
-        expect(getEntityMapSize(client)).toBe(sizeBefore + 1);
-
-        const baseKey = hashValue([`MutCreatePartial:5`, baseDef.shapeKey]);
-        const detailKey = hashValue([`MutCreatePartial:5`, detailDef.shapeKey]);
-
-        expect(client.getEntity(baseKey)).toBeDefined();
-        expect(client.getEntity(detailKey)).toBeUndefined();
-      });
-    });
-
-    it('should create all matching shapes when payload is complete', async () => {
-      class MutCreateFullBase extends Entity {
-        __typename = t.typename('MutCreateFull');
-        id = t.id;
-        name = t.string;
-      }
-
-      class MutCreateFullDetail extends Entity {
-        __typename = t.typename('MutCreateFull');
-        id = t.id;
-        name = t.string;
-        bio = t.string;
-      }
-
-      class GetMutCreateFullBase extends JsonQuery {
-        params = { id: t.id };
-        path = `/mut-create-full-base/${this.params.id}`;
-        result = { item: t.entity(MutCreateFullBase) };
-      }
-
-      class GetMutCreateFullDetail extends JsonQuery {
-        params = { id: t.id };
-        path = `/mut-create-full-detail/${this.params.id}`;
-        result = { item: t.entity(MutCreateFullDetail) };
-      }
-
-      mockFetch.get('/mut-create-full-base/[id]', {
-        item: { __typename: 'MutCreateFull', id: '1', name: 'Existing' },
-      });
-      mockFetch.get('/mut-create-full-detail/[id]', {
-        item: { __typename: 'MutCreateFull', id: '1', name: 'Existing', bio: 'Has bio' },
-      });
-
-      const baseDef = getEntityDef(MutCreateFullBase);
-      const detailDef = getEntityDef(MutCreateFullDetail);
-
-      await testWithClient(client, async () => {
-        const relayBase = fetchQuery(GetMutCreateFullBase, { id: '1' });
-        const relayDetail = fetchQuery(GetMutCreateFullDetail, { id: '1' });
-        await Promise.all([relayBase, relayDetail]);
-
-        const sizeBefore = getEntityMapSize(client);
-
-        client.applyMutationEvent({
-          type: 'create',
-          typename: 'MutCreateFull',
-          data: { id: '6', name: 'Complete', bio: 'Has everything' },
-        });
-
-        expect(getEntityMapSize(client)).toBe(sizeBefore + 2);
-
-        const baseKey = hashValue([`MutCreateFull:6`, baseDef.shapeKey]);
-        const detailKey = hashValue([`MutCreateFull:6`, detailDef.shapeKey]);
-
-        expect(client.getEntity(baseKey)).toBeDefined();
-        expect(client.getEntity(detailKey)).toBeDefined();
-        expect(client.getEntity(detailKey)!.data.bio).toBe('Has everything');
+        expect(getEntityMapSize(client)).toBe(sizeBefore);
       });
     });
   });
@@ -422,14 +344,14 @@ describe('Mutation Events', () => {
   // ============================================================
 
   describe('Delete Events', () => {
-    it('should delete an existing entity', async () => {
+    it('should NOT evict entity from store when still referenced by a query', async () => {
       class MutDeleteItem extends Entity {
         __typename = t.typename('MutDeleteItem');
         id = t.id;
         name = t.string;
       }
 
-      class GetMutDeleteItem extends JsonQuery {
+      class GetMutDeleteItem extends RESTQuery {
         params = { id: t.id };
         path = `/mut-delete-item/${this.params.id}`;
         result = { item: t.entity(MutDeleteItem) };
@@ -452,18 +374,18 @@ describe('Mutation Events', () => {
           data: { id: '1' },
         });
 
-        expect(getEntityMapSize(client)).toBe(sizeBefore - 1);
+        expect(getEntityMapSize(client)).toBe(sizeBefore);
       });
     });
 
-    it('should delete using a string id', async () => {
+    it('should route delete events (with string id) to live collections', async () => {
       class MutDeleteStrId extends Entity {
         __typename = t.typename('MutDeleteStrId');
         id = t.id;
         name = t.string;
       }
 
-      class GetMutDeleteStrId extends JsonQuery {
+      class GetMutDeleteStrId extends RESTQuery {
         params = { id: t.id };
         path = `/mut-delete-strid/${this.params.id}`;
         result = { item: t.entity(MutDeleteStrId) };
@@ -485,7 +407,7 @@ describe('Mutation Events', () => {
           data: '1',
         });
 
-        expect(getEntityMapSize(client)).toBe(sizeBefore - 1);
+        expect(getEntityMapSize(client)).toBe(sizeBefore);
       });
     });
 
@@ -496,7 +418,7 @@ describe('Mutation Events', () => {
         name = t.string;
       }
 
-      class GetMutDeleteNone extends JsonQuery {
+      class GetMutDeleteNone extends RESTQuery {
         params = { id: t.id };
         path = `/mut-delete-none/${this.params.id}`;
         result = { item: t.entity(MutDeleteNone) };
@@ -547,7 +469,7 @@ describe('Mutation Events', () => {
         name = t.string;
       }
 
-      class GetMutNoId extends JsonQuery {
+      class GetMutNoId extends RESTQuery {
         params = { id: t.id };
         path = `/mut-noid/${this.params.id}`;
         result = { item: t.entity(MutNoId) };
@@ -587,6 +509,104 @@ describe('Mutation Events', () => {
       }
 
       expect(getEntityMapSize(client)).toBe(sizeBefore);
+    });
+  });
+
+  describe('Unknown/Complex IDs via event.id', () => {
+    it('should accept an explicit event.id and use it for entity lookup', async () => {
+      class Item extends Entity {
+        __typename = t.typename('IdItem');
+        id = t.id;
+        name = t.string;
+      }
+
+      class GetItem extends RESTQuery {
+        path = '/id-item';
+        result = { item: t.entity(Item) };
+      }
+
+      mockFetch.get('/id-item', {
+        item: { __typename: 'IdItem', id: 'abc', name: 'Original' },
+      });
+
+      await testWithClient(client, async () => {
+        const relay = fetchQuery(GetItem);
+        await relay;
+        expect(relay.value!.item.name).toBe('Original');
+
+        await applyEventOutsideReactiveContext(client, {
+          type: 'update',
+          typename: 'IdItem',
+          id: 'abc',
+          data: { id: 'abc', name: 'Updated via explicit id' },
+        });
+
+        expect(relay.value!.item.name).toBe('Updated via explicit id');
+      });
+    });
+
+    it('should support object ids via event.id', async () => {
+      class ObjIdEntity extends Entity {
+        __typename = t.typename('ObjId');
+        id = t.id;
+        value = t.string;
+      }
+
+      class GetObjId extends RESTQuery {
+        path = '/obj-id';
+        result = { item: t.entity(ObjIdEntity) };
+      }
+
+      mockFetch.get('/obj-id', {
+        item: { __typename: 'ObjId', id: 42, value: 'before' },
+      });
+
+      await testWithClient(client, async () => {
+        const relay = fetchQuery(GetObjId);
+        await relay;
+        expect(relay.value!.item.value).toBe('before');
+
+        await applyEventOutsideReactiveContext(client, {
+          type: 'update',
+          typename: 'ObjId',
+          id: 42,
+          data: { id: 42, value: 'after' },
+        });
+
+        expect(relay.value!.item.value).toBe('after');
+      });
+    });
+
+    it('should skip event when id is undefined and idField is not in data', async () => {
+      class SkipEntity extends Entity {
+        __typename = t.typename('SkipId');
+        id = t.id;
+        name = t.string;
+      }
+
+      class GetSkip extends RESTQuery {
+        path = '/skip-id';
+        result = { item: t.entity(SkipEntity) };
+      }
+
+      mockFetch.get('/skip-id', {
+        item: { __typename: 'SkipId', id: 1, name: 'test' },
+      });
+
+      await testWithClient(client, async () => {
+        const relay = fetchQuery(GetSkip);
+        await relay;
+
+        const sizeBefore = getEntityMapSize(client);
+
+        await applyEventOutsideReactiveContext(client, {
+          type: 'update',
+          typename: 'SkipId',
+          data: { name: 'no id field' },
+        });
+
+        expect(getEntityMapSize(client)).toBe(sizeBefore);
+      });
     });
   });
 });

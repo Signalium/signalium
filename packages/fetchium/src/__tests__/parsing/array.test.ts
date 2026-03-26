@@ -1,15 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { t } from '../../typeDefs.js';
-import { Entity, parseValue } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
-import { parseEntities } from '../../parseEntities.js';
+import { Entity } from '../../proxy.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
 import {
+  parseValue,
+  parseEntities,
   setupParsingTests,
   testWithClient,
   getEntityKey,
   getDocument,
   getEntityRefs,
-  getShapeKey,
 } from './test-utils.js';
 
 /**
@@ -44,7 +44,7 @@ describe('t.array', () => {
       });
 
       it('should filter invalid items with warning callback', () => {
-        const result = parseValue([1, 'invalid', 3], t.array(t.number), 'test', false, () => {});
+        const result = parseValue([1, 'invalid', 3], t.array(t.number), 'test', () => {});
         expect(result).toEqual([1, 3]);
       });
     });
@@ -130,7 +130,7 @@ describe('t.array', () => {
       });
 
       it('should filter invalid items in array', () => {
-        const result = parseValue([1, 'invalid', 3], t.array(t.number), 'test', false, () => {});
+        const result = parseValue([1, 'invalid', 3], t.array(t.number), 'test', () => {});
         expect(result).toEqual([1, 3]);
       });
     });
@@ -145,7 +145,7 @@ describe('t.array', () => {
         mockFetch.get('/items', { items: [1, 2, 3, 4, 5] });
 
         await testWithClient(client, async () => {
-          class GetItems extends JsonQuery {
+          class GetItems extends RESTQuery {
             path = '/items';
             result = { items: t.array(t.number) };
           }
@@ -162,7 +162,7 @@ describe('t.array', () => {
         mockFetch.get('/items', { items: [] });
 
         await testWithClient(client, async () => {
-          class GetItems extends JsonQuery {
+          class GetItems extends RESTQuery {
             path = '/items';
             result = { items: t.array(t.number) };
           }
@@ -184,7 +184,7 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUser extends JsonQuery {
+          class GetUser extends RESTQuery {
             path = '/user';
             result = {
               user: t.object({
@@ -214,7 +214,7 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetMatrix extends JsonQuery {
+          class GetMatrix extends RESTQuery {
             path = '/matrix';
             result = { matrix: t.array(t.array(t.number)) };
           }
@@ -241,7 +241,7 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetItems extends JsonQuery {
+          class GetItems extends RESTQuery {
             path = '/items';
             result = {
               items: t.array(t.object({ id: t.number, name: t.string })),
@@ -269,7 +269,7 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetTags extends JsonQuery {
+          class GetTags extends RESTQuery {
             path = '/tags';
             result = { tagsByCategory: t.record(t.array(t.string)) };
           }
@@ -303,10 +303,10 @@ describe('t.array', () => {
           post: { __typename: 'Post', id: 1, tags: ['tech', 'coding'] },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Post', 1, getShapeKey(t.entity(Post)));
+        const key = getEntityKey('Post', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -334,14 +334,14 @@ describe('t.array', () => {
           ],
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
         expect(entityRefs.size).toBe(3);
 
-        const key1 = getEntityKey('Item', 1, getShapeKey(t.entity(Item)));
-        const key2 = getEntityKey('Item', 2, getShapeKey(t.entity(Item)));
-        const key3 = getEntityKey('Item', 3, getShapeKey(t.entity(Item)));
+        const key1 = getEntityKey('Item', 1);
+        const key2 = getEntityKey('Item', 2);
+        const key3 = getEntityKey('Item', 3);
 
         expect(await getDocument(kv, key1)).toBeDefined();
         expect(await getDocument(kv, key2)).toBeDefined();
@@ -383,15 +383,15 @@ describe('t.array', () => {
           ],
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
         expect(entityRefs.size).toBe(2);
 
-        const keyP1 = getEntityKey('Parent', 1, getShapeKey(t.entity(Parent)));
-        const keyP2 = getEntityKey('Parent', 2, getShapeKey(t.entity(Parent)));
-        const keyC10 = getEntityKey('Child', 10, getShapeKey(t.entity(Child)));
-        const keyC20 = getEntityKey('Child', 20, getShapeKey(t.entity(Child)));
+        const keyP1 = getEntityKey('Parent', 1);
+        const keyP2 = getEntityKey('Parent', 2);
+        const keyC10 = getEntityKey('Child', 10);
+        const keyC20 = getEntityKey('Child', 20);
 
         const refsP1 = await getEntityRefs(kv, keyP1);
         expect(refsP1).toBeDefined();
@@ -425,10 +425,10 @@ describe('t.array', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('User', 1, getShapeKey(t.entity(User)));
+        const key = getEntityKey('User', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -456,10 +456,10 @@ describe('t.array', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Config', 1, getShapeKey(t.entity(Config)));
+        const key = getEntityKey('Config', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -487,10 +487,10 @@ describe('t.array', () => {
           },
         };
 
-        const entityRefs = new Set<number>();
+        const entityRefs = new Map();
         await parseEntities(result, QueryResult, client, entityRefs);
 
-        const key = getEntityKey('Container', 1, getShapeKey(t.entity(Container)));
+        const key = getEntityKey('Container', 1);
         const doc = await getDocument(kv, key);
 
         expect(doc).toBeDefined();
@@ -503,7 +503,7 @@ describe('t.array', () => {
     describe('Direct parseValue', () => {
       it('should filter out items with wrong primitive type', () => {
         const warnLogger = vi.fn();
-        const result = parseValue([1, 2, 'not a number', 4, true, 6], t.array(t.number), 'test', false, warnLogger);
+        const result = parseValue([1, 2, 'not a number', 4, true, 6], t.array(t.number), 'test', warnLogger);
 
         expect(result).toEqual([1, 2, 4, 6]);
         expect(warnLogger).toHaveBeenCalled();
@@ -516,7 +516,6 @@ describe('t.array', () => {
           ['active', 'unknown_status', 'inactive', 'new_status', 'pending'],
           t.array(Status),
           'test',
-          false,
           warnLogger,
         );
 
@@ -530,7 +529,6 @@ describe('t.array', () => {
           ['2024-01-15', 'not-a-date', '2024-06-20', 'invalid'],
           t.array(t.format('date')),
           'test',
-          false,
           warnLogger,
         ) as Date[];
 
@@ -550,7 +548,6 @@ describe('t.array', () => {
           ],
           t.array(t.array(t.number)),
           'test',
-          false,
           warnLogger,
         );
 
@@ -559,7 +556,7 @@ describe('t.array', () => {
 
       it('should return empty array when all items are filtered', () => {
         const warnLogger = vi.fn();
-        const result = parseValue(['a', 'b', 'c'], t.array(t.number), 'test', false, warnLogger);
+        const result = parseValue(['a', 'b', 'c'], t.array(t.number), 'test', warnLogger);
 
         expect(result).toEqual([]);
         expect(warnLogger).toHaveBeenCalledTimes(3);
@@ -567,7 +564,7 @@ describe('t.array', () => {
 
       it('should receive correct context in warn logger', () => {
         const warnLogger = vi.fn();
-        parseValue([1, 'bad', 3], t.array(t.number), 'test.numbers', false, warnLogger);
+        parseValue([1, 'bad', 3], t.array(t.number), 'test.numbers', warnLogger);
 
         expect(warnLogger).toHaveBeenCalledWith(
           'Failed to parse array item, filtering out',
@@ -593,7 +590,7 @@ describe('t.array', () => {
         mockFetch.get('/numbers', { numbers: [1, 2, 'not a number', 4] });
 
         await testWithClient(client, async () => {
-          class GetNumbers extends JsonQuery {
+          class GetNumbers extends RESTQuery {
             path = '/numbers';
             result = { numbers: t.array(t.number) };
           }
@@ -623,7 +620,7 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetUsers extends JsonQuery {
+          class GetUsers extends RESTQuery {
             path = '/users';
             result = { users: t.array(t.entity(User)) };
           }
@@ -661,7 +658,7 @@ describe('t.array', () => {
         });
 
         await testWithClient(client, async () => {
-          class GetPosts extends JsonQuery {
+          class GetPosts extends RESTQuery {
             path = '/posts';
             result = { posts: t.array(t.union(t.entity(TextPost), t.entity(ImagePost))) };
           }

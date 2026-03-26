@@ -1,7 +1,9 @@
 import { watchOnce, watcher, withContexts } from 'signalium';
 import { QueryClient, QueryClientContext, QueryStore } from '../QueryClient.js';
-import { EntityStore } from '../EntityMap.js';
-
+import { EntityStore } from '../EntityStore.js';
+import type { EntityInstance } from '../EntityInstance.js';
+import type { PreloadedEntityMap } from '../QueryClient.js';
+import type { TypeDef, ComplexTypeDef, EntityDef } from '../types.js';
 // Re-export watchOnce for convenience
 export { watchOnce };
 
@@ -233,20 +235,12 @@ export const sleep = (ms: number = 0) =>
     }, ms);
   });
 
-/**
- * Test helper to access the internal store of a QueryClient.
- * Uses bracket notation to bypass TypeScript access checks.
- */
 export function getClientStore(client: QueryClient): QueryStore {
-  return client['store'];
+  return client.store;
 }
 
-/**
- * Test helper to access the internal entity map of a QueryClient.
- * Uses bracket notation to bypass TypeScript access checks.
- */
 export function getClientEntityMap(client: QueryClient): EntityStore {
-  return client['entityMap'];
+  return client.entityMap;
 }
 
 /**
@@ -256,6 +250,44 @@ export function getClientEntityMap(client: QueryClient): EntityStore {
 export function getEntityMapSize(client: QueryClient): number {
   const entityMap = getClientEntityMap(client);
   return entityMap['instances'].size;
+}
+
+export function parseEntities(
+  value: unknown,
+  typeDef: TypeDef | ComplexTypeDef,
+  queryClient: QueryClient,
+  entityRefs?: Map<EntityInstance, number>,
+  preloadedEntities?: PreloadedEntityMap,
+): unknown {
+  const persist = preloadedEntities === undefined;
+  const parsed = queryClient.parseData(value, typeDef as any, preloadedEntities);
+  const result = queryClient.applyRefs(parsed, persist);
+
+  if (entityRefs !== undefined) {
+    for (const [inst, count] of result.entityRefs) {
+      entityRefs.set(inst, count);
+    }
+  }
+
+  return result.data;
+}
+
+export function parseEntity(
+  obj: Record<string, unknown>,
+  entityShape: EntityDef,
+  queryClient: QueryClient,
+  entityRefs?: Map<EntityInstance, number>,
+): unknown {
+  const parsed = queryClient.parseData(obj, entityShape as any);
+  const result = queryClient.applyRefs(parsed, true);
+
+  if (entityRefs !== undefined) {
+    for (const [inst, count] of result.entityRefs) {
+      entityRefs.set(inst, count);
+    }
+  }
+
+  return result.data;
 }
 
 /**

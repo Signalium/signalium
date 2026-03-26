@@ -1,31 +1,42 @@
 import { getContext } from 'signalium';
 import {
-  InternalTypeDef,
   ExtractType,
   TypeDef,
-  MutationEvent,
   QueryRequestOptions,
-  ResponseTypeDef,
+  TypeDefShape,
   RetryConfig,
   QueryPromise,
+  Mask,
+  QUERY_ID,
 } from './types.js';
 import {
   QueryCacheOptions,
   QueryConfigOptions,
+  LoadNextConfig,
   QueryClientContext,
   QueryContext,
   QueryParams,
   queryKeyFor,
   resolveBaseUrl,
 } from './QueryClient.js';
+import { ValidatorDef, t } from './typeDefs.js';
 import { HasRequiredKeys, Optionalize, Signalize } from './type-utils.js';
-import { resolveTypeDef } from './resolveTypeDef.js';
 import {
   createDefinitionProxy,
   extractDefinition,
   createExecutionContext as createExecutionContextUtil,
+  reifyValue,
   type CapturedDefinition,
 } from './fieldRef.js';
+
+// ================================
+// LoadNext types
+// ================================
+
+export interface ResolvedLoadNext {
+  url?: string;
+  searchParams?: Record<string, unknown>;
+}
 
 // ================================
 // Retry config
@@ -68,20 +79,22 @@ export abstract class Query {
   static cache?: QueryCacheOptions;
 
   params?: Record<string, TypeDef>;
-  abstract result: ResponseTypeDef;
+  abstract result: TypeDefShape;
   config?: QueryConfigOptions;
 
   declare context: QueryContext;
   declare response: Response | undefined;
+  declare signal: AbortSignal;
+  declare refetch: () => void;
+  declare resultData: Record<string, unknown>;
+  declare rawLoadNext: LoadNextConfig | undefined;
 
   abstract getStorageKey(): unknown;
   abstract send(): Promise<unknown>;
 
-  getConfig(): QueryConfigOptions | undefined {
-    return this.config;
-  }
-
-  subscribe?(onEvent: (event: MutationEvent) => void): () => void;
+  getConfig?(): QueryConfigOptions | undefined;
+  sendNext?(): Promise<unknown>;
+  hasNext?(): boolean;
 
   constructor() {
     return createDefinitionProxy(this);
@@ -89,50 +102,93 @@ export abstract class Query {
 }
 
 // ================================
-// JsonQuery
+// RESTQuery
 // ================================
 
-export abstract class JsonQuery extends Query {
+export abstract class RESTQuery extends Query {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' = 'GET';
   path?: string;
   searchParams?: Record<string, unknown>;
   body?: Record<string, unknown>;
   headers?: HeadersInit;
   requestOptions?: QueryRequestOptions;
+  loadNext?: LoadNextConfig;
 
   getStorageKey(): string {
     return `${this.method ?? 'GET'}:${this.path ?? ''}`;
   }
 
-  getPath(): string | undefined {
-    return this.path;
-  }
-
-  getMethod(): string {
-    return this.method;
-  }
-
-  getSearchParams(): Record<string, unknown> | undefined {
-    return this.searchParams;
-  }
-
-  getBody(): Record<string, unknown> | undefined {
-    return this.body;
-  }
-
-  getRequestOptions(): QueryRequestOptions | undefined {
-    return this.requestOptions;
-  }
+  getPath?(): string | undefined;
+  getMethod?(): string;
+  getSearchParams?(): Record<string, unknown> | undefined;
+  getBody?(): Record<string, unknown> | undefined;
+  getRequestOptions?(): QueryRequestOptions | undefined;
+  getLoadNext?(): LoadNextConfig | undefined;
 
   async send(): Promise<unknown> {
-    const path = this.getPath();
-    const method = this.getMethod();
-    const searchParams = this.getSearchParams();
-    const body = this.getBody();
-    const requestOptions = this.getRequestOptions();
+    return this.executeRequest();
+  }
+
+  private resolveLoadNext(): ResolvedLoadNext | undefined {
+    const dynamicConfig = this.getLoadNext ? this.getLoadNext() : undefined;
+    const loadNextConfig = dynamicConfig ?? this.rawLoadNext;
+    if (loadNextConfig === undefined) return undefined;
+
+    const resolveRoot: Record<string, unknown> = {
+      params: this.params ?? {},
+      result: this.resultData,
+    };
+
+    return {
+      url: loadNextConfig.url !== undefined ? (reifyValue(loadNextConfig.url, resolveRoot) as string) : undefined,
+      searchParams:
+        loadNextConfig.searchParams !== undefined
+          ? (reifyValue(loadNextConfig.searchParams, resolveRoot) as Record<string, unknown>)
+          : undefined,
+    };
+  }
+
+  hasNext(): boolean {
+    const resolved = this.resolveLoadNext();
+    if (resolved === undefined) return false;
+
+    if (resolved.url !== undefined && resolved.url !== null) {
+      return true;
+    }
+
+    if (resolved.searchParams !== undefined) {
+      const keys = Object.keys(resolved.searchParams);
+      if (keys.length === 0) return false;
+      for (const key of keys) {
+        if (resolved.searchParams[key] === undefined || resolved.searchParams[key] === null) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  async sendNext(): Promise<unknown> {
+    const resolved = this.resolveLoadNext();
+    if (resolved === undefined) {
+      throw new Error('loadNext is not configured for this query');
+    }
+
+    return this.executeRequest(resolved);
+  }
+
+  private async executeRequest(next?: { url?: string; searchParams?: Record<string, unknown> }): Promise<unknown> {
+    const path = next?.url ?? (this.getPath ? this.getPath() : this.path);
+    const method = this.getMethod ? this.getMethod() : this.method;
+    const baseSearchParams = this.getSearchParams ? this.getSearchParams() : this.searchParams;
+    const searchParams = next?.searchParams ? { ...baseSearchParams, ...next.searchParams } : baseSearchParams;
+    const body = this.getBody ? this.getBody() : this.body;
+    const requestOptions = this.getRequestOptions ? this.getRequestOptions() : this.requestOptions;
 
     if (!path) {
-      throw new Error('JsonQuery requires a path. Define `path` as a field or override `getPath()`.');
+      throw new Error('RESTQuery requires a path. Define `path` as a field or override `getPath()`.');
     }
 
     let url = path;
@@ -154,7 +210,7 @@ export abstract class JsonQuery extends Query {
     const baseUrl = resolveBaseUrl(requestOptions?.baseUrl) ?? resolveBaseUrl(this.context.baseUrl);
     const fullUrl = baseUrl ? `${baseUrl}${url}` : url;
 
-    const { baseUrl: _baseUrl, ...fetchOptions } = requestOptions ?? {};
+    const { baseUrl: _baseUrl, signal: _signal, ...fetchOptions } = requestOptions ?? ({} as Record<string, unknown>);
 
     const hasHeaders = body || this.headers;
     const headers: HeadersInit | undefined = hasHeaders
@@ -168,6 +224,7 @@ export abstract class JsonQuery extends Query {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
+      signal: this.signal,
       ...fetchOptions,
     });
 
@@ -189,9 +246,17 @@ export interface ResolvedQueryOptions {
 
 export interface QueryDefinitionStatics {
   readonly id: string;
-  readonly shape: InternalTypeDef;
-  readonly shapeKey: number;
+  /** Root entity shape. For non-entity results this is a synthetic EntityDef
+   *  with QUERY_ID as idField. For entity results this is the entity's own
+   *  ValidatorDef. */
+  readonly shape: ValidatorDef<unknown>;
   readonly cache: QueryCacheOptions | undefined;
+  /** Raw loadNext config with unresolved FieldRefs, extracted before reification. */
+  readonly rawLoadNext: LoadNextConfig | undefined;
+  /** Whether the query class implements sendNext(). */
+  readonly hasSendNext: boolean;
+  /** Whether the result shape is already an entity (vs synthetic wrapper). */
+  readonly isEntityResult: boolean;
 }
 
 export class QueryDefinition<Params extends QueryParams | undefined, Result, StreamType> {
@@ -211,7 +276,7 @@ export class QueryDefinition<Params extends QueryParams | undefined, Result, Str
   resolveOptions(ctx: Query): ResolvedQueryOptions {
     const { methods } = this.captured;
 
-    const config = methods.getConfig?.call(ctx);
+    const config = methods.getConfig ? methods.getConfig.call(ctx) : ctx.config;
     const retryConfig = resolveRetryConfig(config?.retry);
 
     return { config, retryConfig };
@@ -228,10 +293,35 @@ export class QueryDefinition<Params extends QueryParams | undefined, Result, Str
     const captured = extractDefinition(instance);
 
     const id = String(captured.methods.getStorageKey.call(captured.fields));
-    const { shape, shapeKey } = resolveTypeDef(captured.fields.result);
+    const resultDef = captured.fields.result;
+    const shape =
+      resultDef instanceof ValidatorDef
+        ? (resultDef as ValidatorDef<unknown>)
+        : (t.object(resultDef) as unknown as ValidatorDef<unknown>);
+    const isEntityResult = (shape.mask & Mask.ENTITY) !== 0;
     const cache = (QueryClass as typeof Query).cache;
 
-    queryDefinition = new QueryDefinition({ id, shape, shapeKey, cache }, captured);
+    // Extract raw loadNext config before reification so FieldRefs survive
+    const rawLoadNext = (captured.fields as unknown as Record<string, unknown>).loadNext as LoadNextConfig | undefined;
+    const hasSendNext = typeof captured.methods.sendNext === 'function';
+
+    // For entity results, the root entity IS the result entity.
+    // For non-entity results, create a synthetic EntityDef with QUERY_ID as idField.
+    const rootEntityShape = isEntityResult
+      ? shape
+      : new ValidatorDef(
+          Mask.ENTITY | Mask.OBJECT,
+          shape.shape,
+          undefined,
+          undefined,
+          id, // typenameValue — unique per query class
+          QUERY_ID, // idField — symbol, injected onto payload before parse
+        );
+
+    queryDefinition = new QueryDefinition(
+      { id, shape: rootEntityShape, cache, rawLoadNext, hasSendNext, isEntityResult },
+      captured,
+    );
 
     queryDefCache.set(QueryClass, queryDefinition);
     return queryDefinition;
@@ -267,9 +357,9 @@ export function getQueryDefinition(QueryClass: new () => Query): QueryDefinition
 
 export function fetchQuery<T extends Query>(
   QueryClass: new () => T,
-  ...args: HasRequiredKeys<ExtractQueryParams<T>> extends true
-    ? [params: Optionalize<Signalize<ExtractQueryParams<T>>>]
-    : [params?: Optionalize<Signalize<ExtractQueryParams<T>>> | undefined]
+  ...args: HasRequiredKeys<ExtractType<T['params']>> extends true
+    ? [params: Optionalize<Signalize<ExtractType<T['params']>>>]
+    : [params?: Optionalize<Signalize<ExtractType<T['params']>>> | undefined]
 ): QueryPromise<T> {
   const queryDef = QueryDefinition.for(QueryClass);
 

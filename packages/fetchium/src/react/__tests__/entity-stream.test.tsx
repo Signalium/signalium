@@ -6,7 +6,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { userEvent } from '@vitest/browser/context';
 
@@ -33,18 +33,16 @@ describe('React Entity Stream Integration', () => {
       let streamCallback: ((update: any) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -81,12 +79,12 @@ describe('React Entity Stream Integration', () => {
       await sleep(50);
       expect(streamCallback).toBeDefined();
 
-      // Send stream update
       streamCallback!({
-        name: 'Alice Updated',
+        type: 'update',
+        typename: 'User',
+        data: { id: '1', name: 'Alice Updated' },
       });
 
-      // Wait for notifier to propagate and component to re-render
       await sleep(50);
 
       // Component should re-render with updated value
@@ -99,18 +97,16 @@ describe('React Entity Stream Integration', () => {
       let streamCallback: ((update: any) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -162,7 +158,9 @@ describe('React Entity Stream Integration', () => {
 
       // Send stream update
       streamCallback!({
-        name: 'Alice Updated',
+        type: 'update',
+        typename: 'User',
+        data: { id: '1', name: 'Alice Updated' },
       });
 
       // Wait for notifier to propagate and components to re-render
@@ -177,18 +175,16 @@ describe('React Entity Stream Integration', () => {
       let streamCallback: ((update: any) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -230,7 +226,9 @@ describe('React Entity Stream Integration', () => {
 
       // Send stream update
       streamCallback!({
-        name: 'Alice Updated',
+        type: 'update',
+        typename: 'User',
+        data: { id: '1', name: 'Alice Updated' },
       });
 
       // Wait for notifier to propagate and components to re-render
@@ -247,18 +245,16 @@ describe('React Entity Stream Integration', () => {
       let streamCallback: ((update: any) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -295,12 +291,12 @@ describe('React Entity Stream Integration', () => {
       await sleep(50);
       expect(streamCallback).toBeDefined();
 
-      // Send stream update
       streamCallback!({
-        name: 'Alice Updated',
+        type: 'update',
+        typename: 'User',
+        data: { id: '1', name: 'Alice Updated' },
       });
 
-      // Wait for notifier to propagate and component to re-render
       await sleep(50);
 
       await expect.element(getByTestId('user-name')).toHaveTextContent('Alice Updated');
@@ -310,17 +306,15 @@ describe('React Entity Stream Integration', () => {
   describe('Loading States', () => {
     it('should not interfere with query loading states', async () => {
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            return () => {};
-          },
-        };
+        __subscribe(onEvent: any) {
+          return () => {};
+        }
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -367,19 +361,17 @@ describe('React Entity Stream Integration', () => {
       let unsubscribeCallCount = 0;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            return () => {
-              unsubscribeCallCount++;
-            };
-          },
-        };
+        __subscribe(onEvent: any) {
+          return () => {
+            unsubscribeCallCount++;
+          };
+        }
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -428,20 +420,18 @@ describe('React Entity Stream Integration', () => {
       let unsubscribeCallCount = 0;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamActivated = true;
-            return () => {
-              unsubscribeCallCount++;
-            };
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamActivated = true;
+          return () => {
+            unsubscribeCallCount++;
+          };
+        }
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -506,12 +496,10 @@ describe('React Entity Stream Integration', () => {
       let streamCallback: ((update: any) => void) | undefined;
 
       class Address extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
         __typename = t.typename('Address');
         id = t.id;
         street = t.string;
@@ -524,7 +512,7 @@ describe('React Entity Stream Integration', () => {
         address = t.entity(Address);
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -568,9 +556,10 @@ describe('React Entity Stream Integration', () => {
       await sleep(50);
       expect(streamCallback).toBeDefined();
 
-      // Update nested entity via stream
       streamCallback!({
-        street: '456 Oak Ave',
+        type: 'update',
+        typename: 'Address',
+        data: { id: '1', street: '456 Oak Ave' },
       });
 
       // Wait for notifier to propagate and component to re-render
@@ -585,12 +574,10 @@ describe('React Entity Stream Integration', () => {
       let streamCallback: ((update: any) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
         __typename = t.typename('User');
         id = t.id;
         firstName = t.string;
@@ -600,7 +587,7 @@ describe('React Entity Stream Integration', () => {
         }
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -642,7 +629,9 @@ describe('React Entity Stream Integration', () => {
 
       // Update via stream
       streamCallback!({
-        firstName: 'Bob',
+        type: 'update',
+        typename: 'User',
+        data: { id: '1', firstName: 'Bob' },
       });
 
       // Wait for notifier to propagate and component to re-render
@@ -657,20 +646,18 @@ describe('React Entity Stream Integration', () => {
       const streamCallbacks: Map<string, (update: any) => void> = new Map();
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallbacks.set(String(id), onUpdate);
-            return () => {
-              streamCallbacks.delete(String(id));
-            };
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamCallbacks.set(String(this.id), onEvent);
+          return () => {
+            streamCallbacks.delete(String(this.id));
+          };
+        }
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -726,7 +713,7 @@ describe('React Entity Stream Integration', () => {
       expect(streamCallbacks.get('2')).toBeDefined();
 
       // Update user1
-      streamCallbacks.get('1')!({ name: 'Updated User 1' });
+      streamCallbacks.get('1')!({ type: 'update', typename: 'User', data: { id: '1', name: 'Updated User 1' } });
 
       // Wait for notifier to propagate and component to re-render
       await sleep(50);
@@ -741,22 +728,19 @@ describe('React Entity Stream Integration', () => {
       let streamCallback: ((update: any) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            // Send update immediately
-            setTimeout(() => {
-              onUpdate({ count: 1 });
-            }, 10);
-            return () => {};
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          setTimeout(() => {
+            onEvent({ type: 'update', typename: 'User', data: { id: String(this.id), count: 1 } });
+          }, 10);
+          return () => {};
+        }
         __typename = t.typename('User');
         id = t.id;
         count = t.number;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -799,18 +783,16 @@ describe('React Entity Stream Integration', () => {
       let streamCallback: ((update: any) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -850,7 +832,9 @@ describe('React Entity Stream Integration', () => {
       expect(streamCallback).toBeDefined();
 
       streamCallback!({
-        name: 'Alice Updated',
+        type: 'update',
+        typename: 'User',
+        data: { id: '1', name: 'Alice Updated' },
       });
 
       // Wait for notifier to propagate and component to re-render
@@ -865,18 +849,16 @@ describe('React Entity Stream Integration', () => {
       let streamCallback: ((update: any) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -916,7 +898,9 @@ describe('React Entity Stream Integration', () => {
       expect(streamCallback).toBeDefined();
 
       streamCallback!({
-        name: 'Alice Updated',
+        type: 'update',
+        typename: 'User',
+        data: { id: '1', name: 'Alice Updated' },
       });
 
       // Wait for notifier to propagate and component to re-render
@@ -931,12 +915,10 @@ describe('React Entity Stream Integration', () => {
       let streamCallback: ((update: any) => void) | undefined;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            streamCallback = onUpdate;
-            return () => {};
-          },
-        };
+        __subscribe(onEvent: any) {
+          streamCallback = onEvent;
+          return () => {};
+        }
         __typename = t.typename('User');
         id = t.id;
         firstName = t.string;
@@ -944,7 +926,7 @@ describe('React Entity Stream Integration', () => {
         email = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -997,7 +979,9 @@ describe('React Entity Stream Integration', () => {
 
       // Send partial update
       streamCallback!({
-        firstName: 'Bob',
+        type: 'update',
+        typename: 'User',
+        data: { id: '1', firstName: 'Bob' },
       });
 
       // Wait for notifier to propagate and component to re-render
@@ -1015,19 +999,17 @@ describe('React Entity Stream Integration', () => {
       let unsubscribeCallCount = 0;
 
       class User extends Entity {
-        static stream = {
-          subscribe: (context: any, id: any, onUpdate: any) => {
-            return () => {
-              unsubscribeCallCount++;
-            };
-          },
-        };
+        __subscribe(onEvent: any) {
+          return () => {
+            unsubscribeCallCount++;
+          };
+        }
         __typename = t.typename('User');
         id = t.id;
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = { user: t.entity(User) };

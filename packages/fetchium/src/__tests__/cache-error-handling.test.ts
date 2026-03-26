@@ -2,9 +2,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
-import { t, ValidatorDef } from '../typeDefs.js';
+import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { JsonQuery, fetchQuery } from '../query.js';
+import { RESTQuery, fetchQuery } from '../query.js';
 import { hashValue } from 'signalium/utils';
 import { createMockFetch, testWithClient, sleep } from './utils.js';
 import { valueKeyFor, refIdsKeyFor, updatedAtKeyFor } from '../stores/shared.js';
@@ -17,32 +17,16 @@ import type { QueryStore } from '../QueryClient.js';
  * Cache is an optimization, so if loading fails, queries should proceed normally.
  */
 
-/**
- * Compute a query key from a Query class without needing the class to be registered
- * via fetchQuery(). This mirrors the internal logic of getQueryDefinition + queryKeyFor.
- */
-function computeQueryKey(QueryClass: new () => JsonQuery, params: unknown): number {
+function computeQueryKey(QueryClass: new () => RESTQuery, params: unknown): number {
   const instance = new QueryClass();
-  const { path, method, response } = instance as any;
+  const { path, method } = instance;
   const id = `${method ?? 'GET'}:${path}`;
-
-  let shapeKey: number;
-  if (response instanceof ValidatorDef) {
-    shapeKey = response.shapeKey;
-  } else if (response instanceof Set) {
-    shapeKey = hashValue(response);
-  } else if (typeof response === 'object' && response !== null) {
-    const shape = t.object(response);
-    shapeKey = (shape as any).shapeKey;
-  } else {
-    shapeKey = hashValue(response);
-  }
 
   if (typeof params === 'object' && params !== null && Object.keys(params as any).length === 0) {
     params = undefined;
   }
 
-  return hashValue([id, shapeKey, params]);
+  return hashValue([id, params]);
 }
 
 describe('Cache Error Handling', () => {
@@ -61,7 +45,7 @@ describe('Cache Error Handling', () => {
 
   describe('loadCachedQuery errors', () => {
     it('should continue query execution if loadCachedQuery throws an error', async () => {
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         params = { id: t.id };
         path = `/items/${this.params.id}`;
         result = { id: t.number, name: t.string };
@@ -98,7 +82,7 @@ describe('Cache Error Handling', () => {
     });
 
     it('should continue query execution if loadCachedQuery returns a rejected promise', async () => {
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         params = { id: t.id };
         path = `/items/${this.params.id}`;
         result = { id: t.number, name: t.string };
@@ -135,7 +119,7 @@ describe('Cache Error Handling', () => {
 
   describe('Cached data parsing errors', () => {
     it('should continue query execution if cached value JSON parsing fails', async () => {
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         params = { id: t.id };
         path = `/items/${this.params.id}`;
         result = { id: t.number, name: t.string };
@@ -168,7 +152,7 @@ describe('Cache Error Handling', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -213,7 +197,7 @@ describe('Cache Error Handling', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
@@ -256,14 +240,14 @@ describe('Cache Error Handling', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
       }
 
       const queryKey = computeQueryKey(GetUser, { id: '1' });
-      const entityId = hashValue('User:1');
+      const entityId = hashValue(['User', 1]);
 
       // Store cached value with entity reference, but entity data is corrupted
       kv.setString(valueKeyFor(queryKey), JSON.stringify({ user: { __entityRef: entityId } }));
@@ -301,13 +285,17 @@ describe('Cache Error Handling', () => {
         name = t.string;
       }
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
 
-        subscribe(onEvent: any) {
-          return () => {};
+        getConfig() {
+          return {
+            subscribe(onEvent: any) {
+              return () => {};
+            },
+          };
         }
       }
 
@@ -341,7 +329,7 @@ describe('Cache Error Handling', () => {
 
   describe('Cache deletion on error', () => {
     it('should delete corrupted cache entry when loading fails', async () => {
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         params = { id: t.id };
         path = `/items/${this.params.id}`;
         result = { id: t.number, name: t.string };
@@ -376,7 +364,7 @@ describe('Cache Error Handling', () => {
 
   describe('Background refetch after cache error', () => {
     it('should still perform background refetch if cache is stale after error', async () => {
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         params = { id: t.id };
         path = `/items/${this.params.id}`;
         result = { id: t.number, name: t.string };
@@ -444,24 +432,28 @@ describe('Cache Error Handling', () => {
       });
 
       await testWithClient(errorClient, async () => {
-        class GetUser extends JsonQuery {
+        class GetUser extends RESTQuery {
           params = { id: t.id };
           path = `/users/${this.params.id}`;
           result = { user: t.entity(User) };
 
-          subscribe(onEvent: any) {
-            subscribeCallCount++;
-            updateCallback = onEvent;
+          getConfig() {
+            return {
+              subscribe(onEvent: any) {
+                subscribeCallCount++;
+                updateCallback = onEvent;
 
-            setTimeout(() => {
-              onEvent({
-                type: 'update',
-                typename: 'User',
-                data: { id: 1, name: 'Updated User', email: 'updated@example.com' },
-              });
-            }, 30);
+                setTimeout(() => {
+                  onEvent({
+                    type: 'update',
+                    typename: 'User',
+                    data: { id: 1, name: 'Updated User', email: 'updated@example.com' },
+                  });
+                }, 30);
 
-            return () => {};
+                return () => {};
+              },
+            };
           }
         }
 
@@ -497,27 +489,28 @@ describe('Cache Error Handling', () => {
       let subscribeCallCount = 0;
       let updateCallback: ((update: any) => void) | undefined;
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
-        config = {
-          staleTime: 0,
-        };
+        getConfig() {
+          return {
+            staleTime: 0,
+            subscribe(onEvent: any) {
+              subscribeCallCount++;
+              updateCallback = onEvent;
 
-        subscribe(onEvent: any) {
-          subscribeCallCount++;
-          updateCallback = onEvent;
+              setTimeout(() => {
+                onEvent({
+                  type: 'update',
+                  typename: 'User',
+                  data: { id: 1, name: 'Updated User', email: 'updated@example.com' },
+                });
+              }, 30);
 
-          setTimeout(() => {
-            onEvent({
-              type: 'update',
-              typename: 'User',
-              data: { id: 1, name: 'Updated User', email: 'updated@example.com' },
-            });
-          }, 30);
-
-          return () => {};
+              return () => {};
+            },
+          };
         }
       }
 
@@ -560,27 +553,28 @@ describe('Cache Error Handling', () => {
       let subscribeCallCount = 0;
       let updateCallback: ((update: any) => void) | undefined;
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { user: t.entity(User) };
-        config = {
-          staleTime: 0,
-        };
+        getConfig() {
+          return {
+            staleTime: 0,
+            subscribe(onEvent: any) {
+              subscribeCallCount++;
+              updateCallback = onEvent;
 
-        subscribe(onEvent: any) {
-          subscribeCallCount++;
-          updateCallback = onEvent;
+              setTimeout(() => {
+                onEvent({
+                  type: 'update',
+                  typename: 'User',
+                  data: { id: 1, name: 'Updated User', email: 'updated@example.com' },
+                });
+              }, 30);
 
-          setTimeout(() => {
-            onEvent({
-              type: 'update',
-              typename: 'User',
-              data: { id: 1, name: 'Updated User', email: 'updated@example.com' },
-            });
-          }, 30);
-
-          return () => {};
+              return () => {};
+            },
+          };
         }
       }
 

@@ -7,7 +7,7 @@ import { MemoryPersistentStore, SyncQueryStore } from '../../stores/sync.js';
 import { QueryClient, QueryClientContext } from '../../QueryClient.js';
 import { t } from '../../typeDefs.js';
 import { Entity } from '../../proxy.js';
-import { JsonQuery, fetchQuery } from '../../query.js';
+import { RESTQuery, fetchQuery } from '../../query.js';
 import { createMockFetch, sleep } from '../../__tests__/utils.js';
 import { createRenderCounter } from './utils.js';
 import { QueryPromise } from 'src/types.js';
@@ -35,7 +35,7 @@ describe('React Query Integration with component()', () => {
     it('should show loading state then data in component', async () => {
       mockFetch.get('/item', { id: 1, name: 'Test Item' }, { delay: 50 });
 
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/item';
         result = { id: t.number, name: t.string };
       }
@@ -68,7 +68,7 @@ describe('React Query Integration with component()', () => {
       const error = new Error('Failed to fetch');
       mockFetch.get('/item', null, { error });
 
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/item';
         result = { id: t.number, name: t.string };
       }
@@ -101,12 +101,12 @@ describe('React Query Integration with component()', () => {
       mockFetch.get('/user', { id: 1, name: 'Alice' });
       mockFetch.get('/posts', { posts: [{ id: 1, title: 'Hello' }] });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/user';
         result = { id: t.number, name: t.string };
       }
 
-      class GetPosts extends JsonQuery {
+      class GetPosts extends RESTQuery {
         path = '/posts';
         result = {
           posts: t.array(
@@ -153,7 +153,7 @@ describe('React Query Integration with component()', () => {
     it('should handle query with path parameters', async () => {
       mockFetch.get('/users/[id]', { id: 123, name: 'Bob' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { id: t.number, name: t.string };
@@ -182,7 +182,7 @@ describe('React Query Integration with component()', () => {
       mockFetch.get('/users/[id]', { id: 1, name: 'Alice' });
       mockFetch.get('/users/[id]', { id: 2, name: 'Bob' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/users/${this.params.id}`;
         result = { id: t.number, name: t.string };
@@ -227,7 +227,7 @@ describe('React Query Integration with component()', () => {
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice' });
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice Updated' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = t.entity(User);
@@ -274,7 +274,7 @@ describe('React Query Integration with component()', () => {
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice' });
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice Smith' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = t.entity(User);
@@ -367,13 +367,13 @@ describe('React Query Integration with component()', () => {
       });
 
       // Two separate query definitions
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = t.entity(User);
       }
 
-      class GetPost extends JsonQuery {
+      class GetPost extends RESTQuery {
         params = { postId: t.id };
         path = `/posts/${this.params.postId}`;
         result = t.entity(Post);
@@ -476,7 +476,7 @@ describe('React Query Integration with component()', () => {
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice' }, { delay: 50 });
       mockFetch.get('/user/[id]', { __typename: 'User', id: '1', name: 'Alice Smith' });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         params = { id: t.id };
         path = `/user/${this.params.id}`;
         result = t.entity(User);
@@ -596,7 +596,7 @@ describe('React Query Integration with component()', () => {
         },
       });
 
-      class GetPost extends JsonQuery {
+      class GetPost extends RESTQuery {
         params = { id: t.id };
         path = `/post/${this.params.id}`;
         result = t.entity(Post);
@@ -639,7 +639,7 @@ describe('React Query Integration with component()', () => {
 
       mockFetch.get('/user', { __typename: 'User', id: '1', name: 'Alice', isAdmin: true });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         path = '/user';
         result = t.entity(User);
       }
@@ -677,7 +677,7 @@ describe('React Query Integration with component()', () => {
     it('should deduplicate multiple components using same query', async () => {
       mockFetch.get('/counter', { count: 5 });
 
-      class GetCounter extends JsonQuery {
+      class GetCounter extends RESTQuery {
         path = '/counter';
         result = { count: t.number };
       }
@@ -723,7 +723,7 @@ describe('React Query Integration with component()', () => {
     it('should handle query refetch and update components', async () => {
       mockFetch.get('/counter', { count: 0 });
 
-      class GetCounter extends JsonQuery {
+      class GetCounter extends RESTQuery {
         path = '/counter';
         result = { count: t.number };
       }
@@ -769,7 +769,7 @@ describe('React Query Integration with component()', () => {
     it('should work with nested components', async () => {
       mockFetch.get('/item', { id: 1, name: 'Test' });
 
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/item';
         result = { id: t.number, name: t.string };
       }
@@ -803,7 +803,7 @@ describe('React Query Integration with component()', () => {
     it('should update all promise properties correctly', async () => {
       mockFetch.get('/item', { data: 'test' }, { delay: 50 });
 
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/item';
         result = { data: t.string };
       }
@@ -862,7 +862,7 @@ describe('React Query Integration with component()', () => {
       const error = new Error('Network error');
       mockFetch.get('/item', null, { error, delay: 50 });
 
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/item';
         result = { data: t.string };
         config = { retry: false } as any;
@@ -899,7 +899,7 @@ describe('React Query Integration with component()', () => {
     it('should show loading indicator during fetch', async () => {
       mockFetch.get('/slow', { data: 'result' }, { delay: 100 });
 
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/slow';
         result = { data: t.string };
       }
@@ -935,7 +935,7 @@ describe('React Query Integration with component()', () => {
     it('should keep previous value during refetch', async () => {
       mockFetch.get('/item', { data: 'first' });
 
-      class GetItem extends JsonQuery {
+      class GetItem extends RESTQuery {
         path = '/item';
         result = { data: t.string };
       }

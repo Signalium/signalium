@@ -20,7 +20,7 @@ export {
 
 export { reactive, reactiveMethod, reactiveSignal, task, relay, watcher } from './internals/core-api.js';
 
-export { signal, notifier } from './internals/signal.js';
+export { signal, notifier, isSignal } from './internals/signal.js';
 
 export { ReactivePromise } from './internals/async.js';
 

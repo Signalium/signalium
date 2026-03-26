@@ -18,15 +18,17 @@ export default defineConfig({
         'react/index': resolve(__dirname, 'src/react/index.ts'),
         'stores/async': resolve(__dirname, 'src/stores/async.ts'),
         'stores/sync': resolve(__dirname, 'src/stores/sync.ts'),
+        'subscriptions/polling': resolve(__dirname, 'src/subscriptions/polling.ts'),
       },
       formats: ['es', 'cjs'],
     },
     outDir: 'dist',
-    minify: false,
+    minify: 'esbuild',
     sourcemap: true,
     emptyOutDir: false,
     rollupOptions: {
       external: ['react', 'react/jsx-runtime', 'signalium', 'signalium/react', 'signalium/utils', /^signalium\//],
+      // external: ['react', 'react/jsx-runtime'],
       output: [
         {
           format: 'es',

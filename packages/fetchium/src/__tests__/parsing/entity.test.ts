@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { t } from '../../typeDefs.js';
-import { parseEntities } from '../../parseEntities.js';
 import { hashValue } from 'signalium/utils';
 import { Entity } from '../../proxy.js';
 import { refIdsKeyFor, refCountKeyFor } from '../../stores/shared.js';
-import { setupParsingTests, getEntityKey, getDocument, getShapeKey } from './test-utils.js';
+import { parseEntities, setupParsingTests, getEntityKey, getDocument } from './test-utils.js';
 
 /**
  * Entity Parsing Tests
@@ -40,7 +39,7 @@ describe('Entity parsing', () => {
       },
     };
 
-    await parseEntities(result, QueryResult, client, new Set<number>());
+    await parseEntities(result, QueryResult, client, new Map());
 
     expect(result.data).toBeInstanceOf(Entity);
     expect(result.data).toBeInstanceOf(User);
@@ -93,18 +92,18 @@ describe('Entity parsing', () => {
         },
       };
 
-      const entityRefs = new Set<number>();
+      const entityRefs = new Map();
       await parseEntities(result, QueryResult, client, entityRefs);
 
       // Top-level object is not an entity, so it pushes EntityA's key up
       expect(entityRefs.size).toBe(1);
 
       // Get the keys for each entity
-      const keyA = hashValue(['EntityA:1', getShapeKey(t.entity(EntityA))]);
-      const keyB = hashValue(['EntityB:2', getShapeKey(t.entity(EntityB))]);
-      const keyC = hashValue(['EntityC:3', getShapeKey(t.entity(EntityC))]);
+      const keyA = hashValue(['EntityA', 1]);
+      const keyB = hashValue(['EntityB', 2]);
+      const keyC = hashValue(['EntityC', 3]);
 
-      expect(entityRefs.has(keyA)).toBe(true);
+      expect([...entityRefs.keys()].some(e => e.key === keyA)).toBe(true);
 
       // EntityA should reference only EntityB (immediate child)
       const refsA = await kv.getBuffer(refIdsKeyFor(keyA));
@@ -171,17 +170,17 @@ describe('Entity parsing', () => {
         },
       };
 
-      const entityRefs = new Set<number>();
+      const entityRefs = new Map();
       await parseEntities(result, QueryResult, client, entityRefs);
 
       // Top-level object is not an entity, so it pushes EntityA's key up
       expect(entityRefs.size).toBe(1);
 
-      const keyA = hashValue(['EntityA:1', getShapeKey(t.entity(EntityA))]);
-      const keyB = hashValue(['EntityB:2', getShapeKey(t.entity(EntityB))]);
-      const keyC = hashValue(['EntityC:3', getShapeKey(t.entity(EntityC))]);
+      const keyA = hashValue(['EntityA', 1]);
+      const keyB = hashValue(['EntityB', 2]);
+      const keyC = hashValue(['EntityC', 3]);
 
-      expect(entityRefs.has(keyA)).toBe(true);
+      expect([...entityRefs.keys()].some(e => e.key === keyA)).toBe(true);
 
       // EntityA should reference both B and C (immediate children)
       const refsA = await kv.getBuffer(refIdsKeyFor(keyA));
@@ -215,20 +214,20 @@ describe('Entity parsing', () => {
         ],
       };
 
-      const entityRefs = new Set<number>();
+      const entityRefs = new Map();
       await parseEntities(result, QueryResult, client, entityRefs);
 
       // Top-level object is not an entity, and arrays push their entity children up
       // So entityRefs should have the three entity keys
       expect(entityRefs.size).toBe(3);
 
-      const key1 = hashValue(['EntityItem:1', getShapeKey(t.entity(EntityItem))]);
-      const key2 = hashValue(['EntityItem:2', getShapeKey(t.entity(EntityItem))]);
-      const key3 = hashValue(['EntityItem:3', getShapeKey(t.entity(EntityItem))]);
+      const key1 = hashValue(['EntityItem', 1]);
+      const key2 = hashValue(['EntityItem', 2]);
+      const key3 = hashValue(['EntityItem', 3]);
 
-      expect(entityRefs.has(key1)).toBe(true);
-      expect(entityRefs.has(key2)).toBe(true);
-      expect(entityRefs.has(key3)).toBe(true);
+      expect([...entityRefs.keys()].some(e => e.key === key1)).toBe(true);
+      expect([...entityRefs.keys()].some(e => e.key === key2)).toBe(true);
+      expect([...entityRefs.keys()].some(e => e.key === key3)).toBe(true);
 
       // Each entity should be stored
       expect(await getDocument(kv, key1)).toBeDefined();
@@ -262,19 +261,19 @@ describe('Entity parsing', () => {
         },
       };
 
-      const entityRefs = new Set<number>();
+      const entityRefs = new Map();
       await parseEntities(result, QueryResult, client, entityRefs);
 
       // Top-level object is not an entity, records push their entity children up
       expect(entityRefs.size).toBe(3);
 
-      const key1 = hashValue(['EntityValue:1', getShapeKey(t.entity(EntityValue))]);
-      const key2 = hashValue(['EntityValue:2', getShapeKey(t.entity(EntityValue))]);
-      const key3 = hashValue(['EntityValue:3', getShapeKey(t.entity(EntityValue))]);
+      const key1 = hashValue(['EntityValue', 1]);
+      const key2 = hashValue(['EntityValue', 2]);
+      const key3 = hashValue(['EntityValue', 3]);
 
-      expect(entityRefs.has(key1)).toBe(true);
-      expect(entityRefs.has(key2)).toBe(true);
-      expect(entityRefs.has(key3)).toBe(true);
+      expect([...entityRefs.keys()].some(e => e.key === key1)).toBe(true);
+      expect([...entityRefs.keys()].some(e => e.key === key2)).toBe(true);
+      expect([...entityRefs.keys()].some(e => e.key === key3)).toBe(true);
 
       // None of the leaf entities should have refs
       expect(await kv.getBuffer(refIdsKeyFor(key1))).toBeUndefined();
@@ -319,19 +318,19 @@ describe('Entity parsing', () => {
         ],
       };
 
-      const entityRefs = new Set<number>();
+      const entityRefs = new Map();
       await parseEntities(result, QueryResult, client, entityRefs);
 
       // Should have parent keys
       expect(entityRefs.size).toBe(2);
 
-      const keyP1 = hashValue(['EntityParent:1', getShapeKey(t.entity(EntityParent))]);
-      const keyP2 = hashValue(['EntityParent:2', getShapeKey(t.entity(EntityParent))]);
-      const keyC10 = hashValue(['EntityChild:10', getShapeKey(t.entity(EntityChild))]);
-      const keyC20 = hashValue(['EntityChild:20', getShapeKey(t.entity(EntityChild))]);
+      const keyP1 = hashValue(['EntityParent', 1]);
+      const keyP2 = hashValue(['EntityParent', 2]);
+      const keyC10 = hashValue(['EntityChild', 10]);
+      const keyC20 = hashValue(['EntityChild', 20]);
 
-      expect(entityRefs.has(keyP1)).toBe(true);
-      expect(entityRefs.has(keyP2)).toBe(true);
+      expect([...entityRefs.keys()].some(e => e.key === keyP1)).toBe(true);
+      expect([...entityRefs.keys()].some(e => e.key === keyP2)).toBe(true);
 
       // Parent1 should reference Child10
       const refsP1 = await kv.getBuffer(refIdsKeyFor(keyP1));
@@ -381,16 +380,16 @@ describe('Entity parsing', () => {
         },
       };
 
-      const entityRefs = new Set<number>();
+      const entityRefs = new Map();
       await parseEntities(result, QueryResult, client, entityRefs);
 
       // Top-level object pushes Container's key
       expect(entityRefs.size).toBe(1);
 
-      const keyContainer = hashValue(['EntityContainer:1', getShapeKey(t.entity(EntityContainer))]);
-      const keyShared = hashValue(['EntityShared:99', getShapeKey(t.entity(EntityShared))]);
+      const keyContainer = hashValue(['EntityContainer', 1]);
+      const keyShared = hashValue(['EntityShared', 99]);
 
-      expect(entityRefs.has(keyContainer)).toBe(true);
+      expect([...entityRefs.keys()].some(e => e.key === keyContainer)).toBe(true);
 
       // Container should reference the shared entity
       const refsContainer = await kv.getBuffer(refIdsKeyFor(keyContainer));
@@ -440,12 +439,12 @@ describe('Entity parsing', () => {
         },
       };
 
-      const entityRefs = new Set<number>();
+      const entityRefs = new Map();
       await parseEntities(result, QueryResult, client, entityRefs);
 
-      const keyPost = hashValue(['EntityPost:1', getShapeKey(t.entity(EntityPost))]);
-      const keyTag10 = hashValue(['EntityTag:10', getShapeKey(t.entity(EntityTag))]);
-      const keyTag20 = hashValue(['EntityTag:20', getShapeKey(t.entity(EntityTag))]);
+      const keyPost = hashValue(['EntityPost', 1]);
+      const keyTag10 = hashValue(['EntityTag', 10]);
+      const keyTag20 = hashValue(['EntityTag', 20]);
 
       // Post should reference both tags
       const refsPost = await kv.getBuffer(refIdsKeyFor(keyPost));

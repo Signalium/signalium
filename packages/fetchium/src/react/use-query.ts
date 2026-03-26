@@ -1,6 +1,6 @@
 import { useReactive } from 'signalium/react';
 import { reactive } from 'signalium';
-import { QueryPromise } from '../types.js';
+import { ExtractType, QueryPromise } from '../types.js';
 import { ExtractQueryParams, fetchQuery, Query } from '../query.js';
 import { HasRequiredKeys, Optionalize, Signalize } from '../type-utils.js';
 
@@ -35,9 +35,9 @@ const clonedResult = reactive((result: QueryPromise<Query>) => cloneDeep(result.
 const reifiedQuery = reactive(
   <T extends Query>(
     QueryClass: new () => T,
-    ...args: HasRequiredKeys<ExtractQueryParams<T>> extends true
-      ? [params: Optionalize<Signalize<ExtractQueryParams<T>>>]
-      : [params?: Optionalize<Signalize<ExtractQueryParams<T>>> | undefined]
+    ...args: HasRequiredKeys<ExtractType<T['params']>> extends true
+      ? [params: Optionalize<Signalize<ExtractType<T['params']>>>]
+      : [params?: Optionalize<Signalize<ExtractType<T['params']>>> | undefined]
   ): QueryPromise<T> => {
     const queryResult = fetchQuery(QueryClass, ...args);
 
@@ -57,9 +57,9 @@ const resultValue = reactive((result: QueryPromise<Query>) => result.value);
 
 export function useQuery<T extends Query>(
   QueryClass: new () => T,
-  ...args: HasRequiredKeys<ExtractQueryParams<T>> extends true
-    ? [params: Optionalize<Signalize<ExtractQueryParams<T>>>]
-    : [params?: Optionalize<Signalize<ExtractQueryParams<T>>> | undefined]
+  ...args: HasRequiredKeys<ExtractType<T['params']>> extends true
+    ? [params: Optionalize<Signalize<ExtractType<T['params']>>>]
+    : [params?: Optionalize<Signalize<ExtractType<T['params']>>> | undefined]
 ): QueryPromise<T> {
   const result = useReactive(reifiedQuery, QueryClass, ...args);
 

@@ -3,8 +3,8 @@ import { MemoryPersistentStore, SyncQueryStore } from '../stores/sync.js';
 import { QueryClient } from '../QueryClient.js';
 import { t } from '../typeDefs.js';
 import { Entity } from '../proxy.js';
-import { JsonMutation, getMutation } from '../mutation.js';
-import { JsonQuery, fetchQuery } from '../query.js';
+import { RESTMutation, getMutation } from '../mutation.js';
+import { RESTQuery, fetchQuery } from '../query.js';
 import { draft } from '../utils.js';
 import { createMockFetch, testWithClient, sleep, getEntityMapSize } from './utils.js';
 
@@ -37,7 +37,7 @@ describe('Mutations', () => {
     it('should execute a POST mutation', async () => {
       mockFetch.post('/users', { id: 123, name: 'New User', email: 'new@example.com' });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = {
@@ -71,7 +71,7 @@ describe('Mutations', () => {
     it('should execute a PUT mutation', async () => {
       mockFetch.put('/users/[id]', { id: 123, name: 'Updated User', email: 'updated@example.com' });
 
-      class UpdateUser extends JsonMutation {
+      class UpdateUser extends RESTMutation {
         readonly params = { id: t.id, name: t.string, email: t.string };
         readonly path = `/users/${this.params.id}`;
         readonly method = 'PUT' as const;
@@ -97,7 +97,7 @@ describe('Mutations', () => {
     it('should execute a PATCH mutation', async () => {
       mockFetch.patch('/users/[id]', { id: 123, name: 'Patched User' });
 
-      class PatchUser extends JsonMutation {
+      class PatchUser extends RESTMutation {
         readonly params = { id: t.id, name: t.string };
         readonly path = `/users/${this.params.id}`;
         readonly method = 'PATCH' as const;
@@ -121,7 +121,7 @@ describe('Mutations', () => {
     it('should execute a DELETE mutation', async () => {
       mockFetch.delete('/users/[id]', { success: true });
 
-      class DeleteUser extends JsonMutation {
+      class DeleteUser extends RESTMutation {
         readonly params = { id: t.id };
         readonly path = `/users/${this.params.id}`;
         readonly method = 'DELETE' as const;
@@ -144,7 +144,7 @@ describe('Mutations', () => {
     it('should send request body as JSON', async () => {
       mockFetch.post('/users', { id: 1 });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string, age: t.number };
@@ -167,7 +167,7 @@ describe('Mutations', () => {
     it('should support getBody() override for dynamic body computation', async () => {
       mockFetch.post('/users', { id: 1 });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string, role: t.string };
@@ -197,7 +197,7 @@ describe('Mutations', () => {
       mockFetch.post('/users', { id: 1 });
       mockFetch.post('/users', { id: 2 });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string };
@@ -223,7 +223,7 @@ describe('Mutations', () => {
       const error = new Error('Network failed');
       mockFetch.post('/users', null, { error });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string };
@@ -256,7 +256,7 @@ describe('Mutations', () => {
         return { id: 1 };
       });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string };
@@ -282,7 +282,7 @@ describe('Mutations', () => {
     it('should not retry when retry is false', async () => {
       mockFetch.post('/users', null, { error: new Error('Failed') });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string };
@@ -313,7 +313,7 @@ describe('Mutations', () => {
 
   describe('State Management', () => {
     it('should have correct initial state before first run', async () => {
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string };
@@ -334,7 +334,7 @@ describe('Mutations', () => {
     it('should track pending state during mutation', async () => {
       mockFetch.post('/users', { id: 1 }, { delay: 50 });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string };
@@ -351,445 +351,6 @@ describe('Mutations', () => {
         await promise;
         expect(mut.isPending).toBe(false);
         expect(mut.isResolved).toBe(true);
-      });
-    });
-  });
-
-  // ============================================================
-  // Optimistic Updates
-  // ============================================================
-
-  describe('Optimistic Updates', () => {
-    it('should apply optimistic updates on mutation start', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      // First get user via query
-      mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original Name' });
-
-      class GetUser extends JsonQuery {
-        readonly params = { id: t.id };
-        readonly path = `/users/${this.params.id}`;
-        readonly result = t.entity(User);
-      }
-
-      // Setup slow update mutation
-      mockFetch.put('/users/[id]', { __typename: 'User', id: 1, name: 'Updated Name' }, { delay: 100 });
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = t.entity(User);
-        optimisticUpdates = true;
-      }
-
-      await testWithClient(client, async () => {
-        // First fetch the user
-        const userQuery = fetchQuery(GetUser, { id: '1' });
-        await userQuery;
-        expect(userQuery.value?.name).toBe('Original Name');
-
-        // Now run mutation - optimistic update should apply immediately
-        const mut = getMutation(UpdateUser);
-        const mutPromise = mut.run({ __typename: 'User', id: 1, name: 'Optimistic Name' } as any);
-
-        // Give time for optimistic update to apply
-        await sleep(10);
-
-        // The entity should be updated optimistically
-        // Note: Query would reflect this via reactive entity proxy
-
-        // Wait for mutation to complete
-        await mutPromise;
-
-        expect(mut.value?.name).toBe('Updated Name');
-      });
-    });
-
-    it('should revert optimistic updates on failure', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original Name' });
-      mockFetch.put('/users/[id]', null, { error: new Error('Update failed'), delay: 50 });
-
-      class GetUser extends JsonQuery {
-        readonly params = { id: t.id };
-        readonly path = `/users/${this.params.id}`;
-        readonly result = t.entity(User);
-      }
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = t.entity(User);
-        optimisticUpdates = true;
-      }
-
-      await testWithClient(client, async () => {
-        const userQuery = fetchQuery(GetUser, { id: '1' });
-        await userQuery;
-        expect(userQuery.value?.name).toBe('Original Name');
-
-        const mut = getMutation(UpdateUser);
-
-        try {
-          await mut.run({ __typename: 'User', id: 1, name: 'Optimistic Name' } as any);
-          expect.fail('Should have thrown');
-        } catch (e) {
-          expect(mut.isRejected).toBe(true);
-          // Entity should be reverted to original state
-        }
-      });
-    });
-
-    it('should not apply optimistic updates when disabled', async () => {
-      mockFetch.post('/users', { id: 1, name: 'Created' }, { delay: 50 });
-
-      class CreateUser extends JsonMutation {
-        readonly path = '/users';
-        readonly method = 'POST' as const;
-        readonly params = { name: t.string };
-        readonly body = { name: this.params.name };
-        readonly result = { id: t.number, name: t.string };
-        optimisticUpdates = false;
-      }
-
-      await testWithClient(client, async () => {
-        const mut = getMutation(CreateUser);
-        mut.run({ name: 'Test' });
-
-        // No optimistic updates should be applied
-        expect(mut.isPending).toBe(true);
-      });
-    });
-
-    it.skip('should deeply snapshot nested objects on optimistic update revert', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-        profile = t.object({
-          bio: t.string,
-          avatar: t.string,
-        });
-      }
-
-      mockFetch.get('/users/[id]', {
-        __typename: 'User',
-        id: 1,
-        name: 'Original Name',
-        profile: { bio: 'Original Bio', avatar: 'original.jpg' },
-      });
-      mockFetch.put('/users/[id]', null, { error: new Error('Update failed'), delay: 50 });
-
-      class GetUser extends JsonQuery {
-        readonly params = { id: t.id };
-        readonly path = `/users/${this.params.id}`;
-        readonly result = t.entity(User);
-      }
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = t.entity(User);
-        optimisticUpdates = true;
-      }
-
-      await testWithClient(client, async () => {
-        const userQuery = fetchQuery(GetUser, { id: '1' });
-        await userQuery;
-
-        // Verify original nested object
-        expect((userQuery.value as any).profile?.bio).toBe('Original Bio');
-        expect((userQuery.value as any).profile?.avatar).toBe('original.jpg');
-
-        const mut = getMutation(UpdateUser);
-
-        // Start the mutation (don't await yet)
-        const mutPromise = mut.run({
-          __typename: 'User',
-          id: 1,
-          name: 'Updated Name',
-          profile: { bio: 'Updated Bio', avatar: 'updated.jpg' },
-        } as any);
-
-        // Wait a bit for optimistic update to apply
-        await sleep(10);
-
-        // Verify optimistic update was applied
-        expect(userQuery.value?.name).toBe('Updated Name');
-        expect((userQuery.value as any).profile?.bio).toBe('Updated Bio');
-        expect((userQuery.value as any).profile?.avatar).toBe('updated.jpg');
-
-        // Now wait for mutation to fail
-        try {
-          await mutPromise;
-          expect.fail('Should have thrown');
-        } catch {
-          // Mutation failed, optimistic update should be reverted
-          expect(mut.isRejected).toBe(true);
-
-          // The nested object should be fully reverted to original values
-          expect(userQuery.value?.name).toBe('Original Name');
-          expect((userQuery.value as any).profile?.bio).toBe('Original Bio');
-          expect((userQuery.value as any).profile?.avatar).toBe('original.jpg');
-        }
-      });
-    });
-
-    it.skip('should deeply snapshot arrays on optimistic update revert', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-        tags = t.array(t.string);
-      }
-
-      mockFetch.get('/users/[id]', {
-        __typename: 'User',
-        id: 1,
-        name: 'Original Name',
-        tags: ['tag1', 'tag2'],
-      });
-      mockFetch.put('/users/[id]', null, { error: new Error('Update failed'), delay: 50 });
-
-      class GetUser extends JsonQuery {
-        readonly params = { id: t.id };
-        readonly path = `/users/${this.params.id}`;
-        readonly result = t.entity(User);
-      }
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = t.entity(User);
-        optimisticUpdates = true;
-      }
-
-      await testWithClient(client, async () => {
-        const userQuery = fetchQuery(GetUser, { id: '1' });
-        await userQuery;
-
-        // Verify original array
-        expect(userQuery.value?.tags).toEqual(['tag1', 'tag2']);
-
-        const mut = getMutation(UpdateUser);
-
-        // Start the mutation (don't await yet)
-        const mutPromise = mut.run({
-          __typename: 'User',
-          id: 1,
-          name: 'Updated Name',
-          tags: ['newtag1', 'newtag2', 'newtag3'],
-        } as any);
-
-        // Wait a bit for optimistic update to apply
-        await sleep(10);
-
-        // Verify optimistic update was applied
-        expect(userQuery.value?.name).toBe('Updated Name');
-        expect(userQuery.value?.tags).toEqual(['newtag1', 'newtag2', 'newtag3']);
-
-        // Now wait for mutation to fail
-        try {
-          await mutPromise;
-          expect.fail('Should have thrown');
-        } catch {
-          // Mutation failed, optimistic update should be reverted
-          expect(mut.isRejected).toBe(true);
-
-          // The array should be fully reverted to original values
-          expect(userQuery.value?.name).toBe('Original Name');
-          expect(userQuery.value?.tags).toEqual(['tag1', 'tag2']);
-        }
-      });
-    });
-
-    it.skip('should optimistically update entity with nested entity data', async () => {
-      class Organization extends Entity {
-        __typename = t.typename('Organization');
-        id = t.id;
-        name = t.string;
-      }
-
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-        organization = t.entity(Organization);
-      }
-
-      // Initial state
-      mockFetch.get('/users/[id]', {
-        __typename: 'User',
-        id: 1,
-        name: 'Original User',
-        organization: { __typename: 'Organization', id: 100, name: 'Original Org' },
-      });
-
-      // Slow mutation
-      mockFetch.put(
-        '/users/[id]',
-        {
-          __typename: 'User',
-          id: 1,
-          name: 'Updated User',
-          organization: { __typename: 'Organization', id: 100, name: 'Updated Org' },
-        },
-        { delay: 100 },
-      );
-
-      class GetUser extends JsonQuery {
-        readonly params = { id: t.id };
-        readonly path = `/users/${this.params.id}`;
-        readonly result = t.entity(User);
-      }
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = t.entity(User);
-        optimisticUpdates = true;
-      }
-
-      await testWithClient(client, async () => {
-        const userQuery = fetchQuery(GetUser, { id: '1' });
-        await userQuery;
-
-        expect(userQuery.value?.name).toBe('Original User');
-        expect((userQuery.value?.organization as any).name).toBe('Original Org');
-
-        const mut = getMutation(UpdateUser);
-        const mutPromise = mut.run({
-          __typename: 'User',
-          id: 1,
-          name: 'Optimistic User',
-          organization: { __typename: 'Organization', id: 100, name: 'Optimistic Org' },
-        } as any);
-
-        await sleep(10);
-
-        // Top-level entity (User) should be optimistically updated
-        expect(userQuery.value?.name).toBe('Optimistic User');
-
-        // Nested entity data is also updated (as part of the User entity's data)
-        expect((userQuery.value?.organization as any).name).toBe('Optimistic Org');
-
-        await mutPromise;
-
-        // After mutation completes, both should be updated from the response
-        expect(userQuery.value?.name).toBe('Updated User');
-        expect((userQuery.value?.organization as any).name).toBe('Updated Org');
-      });
-    });
-
-    it.skip('should merge entity arrays by ID during optimistic updates', async () => {
-      class Tag extends Entity {
-        __typename = t.typename('Tag');
-        id = t.id;
-        name = t.string;
-      }
-
-      class Post extends Entity {
-        __typename = t.typename('Post');
-        id = t.id;
-        title = t.string;
-        tags = t.array(t.entity(Tag));
-      }
-
-      // Initial state with 2 tags
-      mockFetch.get('/posts/[id]', {
-        __typename: 'Post',
-        id: 1,
-        title: 'Original Post',
-        tags: [
-          { __typename: 'Tag', id: 1, name: 'javascript' },
-          { __typename: 'Tag', id: 2, name: 'typescript' },
-        ],
-      });
-
-      // Slow mutation - updates tag names and adds a new tag
-      mockFetch.put(
-        '/posts/[id]',
-        {
-          __typename: 'Post',
-          id: 1,
-          title: 'Updated Post',
-          tags: [
-            { __typename: 'Tag', id: 1, name: 'js' },
-            { __typename: 'Tag', id: 2, name: 'ts' },
-            { __typename: 'Tag', id: 3, name: 'react' },
-          ],
-        },
-        { delay: 100 },
-      );
-
-      class GetPost extends JsonQuery {
-        readonly params = { id: t.id };
-        readonly path = `/posts/${this.params.id}`;
-        readonly result = t.entity(Post);
-      }
-
-      class UpdatePost extends JsonMutation {
-        readonly params = t.entity(Post);
-        readonly path = `/posts/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = t.entity(Post);
-        optimisticUpdates = true;
-      }
-
-      await testWithClient(client, async () => {
-        const postQuery = fetchQuery(GetPost, { id: '1' });
-        await postQuery;
-
-        expect(postQuery.value?.title).toBe('Original Post');
-        expect(postQuery.value?.tags).toHaveLength(2);
-        expect((postQuery.value?.tags as any)[0].name).toBe('javascript');
-        expect((postQuery.value?.tags as any)[1].name).toBe('typescript');
-
-        const mut = getMutation(UpdatePost);
-        const mutPromise = mut.run({
-          __typename: 'Post',
-          id: 1,
-          title: 'Optimistic Post',
-          tags: [
-            { __typename: 'Tag', id: 1, name: 'optimistic-js' },
-            { __typename: 'Tag', id: 2, name: 'optimistic-ts' },
-            { __typename: 'Tag', id: 3, name: 'optimistic-react' },
-          ],
-        } as any);
-
-        await sleep(10);
-
-        // Title should be optimistically updated
-        expect(postQuery.value?.title).toBe('Optimistic Post');
-
-        // Tags array should be updated - matching by ID
-        expect(postQuery.value?.tags).toHaveLength(3);
-        expect((postQuery.value?.tags as any)[0].name).toBe('optimistic-js');
-        expect((postQuery.value?.tags as any)[1].name).toBe('optimistic-ts');
-        expect((postQuery.value?.tags as any)[2].name).toBe('optimistic-react');
-
-        await mutPromise;
-
-        // After mutation completes, should have the server response
-        expect(postQuery.value?.title).toBe('Updated Post');
-        expect(postQuery.value?.tags).toHaveLength(3);
-        expect((postQuery.value?.tags as any)[0].name).toBe('js');
-        expect((postQuery.value?.tags as any)[1].name).toBe('ts');
-        expect((postQuery.value?.tags as any)[2].name).toBe('react');
       });
     });
   });
@@ -814,7 +375,7 @@ describe('Mutations', () => {
         email: 'original@test.com',
       });
 
-      class GetUser extends JsonQuery {
+      class GetUser extends RESTQuery {
         readonly params = { id: t.id };
         readonly path = `/users/${this.params.id}`;
         readonly result = t.entity(User);
@@ -886,489 +447,6 @@ describe('Mutations', () => {
   });
 
   // ============================================================
-  // Integration with Queries
-  // ============================================================
-
-  describe('Integration with Queries', () => {
-    it('should update query results via entity store on mutation success', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original' });
-      mockFetch.put('/users/[id]', { __typename: 'User', id: 1, name: 'Updated via Mutation' });
-
-      class GetUser extends JsonQuery {
-        readonly params = { id: t.id };
-        readonly path = `/users/${this.params.id}`;
-        readonly result = t.entity(User);
-      }
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = t.entity(User);
-      }
-
-      await testWithClient(client, async () => {
-        // First fetch user
-        const userQuery = fetchQuery(GetUser, { id: '1' });
-        await userQuery;
-        expect(userQuery.value?.name).toBe('Original');
-
-        // Run mutation
-        const mut = getMutation(UpdateUser);
-        await mut.run({ __typename: 'User', id: 1, name: 'Updated via Mutation' } as any);
-
-        // Give time for entity updates to propagate
-        await sleep(10);
-
-        // Query should reflect the updated entity
-        // (Entity is updated in the store, and queries use the same entity proxies)
-        expect(userQuery.value?.name).toBe('Updated via Mutation');
-      });
-    });
-
-    it('should add entities to store from mutation response', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      mockFetch.post('/users', { __typename: 'User', id: 999, name: 'New User' });
-
-      class CreateUser extends JsonMutation {
-        readonly path = '/users';
-        readonly method = 'POST' as const;
-        readonly params = { name: t.string };
-        readonly body = { name: this.params.name };
-        readonly result = t.entity(User);
-      }
-
-      await testWithClient(client, async () => {
-        expect(getEntityMapSize(client)).toBe(0);
-
-        const mut = getMutation(CreateUser);
-        await mut.run({ name: 'New User' });
-
-        // Entity should be added to the store
-        expect(getEntityMapSize(client)).toBe(1);
-      });
-    });
-
-    it('should parse nested entities from mutation response', async () => {
-      class Organization extends Entity {
-        __typename = t.typename('Organization');
-        id = t.id;
-        name = t.string;
-      }
-
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-        organization = t.entity(Organization);
-      }
-
-      mockFetch.post('/users', {
-        __typename: 'User',
-        id: 1,
-        name: 'New User',
-        organization: { __typename: 'Organization', id: 100, name: 'Acme Corp' },
-      });
-
-      class CreateUser extends JsonMutation {
-        readonly path = '/users';
-        readonly method = 'POST' as const;
-        readonly params = { name: t.string, organizationId: t.number };
-        readonly body = { name: this.params.name, organizationId: this.params.organizationId };
-        readonly result = t.entity(User);
-      }
-
-      await testWithClient(client, async () => {
-        expect(getEntityMapSize(client)).toBe(0);
-
-        const mut = getMutation(CreateUser);
-        const result = await mut.run({ name: 'New User', organizationId: 100 });
-
-        // Both User and Organization entities should be in the store
-        expect(getEntityMapSize(client)).toBe(2);
-
-        // Nested entity should be accessible
-        expect((result.organization as any).name).toBe('Acme Corp');
-      });
-    });
-
-    it('should update existing nested entities from mutation response', async () => {
-      class Organization extends Entity {
-        __typename = t.typename('Organization');
-        id = t.id;
-        name = t.string;
-      }
-
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-        organization = t.entity(Organization);
-      }
-
-      // First, fetch a user with an organization
-      mockFetch.get('/users/[id]', {
-        __typename: 'User',
-        id: 1,
-        name: 'Original User',
-        organization: { __typename: 'Organization', id: 100, name: 'Original Org' },
-      });
-
-      // Mutation returns the same org with updated name
-      mockFetch.put('/users/[id]', {
-        __typename: 'User',
-        id: 1,
-        name: 'Updated User',
-        organization: { __typename: 'Organization', id: 100, name: 'Updated Org' },
-      });
-
-      class GetUser extends JsonQuery {
-        readonly params = { id: t.id };
-        readonly path = `/users/${this.params.id}`;
-        readonly result = t.entity(User);
-      }
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = t.entity(User);
-      }
-
-      await testWithClient(client, async () => {
-        const userQuery = fetchQuery(GetUser, { id: '1' });
-        await userQuery;
-
-        expect((userQuery.value?.organization as any).name).toBe('Original Org');
-
-        const mut = getMutation(UpdateUser);
-        await mut.run({
-          __typename: 'User',
-          id: 1,
-          name: 'Updated User',
-          organization: { __typename: 'Organization', id: 100, name: 'Updated Org' },
-        } as any);
-
-        await sleep(10);
-
-        // The nested entity should be updated
-        expect(userQuery.value?.name).toBe('Updated User');
-        expect((userQuery.value?.organization as any).name).toBe('Updated Org');
-      });
-    });
-
-    it('should handle arrays of nested entities in mutation response', async () => {
-      class Tag extends Entity {
-        __typename = t.typename('Tag');
-        id = t.id;
-        name = t.string;
-      }
-
-      class Post extends Entity {
-        __typename = t.typename('Post');
-        id = t.id;
-        title = t.string;
-        tags = t.array(t.entity(Tag));
-      }
-
-      mockFetch.post('/posts', {
-        __typename: 'Post',
-        id: 1,
-        title: 'My Post',
-        tags: [
-          { __typename: 'Tag', id: 1, name: 'javascript' },
-          { __typename: 'Tag', id: 2, name: 'typescript' },
-        ],
-      });
-
-      class CreatePost extends JsonMutation {
-        readonly path = '/posts';
-        readonly method = 'POST' as const;
-        readonly params = { title: t.string };
-        readonly body = { title: this.params.title };
-        readonly result = t.entity(Post);
-      }
-
-      await testWithClient(client, async () => {
-        expect(getEntityMapSize(client)).toBe(0);
-
-        const mut = getMutation(CreatePost);
-        const result = await mut.run({ title: 'My Post' });
-
-        // Post + 2 Tags = 3 entities
-        expect(getEntityMapSize(client)).toBe(3);
-
-        expect(result.tags).toHaveLength(2);
-        expect((result.tags as any)[0].name).toBe('javascript');
-        expect((result.tags as any)[1].name).toBe('typescript');
-      });
-    });
-  });
-
-  // ============================================================
-  // parseAndApply Option
-  // ============================================================
-
-  describe('parseAndApply Option', () => {
-    it('should apply both request and response entities by default', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      mockFetch.put('/users/[id]', { __typename: 'User', id: 1, name: 'Response Name' });
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = t.entity(User);
-        // parseAndApply defaults to 'both'
-      }
-
-      await testWithClient(client, async () => {
-        expect(getEntityMapSize(client)).toBe(0);
-
-        const mut = getMutation(UpdateUser);
-        await mut.run({ __typename: 'User', id: 1, name: 'Request Name' } as any);
-
-        // Entity should be in store (applied from request then overwritten by response)
-        expect(getEntityMapSize(client)).toBe(1);
-        // Response wins since it's applied second
-        expect(mut.value?.name).toBe('Response Name');
-      });
-    });
-
-    it('should only apply response entities with parseAndApply = "response"', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      mockFetch.put('/users/[id]', { __typename: 'User', id: 1, name: 'Response Name' });
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = t.entity(User);
-        parseAndApply = 'response' as const;
-      }
-
-      await testWithClient(client, async () => {
-        const mut = getMutation(UpdateUser);
-        await mut.run({ __typename: 'User', id: 1, name: 'Request Name' } as any);
-
-        // Entity should still be in store from response parsing
-        expect(getEntityMapSize(client)).toBe(1);
-        expect(mut.value?.name).toBe('Response Name');
-      });
-    });
-
-    it('should only apply request entities with parseAndApply = "request"', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      // Response is a plain object (not entity-shaped for simplicity)
-      mockFetch.put('/users/[id]', { success: true });
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = { success: t.boolean };
-        parseAndApply = 'request' as const;
-      }
-
-      // Pre-populate entity via a query so we can verify request updates it
-      mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original' });
-
-      class GetUser extends JsonQuery {
-        readonly params = { id: t.id };
-        readonly path = `/users/${this.params.id}`;
-        readonly result = t.entity(User);
-      }
-
-      await testWithClient(client, async () => {
-        const userQuery = fetchQuery(GetUser, { id: '1' });
-        await userQuery;
-        expect(userQuery.value?.name).toBe('Original');
-
-        const mut = getMutation(UpdateUser);
-        await mut.run({ __typename: 'User', id: 1, name: 'Updated via Request' } as any);
-
-        await sleep(10);
-
-        // Entity should be updated from the request data
-        expect(userQuery.value?.name).toBe('Updated via Request');
-      });
-    });
-
-    it('should not apply any entities with parseAndApply = "none"', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      mockFetch.post('/users', { __typename: 'User', id: 1, name: 'New User' });
-
-      class CreateUser extends JsonMutation {
-        readonly path = '/users';
-        readonly method = 'POST' as const;
-        readonly params = { name: t.string };
-        readonly body = { name: this.params.name };
-        readonly result = t.entity(User);
-        parseAndApply = 'none' as const;
-      }
-
-      await testWithClient(client, async () => {
-        expect(getEntityMapSize(client)).toBe(0);
-
-        const mut = getMutation(CreateUser);
-        await mut.run({ name: 'New User' });
-
-        // No entities should be added since parseAndApply is 'none'
-        expect(getEntityMapSize(client)).toBe(0);
-      });
-    });
-
-    it.skip('should support optimistic updates with parseAndApply = "request"', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original' });
-      mockFetch.put('/users/[id]', { success: true }, { delay: 50 });
-
-      class GetUser extends JsonQuery {
-        readonly params = { id: t.id };
-        readonly path = `/users/${this.params.id}`;
-        readonly result = t.entity(User);
-      }
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = { success: t.boolean };
-        optimisticUpdates = true;
-        parseAndApply = 'request' as const;
-      }
-
-      await testWithClient(client, async () => {
-        const userQuery = fetchQuery(GetUser, { id: '1' });
-        await userQuery;
-        expect(userQuery.value?.name).toBe('Original');
-
-        const mut = getMutation(UpdateUser);
-        const promise = mut.run({ __typename: 'User', id: 1, name: 'Optimistic Name' } as any);
-
-        // Optimistic update should apply immediately
-        await sleep(10);
-        expect(userQuery.value?.name).toBe('Optimistic Name');
-
-        await promise;
-
-        // After success, optimistic update is confirmed
-        expect(userQuery.value?.name).toBe('Optimistic Name');
-      });
-    });
-
-    it('should ignore optimisticUpdates when parseAndApply = "response"', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      mockFetch.get('/users/[id]', { __typename: 'User', id: 1, name: 'Original' });
-      mockFetch.put('/users/[id]', { __typename: 'User', id: 1, name: 'Server Response' }, { delay: 50 });
-
-      class GetUser extends JsonQuery {
-        readonly params = { id: t.id };
-        readonly path = `/users/${this.params.id}`;
-        readonly result = t.entity(User);
-      }
-
-      class UpdateUser extends JsonMutation {
-        readonly params = t.entity(User);
-        readonly path = `/users/${this.params.id}`;
-        readonly method = 'PUT' as const;
-        readonly result = t.entity(User);
-        optimisticUpdates = true;
-        parseAndApply = 'response' as const;
-      }
-
-      await testWithClient(client, async () => {
-        const userQuery = fetchQuery(GetUser, { id: '1' });
-        await userQuery;
-        expect(userQuery.value?.name).toBe('Original');
-
-        const mut = getMutation(UpdateUser);
-        const promise = mut.run({ __typename: 'User', id: 1, name: 'Optimistic Name' } as any);
-
-        // optimisticUpdates is true but parseAndApply='response' means request is not applied
-        await sleep(10);
-        expect(userQuery.value?.name).toBe('Original');
-
-        await promise;
-
-        // Response should still be applied
-        expect(mut.value?.name).toBe('Server Response');
-      });
-    });
-
-    it('should ignore optimisticUpdates when parseAndApply = "none"', async () => {
-      class User extends Entity {
-        __typename = t.typename('User');
-        id = t.id;
-        name = t.string;
-      }
-
-      mockFetch.post('/users', { __typename: 'User', id: 1, name: 'New User' });
-
-      class CreateUser extends JsonMutation {
-        readonly path = '/users';
-        readonly method = 'POST' as const;
-        readonly params = { name: t.string };
-        readonly body = { name: this.params.name };
-        readonly result = t.entity(User);
-        optimisticUpdates = true;
-        parseAndApply = 'none' as const;
-      }
-
-      await testWithClient(client, async () => {
-        expect(getEntityMapSize(client)).toBe(0);
-
-        const mut = getMutation(CreateUser);
-        await mut.run({ name: 'New User' });
-
-        // No entities applied despite optimisticUpdates=true
-        expect(getEntityMapSize(client)).toBe(0);
-      });
-    });
-  });
-
-  // ============================================================
   // Promise Interface
   // ============================================================
 
@@ -1376,7 +454,7 @@ describe('Mutations', () => {
     it('should be awaitable', async () => {
       mockFetch.post('/users', { id: 1, name: 'Test' });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string };
@@ -1396,7 +474,7 @@ describe('Mutations', () => {
     it('should support .then()', async () => {
       mockFetch.post('/users', { id: 1 });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string };
@@ -1416,7 +494,7 @@ describe('Mutations', () => {
     it('should support .catch()', async () => {
       mockFetch.post('/users', null, { error: new Error('Failed') });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string };
@@ -1436,7 +514,7 @@ describe('Mutations', () => {
     it('should support .finally()', async () => {
       mockFetch.post('/users', { id: 1 });
 
-      class CreateUser extends JsonMutation {
+      class CreateUser extends RESTMutation {
         readonly path = '/users';
         readonly method = 'POST' as const;
         readonly params = { name: t.string };
@@ -1453,6 +531,397 @@ describe('Mutations', () => {
         });
 
         expect(finallyCalled).toBe(true);
+      });
+    });
+  });
+
+  // ============================================================
+  // Response Payload Parsing
+  // ============================================================
+
+  describe('Response Payload Parsing', () => {
+    it('should parse response with typed object shape', async () => {
+      mockFetch.post('/items', { id: 42, name: 'Widget', active: true });
+
+      class CreateItem extends RESTMutation {
+        readonly path = '/items';
+        readonly method = 'POST' as const;
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number, name: t.string, active: t.boolean };
+      }
+
+      await testWithClient(client, async () => {
+        const mut = getMutation(CreateItem);
+        await mut.run({ name: 'Widget' });
+
+        expect(mut.value?.id).toBe(42);
+        expect(mut.value?.name).toBe('Widget');
+        expect(mut.value?.active).toBe(true);
+      });
+    });
+
+    it('should reject response that fails type validation', async () => {
+      mockFetch.post('/items', { id: 'not-a-number', name: 123 });
+
+      class CreateItem extends RESTMutation {
+        readonly path = '/items';
+        readonly method = 'POST' as const;
+        readonly params = { name: t.string };
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.number, name: t.string };
+      }
+
+      await testWithClient(client, async () => {
+        const mut = getMutation(CreateItem);
+
+        try {
+          await mut.run({ name: 'Test' });
+          expect.fail('Should have thrown');
+        } catch {
+          expect(mut.isRejected).toBe(true);
+        }
+      });
+    });
+  });
+
+  // ============================================================
+  // Effects (params, response, getEffects)
+  // ============================================================
+
+  describe('Effects', () => {
+    function defineEffectEntities() {
+      class TodoItem extends Entity {
+        __typename = t.typename('TodoItem');
+        id = t.id;
+        listId = t.string;
+        name = t.string;
+      }
+
+      class TodoList extends Entity {
+        __typename = t.typename('TodoList');
+        id = t.id;
+        items = t.liveArray(TodoItem, { constraints: { listId: this.id } });
+      }
+
+      class GetTodoList extends RESTQuery {
+        readonly params = { id: t.id };
+        readonly path = `/lists/${this.params.id}`;
+        readonly result = { list: t.entity(TodoList) };
+      }
+
+      return { TodoItem, TodoList, GetTodoList };
+    }
+
+    it('should apply create effects using this.params', async () => {
+      const { TodoItem, GetTodoList } = defineEffectEntities();
+
+      mockFetch.get('/lists/[id]', {
+        list: { __typename: 'TodoList', id: '1', items: [] },
+      });
+      mockFetch.post('/items', { ok: true });
+
+      class CreateTodo extends RESTMutation {
+        readonly params = { __typename: t.string, id: t.id, listId: t.string, name: t.string };
+        readonly path = '/items';
+        readonly method = 'POST' as const;
+        readonly result = { ok: t.boolean };
+        readonly effects = {
+          creates: [[TodoItem, this.params] as const],
+        };
+      }
+
+      await testWithClient(client, async () => {
+        const listQuery = fetchQuery(GetTodoList, { id: '1' });
+        await listQuery;
+        expect(listQuery.value!.list.items).toHaveLength(0);
+
+        const mut = getMutation(CreateTodo);
+        await mut.run({ __typename: 'TodoItem', id: '99', listId: '1', name: 'Buy milk' });
+
+        expect(listQuery.value!.list.items).toHaveLength(1);
+        expect(listQuery.value!.list.items[0].name).toBe('Buy milk');
+      });
+    });
+
+    it('should apply create effects using this.response', async () => {
+      const { TodoItem, GetTodoList } = defineEffectEntities();
+
+      mockFetch.get('/lists/[id]', {
+        list: { __typename: 'TodoList', id: '1', items: [] },
+      });
+      mockFetch.post('/items', {
+        item: { __typename: 'TodoItem', id: '99', listId: '1', name: 'From server' },
+      });
+
+      class CreateTodo extends RESTMutation {
+        readonly params = { name: t.string, listId: t.string };
+        readonly path = '/items';
+        readonly method = 'POST' as const;
+        readonly body = { name: this.params.name, listId: this.params.listId };
+        readonly result = {
+          item: t.object({
+            __typename: t.string,
+            id: t.id,
+            listId: t.string,
+            name: t.string,
+          }),
+        };
+        readonly effects = {
+          creates: [[TodoItem, this.result.item] as const],
+        };
+      }
+
+      await testWithClient(client, async () => {
+        const listQuery = fetchQuery(GetTodoList, { id: '1' });
+        await listQuery;
+        expect(listQuery.value!.list.items).toHaveLength(0);
+
+        const mut = getMutation(CreateTodo);
+        await mut.run({ name: 'From server', listId: '1' });
+
+        expect(listQuery.value!.list.items).toHaveLength(1);
+        expect(listQuery.value!.list.items[0].name).toBe('From server');
+      });
+    });
+
+    it('should apply update effects using this.response', async () => {
+      const { TodoItem, GetTodoList } = defineEffectEntities();
+
+      mockFetch.get('/lists/[id]', {
+        list: {
+          __typename: 'TodoList',
+          id: '1',
+          items: [{ __typename: 'TodoItem', id: '1', listId: '1', name: 'Original' }],
+        },
+      });
+      mockFetch.put('/items/[id]', {
+        item: { __typename: 'TodoItem', id: '1', listId: '1', name: 'Updated' },
+      });
+
+      class UpdateTodo extends RESTMutation {
+        readonly params = { id: t.id, name: t.string };
+        readonly path = `/items/${this.params.id}`;
+        readonly method = 'PUT' as const;
+        readonly body = { name: this.params.name };
+        readonly result = {
+          item: t.object({
+            __typename: t.string,
+            id: t.id,
+            listId: t.string,
+            name: t.string,
+          }),
+        };
+        readonly effects = {
+          updates: [[TodoItem, this.result.item] as const],
+        };
+      }
+
+      await testWithClient(client, async () => {
+        const listQuery = fetchQuery(GetTodoList, { id: '1' });
+        await listQuery;
+        expect(listQuery.value!.list.items[0].name).toBe('Original');
+
+        const mut = getMutation(UpdateTodo);
+        await mut.run({ id: '1', name: 'Updated' });
+
+        expect(listQuery.value!.list.items[0].name).toBe('Updated');
+      });
+    });
+
+    it('should apply delete effects using this.params', async () => {
+      const { TodoItem, GetTodoList } = defineEffectEntities();
+
+      mockFetch.get('/lists/[id]', {
+        list: {
+          __typename: 'TodoList',
+          id: '1',
+          items: [{ __typename: 'TodoItem', id: '1', listId: '1', name: 'Doomed' }],
+        },
+      });
+      mockFetch.delete('/items/[id]', { ok: true });
+
+      class DeleteTodo extends RESTMutation {
+        readonly params = { id: t.id };
+        readonly path = `/items/${this.params.id}`;
+        readonly method = 'DELETE' as const;
+        readonly result = { ok: t.boolean };
+        readonly effects = {
+          deletes: [[TodoItem, this.params.id] as const],
+        };
+      }
+
+      await testWithClient(client, async () => {
+        const listQuery = fetchQuery(GetTodoList, { id: '1' });
+        await listQuery;
+        expect(listQuery.value!.list.items).toHaveLength(1);
+
+        const mut = getMutation(DeleteTodo);
+        await mut.run({ id: '1' });
+
+        expect(listQuery.value!.list.items).toHaveLength(0);
+      });
+    });
+
+    it('should apply effects via getEffects() using this.response', async () => {
+      const { TodoItem, GetTodoList } = defineEffectEntities();
+
+      mockFetch.get('/lists/[id]', {
+        list: { __typename: 'TodoList', id: '1', items: [] },
+      });
+      mockFetch.post('/items', {
+        item: { __typename: 'TodoItem', id: '77', listId: '1', name: 'Dynamic' },
+      });
+
+      class CreateTodoDynamic extends RESTMutation {
+        readonly params = { name: t.string, listId: t.string };
+        readonly path = '/items';
+        readonly method = 'POST' as const;
+        readonly body = { name: this.params.name, listId: this.params.listId };
+        readonly result = {
+          item: t.object({
+            __typename: t.string,
+            id: t.id,
+            listId: t.string,
+            name: t.string,
+          }),
+        };
+
+        getEffects() {
+          return {
+            creates: [[TodoItem, this.result.item] as const],
+          };
+        }
+      }
+
+      await testWithClient(client, async () => {
+        const listQuery = fetchQuery(GetTodoList, { id: '1' });
+        await listQuery;
+        expect(listQuery.value!.list.items).toHaveLength(0);
+
+        const mut = getMutation(CreateTodoDynamic);
+        await mut.run({ name: 'Dynamic', listId: '1' });
+
+        expect(listQuery.value!.list.items).toHaveLength(1);
+        expect(listQuery.value!.list.items[0].name).toBe('Dynamic');
+      });
+    });
+  });
+
+  // ============================================================
+  // No-effects invariant
+  // ============================================================
+
+  describe('No-effects invariant', () => {
+    it('should not modify entity store when mutation has no effects', async () => {
+      mockFetch.post('/actions', { success: true, message: 'Done' });
+
+      class RunAction extends RESTMutation {
+        readonly path = '/actions';
+        readonly method = 'POST' as const;
+        readonly params = { action: t.string };
+        readonly body = { action: this.params.action };
+        readonly result = { success: t.boolean, message: t.string };
+      }
+
+      await testWithClient(client, async () => {
+        expect(getEntityMapSize(client)).toBe(0);
+
+        const mut = getMutation(RunAction);
+        await mut.run({ action: 'cleanup' });
+
+        expect(mut.value?.success).toBe(true);
+        expect(mut.value?.message).toBe('Done');
+        expect(getEntityMapSize(client)).toBe(0);
+      });
+    });
+  });
+
+  // ============================================================
+  // this.response (raw HTTP Response) access in mutations
+  // ============================================================
+
+  describe('this.response in getEffects()', () => {
+    it('should expose this.response with status and ok in getEffects()', async () => {
+      mockFetch.post('/items', { id: '1', name: 'Created' });
+
+      let capturedStatus: number | undefined;
+      let capturedOk: boolean | undefined;
+
+      class CreateItem extends RESTMutation {
+        readonly params = { name: t.string };
+        readonly path = '/items';
+        readonly method = 'POST' as const;
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.id, name: t.string };
+
+        getEffects() {
+          capturedStatus = this.response?.status;
+          capturedOk = this.response?.ok;
+          return undefined as any;
+        }
+      }
+
+      await testWithClient(client, async () => {
+        const mut = getMutation(CreateItem);
+        await mut.run({ name: 'Created' });
+
+        expect(capturedStatus).toBe(200);
+        expect(capturedOk).toBe(true);
+      });
+    });
+
+    it('should conditionally skip effects based on this.response.ok', async () => {
+      mockFetch.post('/items', { error: 'conflict' }, { status: 409 });
+
+      let effectsApplied = false;
+
+      class CreateItem extends RESTMutation {
+        readonly params = { name: t.string };
+        readonly path = '/items';
+        readonly method = 'POST' as const;
+        readonly body = { name: this.params.name };
+        readonly result = { error: t.optional(t.string) };
+
+        getEffects() {
+          if (!this.response?.ok) return undefined as any;
+          effectsApplied = true;
+          return { creates: [] };
+        }
+      }
+
+      await testWithClient(client, async () => {
+        const mut = getMutation(CreateItem);
+        await mut.run({ name: 'Test' });
+
+        expect(effectsApplied).toBe(false);
+        expect(getEntityMapSize(client)).toBe(0);
+      });
+    });
+
+    it('should expose this.response from non-200 success responses', async () => {
+      mockFetch.post('/items', { id: '1' }, { status: 201 });
+
+      let capturedStatus: number | undefined;
+
+      class CreateItem extends RESTMutation {
+        readonly params = { name: t.string };
+        readonly path = '/items';
+        readonly method = 'POST' as const;
+        readonly body = { name: this.params.name };
+        readonly result = { id: t.id };
+
+        getEffects() {
+          capturedStatus = this.response?.status;
+          return undefined as any;
+        }
+      }
+
+      await testWithClient(client, async () => {
+        const mut = getMutation(CreateItem);
+        await mut.run({ name: 'Test' });
+
+        expect(capturedStatus).toBe(201);
       });
     });
   });
