@@ -1,5 +1,11 @@
 # signalium
 
+## 2.3.1
+
+### Patch Changes
+
+- c92035c: Initial pre-release of Fetchium
+
 ## 2.3.0
 
 ### Minor Changes
