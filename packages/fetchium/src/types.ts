@@ -123,7 +123,7 @@ export interface CaseInsensitiveEnumSet<T extends string | boolean | number> ext
 // Public Branded TypeDef
 // ================================
 
-declare const TypeDefSymbol: unique symbol;
+export declare const TypeDefSymbol: unique symbol;
 
 /**
  * Branded phantom type representing a type definition in the public API.
