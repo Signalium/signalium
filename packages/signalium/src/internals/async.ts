@@ -17,6 +17,7 @@ import { signal } from './signal.js';
 import { DEFAULT_EQUALS, equalsFrom } from './utils/equals.js';
 import { getCurrentConsumer } from './consumer.js';
 import { createCallback } from './callback.js';
+import { maybeAbortPromise } from './generators.js';
 import { getTracerProxy, TracerEventType } from './trace.js';
 
 function isAbortError(error: unknown): boolean {
@@ -409,6 +410,13 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
   }
 
   async _setPromise(promise: Promise<T>) {
+    // Abort the previous generator-backed promise if it supports it, to prevent
+    // stale generators from continuing to run and tracking phantom dependencies.
+    const prev = this._promise;
+    if (prev !== undefined && prev !== promise) {
+      maybeAbortPromise(prev);
+    }
+
     // Store the current promise so we can check if it's the same promise in the
     // then handlers. If it's not the same promise, it means that the promise has
     // been recomputed and replaced, so we should not update state.
@@ -576,6 +584,12 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
 
     return this._value;
   }
+
+  // No-op setter: React 19's Suspense thenable tracking sets .value on thrown
+  // thenables (fulfilledThenable.value = fulfilledValue). Without a setter, this
+  // throws a TypeError in strict mode since .value is a getter. The setter is
+  // intentionally ignored — _value set via _setValue remains the source of truth.
+  set value(_: T | undefined) {}
 
   get error() {
     this._consumeFlags(AsyncFlags.Error);

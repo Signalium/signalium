@@ -10,6 +10,7 @@ function createSignaliumAsyncTransform(api: any, opts?: SignaliumAsyncTransformO
   const transformedImports = createTransformedImports(
     [
       ['callback', ['signalium']],
+      ['component', ['signalium/react']],
       ['reactive', ['signalium']],
       ['reactiveMethod', ['signalium']],
       ['relay', ['signalium']],

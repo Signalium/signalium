@@ -12,16 +12,25 @@ nextjs:
 
 ```ts
 export default function component<Props extends object>(
-  fn: (props: Props) => React.ReactNode | React.ReactNode[] | null,
+  fn: (
+    props: Props,
+  ) =>
+    | React.ReactNode
+    | React.ReactNode[]
+    | null
+    | Promise<React.ReactNode | React.ReactNode[] | null>,
 ): (props: Props) => React.ReactElement;
 ```
 
 Create a reactive component from a pure function. Inside the function, read `Signal` values and other reactive sources directly. Re-renders are scheduled automatically when dependencies change.
 
+The function can be `async` — when it is, the component integrates with React's `<Suspense>` boundaries. The Suspense fallback is shown until the first `await` resolves, then the component renders normally. Hooks (like `useSignal`) work in the synchronous portion before the first `await`. Requires the Signalium Babel preset.
+
 ```tsx
 import { component, useSignal } from 'signalium/react';
 import { reactive, type Signal } from 'signalium';
 
+// Sync component
 const fullName = reactive(
   (first: Signal<string>, last: Signal<string>) =>
     `${first.value} ${last.value}`,
@@ -39,11 +48,25 @@ const Name = component(() => {
     </div>
   );
 });
+
+// Async component (requires Suspense boundary)
+const fetchUser = reactive(async (id: string) => {
+  const res = await fetch(`/api/users/${id}`);
+  return res.json();
+});
+
+const UserCard = component(async () => {
+  const user = await fetchUser('1');
+  return <div>{user.name}</div>;
+});
+
+// Usage:
+// <Suspense fallback={<Loading />}><UserCard /></Suspense>
 ```
 
-| Parameter | Type                          | Description     |
-| --------- | ----------------------------- | --------------- |
-| fn        | `(props: Props) => ReactNode` | Render function |
+| Parameter | Type                                                | Description                     |
+| --------- | --------------------------------------------------- | ------------------------------- |
+| fn        | `(props: Props) => ReactNode \| Promise<ReactNode>` | Render function (sync or async) |
 
 ### useSignal
 

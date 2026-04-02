@@ -4,6 +4,12 @@ import { getInternalCurrentScope, setCurrentScope, SignalScope } from './context
 import { ReactiveSignal } from './reactive.js';
 import { isPromise } from './utils/type-utils.js';
 
+const ABORT_MAP = new WeakMap<Promise<unknown>, () => void>();
+
+export function maybeAbortPromise(promise: Promise<unknown>): void {
+  ABORT_MAP.get(promise)?.();
+}
+
 export function generatorResultToPromiseWithConsumer<T>(
   generator: Generator<any, T>,
   savedConsumer: ReactiveSignal<any, any> | undefined,
@@ -14,8 +20,12 @@ export function generatorResultToPromiseWithConsumer<T>(
       : Promise.resolve(value);
   }
 
-  return new Promise((resolve, reject) => {
+  let aborted = false;
+
+  const promise: Promise<T> = new Promise((resolve, reject) => {
     function step(fn: (value: any) => IteratorResult<any, any>, value?: any) {
+      if (aborted) return;
+
       const prevConsumer = getCurrentConsumer();
 
       try {
@@ -46,6 +56,18 @@ export function generatorResultToPromiseWithConsumer<T>(
 
     step(nextFn);
   });
+
+  ABORT_MAP.set(promise, () => {
+    if (aborted) return;
+    aborted = true;
+    try {
+      generator.return(undefined as any);
+    } catch {
+      // ignore errors from generator cleanup
+    }
+  });
+
+  return promise;
 }
 
 export function generatorResultToPromiseWithScope<T, Args extends unknown[]>(

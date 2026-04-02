@@ -112,9 +112,9 @@ export function useReactiveDeep<R, Args extends readonly Narrowable[]>(fn: (...a
   const suspended = useSignalsSuspended();
 
   const scope = useScope() ?? getGlobalScope();
-  const signalRef = useRef<ReadonlySignal<R> | undefined>();
-  const cloneSignalRef = useRef<ReactiveSignal<R, any>>();
-  const valueRef = useRef<R>();
+  const signalRef = useRef<ReadonlySignal<R> | undefined>(undefined);
+  const cloneSignalRef = useRef<ReactiveSignal<R, any>>(undefined);
+  const valueRef = useRef<R>(undefined);
 
   const [, def] = getReactiveFnAndDefinition(fn as any);
 

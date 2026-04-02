@@ -239,11 +239,7 @@ const DataComponent = component(() => {
 });
 ```
 
-However, there are two important things to note:
-
-1. Signalium components, like React client-components, _cannot_ be async themselves. This means that if you want to use a Reactive Promise in a component, you must use the state properties directly and handle all of the possible states.
-
-2. Reactive Promises are always the same object instance, even when their value changes. This means that `React.memo` will not trigger a re-render when the promise's value updates:
+However, there is one important thing to note. Reactive Promises are always the same object instance, even when their value changes. This means that `React.memo` will not trigger a re-render when the promise's value updates:
 
 ```tsx
 import { memo } from 'react';
@@ -263,6 +259,51 @@ function Parent() {
   return <MemoizedComponent value={data.value} />;
 }
 ```
+
+### Async Components
+
+Components can also be `async` — Signalium will integrate with React's `Suspense` automatically. While the async work is in-flight, a parent `<Suspense>` boundary shows the fallback. Once the result resolves, the component renders.
+
+```tsx
+import { component, useSignal } from 'signalium/react';
+import { reactive } from 'signalium';
+import { Suspense } from 'react';
+
+const fetchUser = reactive(async (id: string) => {
+  const res = await fetch(`/api/users/${id}`);
+  return res.json();
+});
+
+const UserProfile = component(async () => {
+  const userId = useSignal('1');
+  const user = await fetchUser(userId.value);
+
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      <button onClick={() => (userId.value = '2')}>Next user</button>
+    </div>
+  );
+});
+
+function App() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <UserProfile />
+    </Suspense>
+  );
+}
+```
+
+Hooks like `useSignal` work normally in async components — they run in the synchronous portion _before_ the first `await`. When a dependency changes (either a hook or a signal), the component re-executes, re-running hooks and restarting the async work.
+
+{% callout type="note" title="Babel transform required" %}
+Async components require the Signalium Babel preset (`signalium/transform`). The preset transforms the `async` function into a generator, which allows the reactive runtime to pause and resume execution at `await` points. Without the transform, the component will not integrate with Suspense correctly.
+{% /callout %}
+
+{% callout type="warning" title="Error handling" %}
+Errors thrown after an `await` in an async component are captured on the underlying Reactive Promise (accessible via `error` and `isRejected` properties when using the promise directly). Error boundary integration for `component(async () => {...})` is not yet supported — for error-sensitive async work, use `reactive(async () => {...})` with explicit `isRejected` / `error` checks in a sync component wrapper.
+{% /callout %}
 
 ### Suspense and React Server Components
 

@@ -1,45 +1,46 @@
-import { useMemo, useRef, useSyncExternalStore } from 'react';
+/* eslint-disable react-hooks/rules-of-hooks */
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { useScope } from './context.js';
 import { useSignalsSuspended } from './suspend-signals-context.js';
-import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
+import { ReactiveSignal, createReactiveDefinition } from '../internals/reactive.js';
 import { runSignal } from '../internals/get.js';
 import { hashValue } from '../internals/utils/hash.js';
+import { isReactivePromise, ReactivePromiseImpl } from '../internals/async.js';
+import { StateSignal } from '../internals/signal.js';
+import { getGlobalScope } from '../internals/contexts.js';
+
+type ComponentReturn = React.ReactNode | React.ReactNode[] | null;
+
+const GENERATOR_FN = function* () {}.constructor;
+
+const PROPS_MAP = new WeakMap<object, any>();
 
 export default function component<Props extends object>(
-  fn: (props: Props) => React.ReactNode | React.ReactNode[] | null,
+  fn: (props: Props) => ComponentReturn | Promise<ComponentReturn>,
 ) {
+  const isAsync = fn instanceof GENERATOR_FN;
+
+  const def = createReactiveDefinition<any, []>(
+    undefined,
+    undefined,
+    () => fn(PROPS_MAP.get(def)!),
+    () => false,
+    false,
+    undefined,
+    undefined,
+  );
+
   const Component = (props: Props) => {
-    const scope = useScope();
+    const scope = useScope() ?? getGlobalScope();
     const suspended = useSignalsSuspended();
 
-    const fnSignalRef = useRef<ReactiveSignal<React.ReactNode | React.ReactNode[] | null, []> | undefined>(undefined);
-    const propsRef = useRef<Props>(props);
+    PROPS_MAP.set(def, props);
 
-    propsRef.current = props;
-
-    let signal = fnSignalRef.current;
-
-    if (signal === undefined) {
-      fnSignalRef.current = signal = createReactiveSignal(
-        {
-          compute: () => fn(propsRef.current),
-          equals: () => false,
-          isRelay: false,
-          tracer: undefined,
-        },
-        [],
-        undefined,
-        scope,
-      );
-
-      signal._isLazy = true;
-    }
+    const signal = scope.get(def, []);
+    signal._isLazy = true;
 
     signal.setSuspended(suspended);
 
-    // We always want to re-render when the signal is updated, regardless of
-    // whether or not the result changed. This is because the signal is lazy,
-    // so it will not be updated until the next render.
     useSyncExternalStore(
       signal.addListenerLazy(),
       () => signal.updatedCount,
@@ -48,12 +49,37 @@ export default function component<Props extends object>(
 
     runSignal(signal as ReactiveSignal<any, any[]>);
 
-    return signal.value;
+    const result = signal.value;
+
+    if (isAsync && result !== null && typeof result === 'object' && isReactivePromise(result as object)) {
+      const promise = result as unknown as ReactivePromiseImpl<ComponentReturn>;
+      const version = promise['_version'] as StateSignal<number>;
+
+      // Subscribe to async value changes. Uses _updatedCount as snapshot
+      // (bumps only on value/error changes) to avoid re-render loops from
+      // pending→resolved flag transitions that don't change the value.
+      useSyncExternalStore(
+        useCallback((onStoreChange: () => void) => version.addListener(onStoreChange), [version]),
+        () => promise._updatedCount,
+        () => promise._updatedCount,
+      );
+
+      if (!promise.isReady) {
+        throw promise;
+      }
+
+      return promise.value as ComponentReturn;
+    }
+
+    return result as ComponentReturn;
   };
+
+  if (isAsync) {
+    return Component;
+  }
 
   return (props: Props) => {
     const hash = hashValue(props);
-    // Renders Comp only when hash changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return useMemo(() => <Component {...props} />, [hash]);
   };

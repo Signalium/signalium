@@ -8,7 +8,7 @@ Source: `packages/signalium/src/transform/`
 
 ### 1. Async transform (`async.ts`)
 
-Rewrites `async` functions passed to `reactive()`, `relay()`, `task()`, `watcher()`, etc. into generator functions. This allows the reactive runtime to pause/resume execution at `await` points, inserting promise-edge dependencies into the reactive graph.
+Rewrites `async` functions passed to `reactive()`, `relay()`, `task()`, `watcher()`, `component()`, etc. into generator functions. This allows the reactive runtime to pause/resume execution at `await` points, inserting promise-edge dependencies into the reactive graph. For `component()`, this enables async components that integrate with React's `<Suspense>` boundaries.
 
 **Before:**
 
