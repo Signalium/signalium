@@ -35,6 +35,7 @@ export {
   setGlobalContexts,
   clearGlobalContexts,
   setScopeOwner,
+  setRequestScopeGetter,
 } from './internals/contexts.js';
 
 export { watchOnce, forwardRelay } from './utils.js';

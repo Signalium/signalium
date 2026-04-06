@@ -7,3 +7,11 @@ packages/signalium/*.d.ts
 packages/query/**/*.d.ts
 packages/query/**/*.js
 __screenshots__/
+
+# Next.js (any app under apps/ or docs/)
+**/.next/
+**/out/
+.vercel
+
+# Local env (Next / tooling)
+.env*.local

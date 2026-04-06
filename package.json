@@ -18,7 +18,8 @@
   },
   "workspaces": [
     "./docs",
-    "./packages/*"
+    "./packages/*",
+    "./demos/*"
   ],
   "author": "Kristen Hewell Garrett <me@pzuraq.com>",
   "license": "ISC",

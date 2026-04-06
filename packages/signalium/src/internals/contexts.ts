@@ -5,6 +5,20 @@ import { getCurrentConsumer } from './consumer.js';
 import { Context } from '../types.js';
 import { dirtySignal } from './dirty.js';
 
+let requestScopeGetter: (() => SignalScope | undefined) | undefined;
+
+/**
+ * Install or clear an optional source for a per-request (or per-environment) {@link SignalScope}
+ * consulted by {@link getCurrentScope} after `CURRENT_SCOPE` and the reactive consumer's scope,
+ * but before the definition-time fallback. Pass `undefined` to restore default behavior.
+ *
+ * React Server Components: use `setupRscRequestScope()` from `signalium/react/server` instead of
+ * calling this directly.
+ */
+export function setRequestScopeGetter(get: (() => SignalScope | undefined) | undefined): void {
+  requestScopeGetter = get;
+}
+
 // ======= Contexts =======
 
 export type ContextPair<T extends unknown[]> = {
@@ -175,7 +189,7 @@ export const getInternalCurrentScope = () => {
 };
 
 export const getCurrentScope = (fallback = GLOBAL_SCOPE): SignalScope => {
-  return CURRENT_SCOPE ?? getCurrentConsumer()?.scope ?? fallback;
+  return CURRENT_SCOPE ?? getCurrentConsumer()?.scope ?? requestScopeGetter?.() ?? fallback;
 };
 
 // ======= Owner =======

@@ -68,6 +68,20 @@
       "default": "./dist/esm/production/debug.js"
     },
     "./react": {
+      "react-server": {
+        "types": "./dist/esm/react/index.server.d.ts",
+        "development": {
+          "import": "./dist/esm/development/react/index.server.js",
+          "require": "./dist/cjs/development/react/index.server.js"
+        },
+        "production": {
+          "import": "./dist/esm/production/react/index.server.js",
+          "require": "./dist/cjs/production/react/index.server.js"
+        },
+        "import": "./dist/esm/production/react/index.server.js",
+        "require": "./dist/cjs/production/react/index.server.js",
+        "default": "./dist/esm/production/react/index.server.js"
+      },
       "types": "./dist/esm/react/index.d.ts",
       "development": {
         "import": "./dist/esm/development/react/index.js",
@@ -80,6 +94,20 @@
       "import": "./dist/esm/production/react/index.js",
       "require": "./dist/cjs/production/react/index.js",
       "default": "./dist/esm/production/react/index.js"
+    },
+    "./react/server": {
+      "types": "./dist/esm/react/server.d.ts",
+      "development": {
+        "import": "./dist/esm/development/react/server.js",
+        "require": "./dist/cjs/development/react/server.js"
+      },
+      "production": {
+        "import": "./dist/esm/production/react/server.js",
+        "require": "./dist/cjs/production/react/server.js"
+      },
+      "import": "./dist/esm/production/react/server.js",
+      "require": "./dist/cjs/production/react/server.js",
+      "default": "./dist/esm/production/react/server.js"
     },
     "./transform": {
       "types": "./dist/esm/transform/index.d.ts",
@@ -101,6 +129,7 @@
     "dist/esm/**",
     "dist/cjs/**",
     "react.js",
+    "react-server.js",
     "transform.js",
     "debug.js",
     "utils.js",
@@ -110,7 +139,7 @@
     "LICENSE*"
   ],
   "peerDependencies": {
-    "react": ">=18.3.1"
+    "react": ">=19.0.0"
   },
   "peerDependenciesMeta": {
     "react": {
@@ -137,12 +166,14 @@
   "author": "Kristen Hewell Garrett <me@pzuraq.com>",
   "license": "ISC",
   "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@babel/core": "^7.23.6",
     "@vitejs/plugin-react": "^5.0.0",
     "@vitest/browser": "^3.0.6",
     "playwright": "^1.50.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "vite": "^7.1.2",
     "vite-plugin-babel": "^1.3.0",
     "vitest": "^3.2.4",

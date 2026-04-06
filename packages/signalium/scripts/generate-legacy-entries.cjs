@@ -39,6 +39,7 @@ function makeTypeReexportWrapper(importPath) {
 
 // Generate for all entries consistently - pointing to production builds
 write(path.join(pkgRoot, 'react.js'), makeReexportWrapper('./dist/cjs/production/react/index.js'));
+write(path.join(pkgRoot, 'react-server.js'), makeReexportWrapper('./dist/cjs/production/react/server.js'));
 write(path.join(pkgRoot, 'transform.js'), makeReexportWrapper('./dist/cjs/production/transform/index.js'));
 write(path.join(pkgRoot, 'debug.js'), makeReexportWrapper('./dist/cjs/production/debug.js'));
 write(path.join(pkgRoot, 'utils.js'), makeReexportWrapper('./dist/cjs/production/utils.js'));
@@ -52,6 +53,7 @@ write(path.join(pkgRoot, 'dist/cjs/development/package.json'), cjsPackageJson);
 // Type re-export wrappers for legacy entry points (shared types in dist/esm)
 write(path.join(pkgRoot, 'index.d.ts'), makeTypeReexportWrapper('./dist/esm/index.js'));
 write(path.join(pkgRoot, 'react.d.ts'), makeTypeReexportWrapper('./dist/esm/react/index.js'));
+write(path.join(pkgRoot, 'react-server.d.ts'), makeTypeReexportWrapper('./dist/esm/react/server.js'));
 write(path.join(pkgRoot, 'transform.d.ts'), makeTypeReexportWrapper('./dist/esm/transform/index.js'));
 write(path.join(pkgRoot, 'debug.d.ts'), makeTypeReexportWrapper('./dist/esm/debug.js'));
 write(path.join(pkgRoot, 'utils.d.ts'), makeTypeReexportWrapper('./dist/esm/utils.js'));
