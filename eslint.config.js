@@ -6,15 +6,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: [
-      '**/dist',
-      '**/node_modules',
-      '**/.next',
-      '**/.tsc-out',
-      'docs/src/markdoc',
-      'docs-fetchium/src/markdoc',
-      '**/__fixtures__',
-    ],
+    ignores: ['**/dist', '**/node_modules', '**/.next', '**/.tsc-out', 'docs/src/markdoc', '**/__fixtures__'],
   },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

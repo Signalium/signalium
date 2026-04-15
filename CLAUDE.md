@@ -1,13 +1,12 @@
 # Signalium
 
-Reactive signals library with first-class async support and a React integration layer. Monorepo with two packages plus a docs site.
+Reactive signals library with first-class async support and a React integration layer. Monorepo with the core package plus a docs site.
 
 ## Repository structure
 
 ```
 packages/
   signalium/          Core signals library (the main package)
-  fetchium/            Data-fetching / query layer built on signalium
 docs/                 Documentation site (out of scope for typical work)
 ```
 
@@ -28,11 +27,6 @@ npm run test:unit         # non-React tests only (node env, fast)
 npm run test:react        # browser tests (Playwright via @vitest/browser)
 npm run dev:unit          # watch mode for unit tests
 npm run check-types       # tsc --noEmit
-
-# From packages/fetchium
-npm test                  # unit + react tests
-npm run test:unit
-npm run test:react
 ```
 
 React tests run in a **real browser** (Playwright/Chromium, headless). Unit tests run in Node. Both use vitest.
@@ -138,19 +132,3 @@ A Babel preset (`signaliumPreset`) that provides three transforms:
 3. **Promise methods transform** — replaces `Promise.all`/`race`/etc. with `ReactivePromise` equivalents
 
 See `SIGNALIUM_TRANSFORMS.md` for details when working on transforms.
-
----
-
-## Package: fetchium
-
-Data-fetching layer built on signalium's reactive primitives. Provides `Query`, `Entity`, `Mutation`, and a type DSL (`t`).
-
-See `FETCHIUM.md` for detailed architecture when working in this package.
-
-Key concepts at a glance:
-
-- **Query** — class-based query definitions with path, params, response shape. Uses `relay()` internally.
-- **Entity** — normalized entity cache with identity-stable Proxy objects. Entity proxies consume a `Notifier` on property access for reactive tracking.
-- **QueryClient** — manages query instances, entity store, cache, network/refetch/eviction managers.
-- **`t` type DSL** — `t.string`, `t.entity(User)`, `t.array(...)`, etc. for defining response shapes. During `reifyShape()`, computes `subEntityPaths` for fast entity traversal.
-- **`useQuery()`** — React hook, delegates to `useReactive(fetchQuery, ...)`. Deep entity tracking handled by `CONSUME_DEEP` protocol.
