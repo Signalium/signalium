@@ -1,7 +1,17 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { signal, ReactivePromise, Signal } from 'signalium';
 import { reactive } from './utils/instrumented-hooks.js';
 import { nextTick, sleep } from './utils/async.js';
+
+const originalDOMException = globalThis.DOMException;
+
+afterEach(() => {
+  if (originalDOMException === undefined) {
+    delete (globalThis as typeof globalThis & { DOMException?: typeof DOMException }).DOMException;
+  } else {
+    globalThis.DOMException = originalDOMException;
+  }
+});
 
 describe('Promise', () => {
   const createLoader = <T>(state: Signal<T>, delay = 5) =>
@@ -63,6 +73,20 @@ describe('Promise', () => {
       expect(rp.isRejected).toBe(true);
       expect(rp.error).toBe(err);
       await expect(Promise.resolve(rp)).rejects.toBe(err);
+    });
+
+    test('reject handles AbortError when DOMException is unavailable', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const abortError = new Error('aborted');
+      abortError.name = 'AbortError';
+
+      delete (globalThis as typeof globalThis & { DOMException?: typeof DOMException }).DOMException;
+
+      const rp = ReactivePromise.reject(abortError) as unknown as ReactivePromise<never>;
+      expect(rp.isRejected).toBe(true);
+      expect(rp.error).toBe(abortError);
+      await expect(Promise.resolve(rp)).rejects.toBe(abortError);
+      expect(consoleError).not.toHaveBeenCalled();
     });
   });
 
