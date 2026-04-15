@@ -1,5 +1,11 @@
 # signalium
 
+## 2.3.2
+
+### Patch Changes
+
+- cbfa131: Handle AbortError values safely when DOMException is unavailable.
+
 ## 2.3.1
 
 ### Patch Changes
