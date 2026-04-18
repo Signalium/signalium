@@ -14,9 +14,15 @@ nextjs:
 export default function component<Props extends object>(
   fn: (props: Props) => React.ReactNode | React.ReactNode[] | null,
 ): (props: Props) => React.ReactElement;
+
+export default function component<Props extends object>(
+  fn: (props: Props) => Promise<React.ReactNode | React.ReactNode[] | null>,
+): (props: Props) => React.ReactElement;
 ```
 
 Create a reactive component from a pure function. Inside the function, read `Signal` values and other reactive sources directly. Re-renders are scheduled automatically when dependencies change.
+
+You may pass an **`async`** function only when the **Signalium async transform** is enabled; it compiles `await` for Suspense. Wrap those components in `<Suspense>`. See [React integration — Async components with Suspense](/core/react#async-components-with-suspense) for the transition-like update model (eager for React state, lazy while async reactives are pending).
 
 ```tsx
 import { component, useSignal } from 'signalium/react';
@@ -41,9 +47,9 @@ const Name = component(() => {
 });
 ```
 
-| Parameter | Type                          | Description     |
-| --------- | ----------------------------- | --------------- |
-| fn        | `(props: Props) => ReactNode` | Render function |
+| Parameter | Type                                                                        | Description                              |
+| --------- | --------------------------------------------------------------------------- | ---------------------------------------- |
+| fn        | `(props: Props) => ReactNode` or async → `Promise<ReactNode>` (with preset) | Sync or async (compiled) render function |
 
 ### useSignal
 

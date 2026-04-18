@@ -21,6 +21,8 @@ export default defineConfig({
         utils: resolve(srcDir, 'utils.js'),
         debug: resolve(srcDir, 'debug.js'),
         'react/index': resolve(srcDir, 'react/index.js'),
+        'react/index.server': resolve(srcDir, 'react/index.server.js'),
+        'react/server': resolve(srcDir, 'react/server.js'),
         'transform/index': resolve(srcDir, 'transform/index.js'),
       },
       formats: ['es', 'cjs'],

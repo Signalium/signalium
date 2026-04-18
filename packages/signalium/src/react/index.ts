@@ -1,5 +1,11 @@
 export { ContextProvider } from './provider.js';
-export { default as component } from './component.js';
+export {
+  default as component,
+  isAsyncFunctionWithoutTransform,
+  runSyncReplayAsyncComponent,
+  SIGNALIUM_ASYNC_COMPONENT,
+  throwIfSignaliumAsyncComponentPassedToUse,
+} from './component.js';
 export { useContext } from './context.js';
 export { useSignal } from './use-signal.js';
 export { useReactive, useReactiveDeep } from './use-reactive.js';

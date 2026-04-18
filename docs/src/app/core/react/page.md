@@ -239,9 +239,9 @@ const DataComponent = component(() => {
 });
 ```
 
-However, there are two important things to note:
+However, there are a few important things to note:
 
-1. Signalium components, like React client-components, _cannot_ be async themselves. This means that if you want to use a Reactive Promise in a component, you must use the state properties directly and handle all of the possible states.
+1. **Sync vs async body.** A plain `component(() => …)` cannot be an `async` function in source. You either handle `ReactivePromise` state explicitly (`isPending`, `isReady`, …) as above, or you use **`component(async () => { await … })`** with the **Signalium Babel preset** (async transform), which compiles `await` into Suspense-friendly semantics—see [Async components with Suspense](#async-components-with-suspense). Async components must be wrapped in `<Suspense>`.
 
 2. Reactive Promises are always the same object instance, even when their value changes. This means that `React.memo` will not trigger a re-render when the promise's value updates:
 
@@ -263,6 +263,41 @@ function Parent() {
   return <MemoizedComponent value={data.value} />;
 }
 ```
+
+### Async components with Suspense
+
+With the [async transform](/api/signalium/transform), you can author **`component(async () => { … })`** using normal `async`/`await`. The preset rewrites them for Signalium’s React integration; **`await` a `ReactivePromise`** (for example by calling an **async reactive** such as `reactive(async () => { … })`) and wrap the tree in **`<Suspense>`**.
+
+```tsx
+import { Suspense } from 'react';
+import { component } from 'signalium/react';
+import { reactive } from 'signalium';
+
+const loadUser = reactive(async (id: string) => {
+  const res = await fetch(`/api/user/${id}`);
+  return res.json();
+});
+
+export const Profile = component(async (props: { id: string }) => {
+  const user = await loadUser(props.id);
+  return <div>{user.name}</div>;
+});
+
+// Usage
+<Suspense fallback={<div>Loading profile…</div>}>
+  <Profile id={userId} />
+</Suspense>;
+```
+
+#### Updates: eager for React state, lazy for async reactives
+
+The mental model is close to **React Transitions** and **Suspense**:
+
+- **Eager replays** — When **React** schedules an update from **local state** (`useState`, `useReducer`, …) or **props**, the component body is run again from the top on the usual React timeline. Everything **before** the next pending `await` executes synchronously on that attempt, so high-priority UI (counters, form fields, chrome around a loading region) can stay responsive.
+
+- **Lazy / deferred continuation** — When execution hits an **`await`** whose value is a **pending** reactive async result (a `ReactivePromise` that is not ready yet), that point behaves like **`use(promise)`**: the render is interrupted, **Suspense** can show a fallback, and code **after** that `await` (including hooks placed after it) runs only after the async work settles and React retries—again from the top.
+
+So: **ordinary React updates rerun the component eagerly** up to the next async boundary, while **async reactives** control how far each pass gets before handing off to Suspense. Durable values still belong in React state, refs, signals, or module-level reactives—not in `let` bindings between `await`s, which replay fresh each attempt.
 
 ### Suspense and React Server Components
 

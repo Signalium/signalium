@@ -28,6 +28,10 @@ export default defineConfig({
       { find: /^signalium\/debug$/, replacement: fileURLToPath(new URL('./src/debug.ts', import.meta.url)) },
       { find: /^signalium\/react$/, replacement: fileURLToPath(new URL('./src/react/index.ts', import.meta.url)) },
       {
+        find: /^signalium\/react\/server$/,
+        replacement: fileURLToPath(new URL('./src/react/server.ts', import.meta.url)),
+      },
+      {
         find: /^signalium\/transform$/,
         replacement: fileURLToPath(new URL('./src/transform/index.ts', import.meta.url)),
       },
