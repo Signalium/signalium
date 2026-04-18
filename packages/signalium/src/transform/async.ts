@@ -15,6 +15,8 @@ function createSignaliumAsyncTransform(api: any, opts?: SignaliumAsyncTransformO
       ['relay', ['signalium']],
       ['task', ['signalium']],
       ['watcher', ['signalium']],
+      ['useReactive', ['signalium/react']],
+      ['useReactiveDeep', ['signalium/react']],
     ],
     opts?.transformedImports,
     opts?.importPaths,

@@ -1,6 +1,7 @@
 import { signaliumAsyncTransform } from './async.js';
 import { signaliumCallbackTransform } from './callback.js';
 import { signaliumPromiseMethodsTransform } from './promise.js';
+import { signaliumUseReactiveTransform } from './use-reactive.js';
 import { isBabelApi } from './utils.js';
 
 export interface SignaliumTransformOptions {
@@ -8,6 +9,7 @@ export interface SignaliumTransformOptions {
   importPaths?: (string | RegExp)[];
   callbackImportPath?: string;
   promiseImportPath?: string;
+  reactImportPath?: string;
 }
 
 // Babel preset that sequences the two plugins just like separate entries
@@ -21,6 +23,11 @@ function createSignaliumPreset(api: any, opts?: SignaliumTransformOptions) {
         callbackImportPath: opts?.callbackImportPath,
       }),
       signaliumAsyncTransform({ transformedImports: opts?.transformedImports ?? [], importPaths: opts?.importPaths }),
+      signaliumUseReactiveTransform({
+        transformedImports: opts?.transformedImports ?? [],
+        importPaths: opts?.importPaths,
+        reactImportPath: opts?.reactImportPath,
+      }),
       signaliumPromiseMethodsTransform({
         transformedImports: opts?.transformedImports ?? [],
         importPaths: opts?.importPaths,

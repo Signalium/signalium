@@ -1,5 +1,5 @@
 
-import { createContext, getContext, reactive, callback as _callback, ReactivePromise } from "signalium";
+import { createContext, getContext, reactive, ReactivePromise } from "signalium";
 const ctx = createContext('default');
 const inner = reactive(function* () {
   yield ReactivePromise.resolve();

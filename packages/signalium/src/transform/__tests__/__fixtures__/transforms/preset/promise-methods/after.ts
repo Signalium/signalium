@@ -1,4 +1,4 @@
-import { reactive, callback as _callback, ReactivePromise } from 'signalium';
+import { reactive, ReactivePromise } from 'signalium';
 
 export function useThing() {
   return reactive(function* () {
