@@ -1,4 +1,4 @@
-import { signal, reactive, callback as _callback } from 'signalium';
+import { signal, reactive } from 'signalium';
 
 const sa = signal(0);
 const sb = signal(0);

@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/rules-of-hooks */
 import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { ReactiveValue, Signal, ReactivePromise, ReadonlySignal } from '../types.js';
-import { getReactiveFnAndDefinition, reactive, reactiveSignal } from '../internals/core-api.js';
+import { getReactiveFnAndDefinition, reactiveSignal } from '../internals/core-api.js';
 import { getCurrentConsumer } from '../internals/consumer.js';
 import { ReactiveSignal } from '../internals/reactive.js';
 import { isReactivePromise, isRelay, ReactivePromiseImpl } from '../internals/async.js';
@@ -46,7 +46,19 @@ const useReactivePromise = <R>(promise: ReactivePromiseImpl<R>): ReactivePromise
   return promise as ReactivePromise<R>;
 };
 
-const useReactiveFn = <R, Args extends readonly Narrowable[]>(fn: (...args: Args) => R, ...args: Args): R => {
+/**
+ * Resolves a thunk or `reactive()`-registered fn to its scope-cached
+ * `ReactiveSignal` and subscribes. For inline thunks, `getReactiveFnAndDefinition`
+ * memoizes the `ReactiveDefinition` in a `WeakMap` keyed by fn identity, so a
+ * memoized thunk (via `useCallback` or the Signalium Babel preset) reuses the
+ * same def + scope-cached signal across renders. A fresh fn each render
+ * (pathological fallback case) produces a fresh signal per render, which is
+ * correct but slower.
+ */
+const useReactiveFn = <R, Args extends readonly Narrowable[]>(
+  fn: (...args: Args) => R,
+  ...args: Args
+): ReactiveValue<R> => {
   const [, def] = getReactiveFnAndDefinition(fn as any);
 
   const scope = useScope() ?? getGlobalScope();
@@ -63,10 +75,10 @@ const useReactiveFn = <R, Args extends readonly Narrowable[]>(fn: (...args: Args
   // could entangle the promise when it is used. But, because that is not the
   // case, we need to eagerly entangle.
   if (typeof value === 'object' && value !== null && isReactivePromise(value)) {
-    return useReactivePromise(value) as R;
+    return useReactivePromise(value) as unknown as ReactiveValue<R>;
   }
 
-  return value as R;
+  return value as ReactiveValue<R>;
 };
 
 const isNonNullishAsyncSignal = (value: unknown): value is ReactivePromise<unknown> => {
@@ -76,13 +88,17 @@ const isNonNullishAsyncSignal = (value: unknown): value is ReactivePromise<unkno
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type Narrowable = string | number | boolean | null | undefined | bigint | symbol | {};
 
+export function useReactive<R>(fn: () => R): ReactiveValue<R>;
 export function useReactive<R>(signal: Signal<R>): R;
 export function useReactive<R>(signal: ReactivePromise<R>): ReactivePromise<R>;
-export function useReactive<R, Args extends readonly Narrowable[]>(fn: (...args: Args) => R, ...args: Args): R;
+export function useReactive<R, Args extends readonly Narrowable[]>(
+  fn: (...args: Args) => R,
+  ...args: Args
+): ReactiveValue<R>;
 export function useReactive<R, Args extends readonly Narrowable[]>(
   signal: Signal<R> | ReactivePromise<R> | ((...args: Args) => R),
   ...args: Args
-): R | ReactivePromise<R> {
+): ReactiveValue<R> | R | ReactivePromise<R> {
   if (getCurrentConsumer()) {
     if (typeof signal === 'function') {
       return signal(...args);
@@ -102,7 +118,15 @@ export function useReactive<R, Args extends readonly Narrowable[]>(
   }
 }
 
-export function useReactiveDeep<R, Args extends readonly Narrowable[]>(fn: (...args: Args) => R, ...args: Args): R {
+export function useReactiveDeep<R>(fn: () => R): ReactiveValue<R>;
+export function useReactiveDeep<R, Args extends readonly Narrowable[]>(
+  fn: (...args: Args) => R,
+  ...args: Args
+): ReactiveValue<R>;
+export function useReactiveDeep<R, Args extends readonly Narrowable[]>(
+  fn: (...args: Args) => R,
+  ...args: Args
+): ReactiveValue<R> {
   if (getCurrentConsumer()) {
     throw new Error(
       'useReactiveDeep cannot be used inside of a reactive context. You can use the signal/function directly instead.',
@@ -112,9 +136,9 @@ export function useReactiveDeep<R, Args extends readonly Narrowable[]>(fn: (...a
   const suspended = useSignalsSuspended();
 
   const scope = useScope() ?? getGlobalScope();
-  const signalRef = useRef<ReadonlySignal<R> | undefined>();
-  const cloneSignalRef = useRef<ReactiveSignal<R, any>>();
-  const valueRef = useRef<R>();
+  const signalRef = useRef<ReadonlySignal<R> | undefined>(undefined);
+  const cloneSignalRef = useRef<ReactiveSignal<R, any> | undefined>(undefined);
+  const valueRef = useRef<R | undefined>(undefined);
 
   const [, def] = getReactiveFnAndDefinition(fn as any);
 
@@ -122,6 +146,7 @@ export function useReactiveDeep<R, Args extends readonly Narrowable[]>(fn: (...a
 
   if (signalRef.current !== signal) {
     signalRef.current = signal;
+    valueRef.current = undefined;
 
     cloneSignalRef.current = reactiveSignal(() => {
       const next = snapshot(signal.value, valueRef.current) as R;
@@ -138,7 +163,7 @@ export function useReactiveDeep<R, Args extends readonly Narrowable[]>(fn: (...a
 
   return useSyncExternalStore(
     cloneSignal.addListenerLazy(),
-    () => cloneSignal.value as R,
-    () => cloneSignal.value as R,
+    () => cloneSignal.value as ReactiveValue<R>,
+    () => cloneSignal.value as ReactiveValue<R>,
   );
 }
