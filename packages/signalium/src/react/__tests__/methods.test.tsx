@@ -4,7 +4,7 @@ import React from 'react';
 
 import { context, signal, reactive } from '../../index.js';
 import { reactiveMethod } from 'signalium';
-import { ContextProvider, useReactive, useContext } from '../index.js';
+import { ContextProvider, useReactive, useContext } from 'signalium/react';
 
 describe('React > reactiveMethod', () => {
   test('uses owner scope even when ambient scope differs', async () => {
@@ -19,7 +19,7 @@ describe('React > reactiveMethod', () => {
     const derived = reactive(() => owner.method());
 
     const Derived = () => {
-      const value = useReactive(derived);
+      const value = useReactive(() => derived());
       return <div data-testid="value">{value}</div>;
     };
 
@@ -58,7 +58,8 @@ describe('React > reactiveMethod', () => {
     const derivedB = reactive(() => ownerB.value());
 
     const View = ({ id, method }: { id: string; method: () => string }) => {
-      const value = useReactive(method === ownerA.value ? derivedA : derivedB);
+      const derived = method === ownerA.value ? derivedA : derivedB;
+      const value = useReactive(() => derived());
       return <div data-testid={id}>{value}</div>;
     };
 

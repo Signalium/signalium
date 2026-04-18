@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive, ReactivePromise, relay } from 'signalium';
-import { useReactive } from '../index.js';
+import { useReactive } from 'signalium/react';
 import React, { memo } from 'react';
 import { Locator } from '@vitest/browser/context';
 import { sleep } from '../../__tests__/utils/async.js';
@@ -93,7 +93,7 @@ describe('React > async', () => {
       }
 
       function Parent(): React.ReactNode {
-        const d = useReactive(derived);
+        const d = useReactive(() => derived());
         return <Child asyncValue={d} />;
       }
 
@@ -119,7 +119,7 @@ describe('React > async', () => {
 
       const [ParentRenderer, Renderers] = createPromisePropsCounter();
 
-      const Parent = () => <ParentRenderer promise={useReactive(derived1)} />;
+      const Parent = () => <ParentRenderer promise={useReactive(() => derived1())} />;
 
       const { getByTestId } = render(<Parent />);
 
@@ -192,7 +192,7 @@ describe('React > async', () => {
 
       const [ParentRenderer, Renderers] = createPromisePropsCounter();
 
-      const Parent = () => <ParentRenderer promise={useReactive(derived1)} />;
+      const Parent = () => <ParentRenderer promise={useReactive(() => derived1())} />;
 
       const { getByTestId } = render(<Parent />);
 
@@ -322,7 +322,7 @@ describe('React > async', () => {
       expect(childRenderCount).toBe(4);
     });
 
-    test('results do not update when used in React.memo components when passed down directly', async () => {
+    test('memoized children skip re-renders when their individual props are structurally equal', async () => {
       const value1 = signal('Hello');
       let parentRenderCount = 0;
       let childRenderCount = 0;
@@ -333,37 +333,43 @@ describe('React > async', () => {
         return v;
       });
 
-      const Child = memo(({ promise }: { promise: ReactivePromise<string> }): React.ReactNode => {
+      const Child = memo(({ value }: { value: string | undefined }): React.ReactNode => {
         childRenderCount++;
-        return <span data-testid="child">{promise.value}</span>;
+        return <span data-testid="child">{value ?? 'pending'}</span>;
       });
 
       const Parent = memo((): React.ReactNode => {
         parentRenderCount++;
-        const d1 = useReactive(derived1);
+        // Deep snapshot gives a new reference each promise transition; pass
+        // individual primitive fields through memo instead of the whole
+        // snapshot so memo's shallow prop comparison can short-circuit.
+        const d1 = useReactive(() => derived1());
         return (
           <div data-testid="parent">
-            <Child promise={d1} />
+            <Child value={d1.value} />
           </div>
         );
       });
 
       const { getByTestId } = render(<Parent />);
 
-      // Wait for both promises to resolve
       await sleep(200);
       await expect.element(getByTestId('parent')).toBeInTheDocument();
       await expect.element(getByTestId('child')).toBeInTheDocument();
 
       expect(parentRenderCount).toBe(2);
-      expect(childRenderCount).toBe(1);
+      // Initial mount (undefined) + resolution (`Hello`) = 2 renders of Child.
+      expect(childRenderCount).toBe(2);
 
-      // Update only value1, should re-render only the child
+      // Update only value1: parent re-renders on each promise state transition
+      // (pending → resolved), but the intermediate pending snapshot reuses the
+      // prior `value` so memo skips that one. Only the final resolved value
+      // change causes the Child to re-render.
       value1.value = 'World';
       await sleep(200);
 
       expect(parentRenderCount).toBe(4);
-      expect(childRenderCount).toBe(1);
+      expect(childRenderCount).toBe(3);
     });
   });
 
@@ -398,7 +404,7 @@ describe('React > async', () => {
       }
 
       function Parent(): React.ReactNode {
-        const d = useReactive(derived);
+        const d = useReactive(() => derived());
         return <Child asyncValue={d} />;
       }
 
@@ -431,7 +437,7 @@ describe('React > async', () => {
 
       const [ParentRenderer, Renderers] = createPromisePropsCounter();
 
-      const Parent = () => <ParentRenderer promise={useReactive(derived1)} />;
+      const Parent = () => <ParentRenderer promise={useReactive(() => derived1())} />;
 
       const { getByTestId } = render(<Parent />);
 
@@ -512,7 +518,7 @@ describe('React > async', () => {
 
       const [ParentRenderer, Renderers] = createPromisePropsCounter();
 
-      const Parent = () => <ParentRenderer promise={useReactive(derived1)} />;
+      const Parent = () => <ParentRenderer promise={useReactive(() => derived1())} />;
 
       const { getByTestId } = render(<Parent />);
 
@@ -623,7 +629,9 @@ describe('React > async', () => {
 
       const Parent = component((): React.ReactNode => {
         parentRenderCount++;
-        const d1 = useReactive(derived1);
+        // Inside `component()`, read the reactive directly — the render body
+        // is itself a reactive compute.
+        const d1 = derived1();
         return (
           <div data-testid="parent">
             <Child promise={d1} />
@@ -649,7 +657,7 @@ describe('React > async', () => {
       expect(childRenderCount).toBe(4);
     });
 
-    test('results do not update when used in React.memo components when passed down directly', async () => {
+    test('memoized children skip re-renders when their individual props are structurally equal', async () => {
       const value1 = signal('Hello');
       let parentRenderCount = 0;
       let childRenderCount = 0;
@@ -667,37 +675,35 @@ describe('React > async', () => {
         });
       });
 
-      const Child = memo(({ promise }: { promise: ReactivePromise<string> }): React.ReactNode => {
+      const Child = memo(({ value }: { value: string | undefined }): React.ReactNode => {
         childRenderCount++;
-        return <span data-testid="child">{promise.value}</span>;
+        return <span data-testid="child">{value ?? 'pending'}</span>;
       });
 
       const Parent = memo((): React.ReactNode => {
         parentRenderCount++;
-        const d1 = useReactive(derived1);
+        const d1 = useReactive(() => derived1());
         return (
           <div data-testid="parent">
-            <Child promise={d1} />
+            <Child value={d1.value} />
           </div>
         );
       });
 
       const { getByTestId } = render(<Parent />);
 
-      // Wait for both promises to resolve
       await sleep(200);
       await expect.element(getByTestId('parent')).toBeInTheDocument();
       await expect.element(getByTestId('child')).toBeInTheDocument();
 
       expect(parentRenderCount).toBe(2);
-      expect(childRenderCount).toBe(1);
+      expect(childRenderCount).toBe(2);
 
-      // Update only value1, should re-render only the child
       value1.value = 'World';
       await sleep(200);
 
       expect(parentRenderCount).toBe(4);
-      expect(childRenderCount).toBe(1);
+      expect(childRenderCount).toBe(3);
     });
   });
 });

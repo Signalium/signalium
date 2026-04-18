@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive, relay } from 'signalium';
-import { useReactive, useSignal } from '../index.js';
+import { useReactive, useSignal } from 'signalium/react';
 import React, { useState } from 'react';
 import { userEvent } from '@vitest/browser/context';
 import { sleep } from '../../__tests__/utils/async.js';
@@ -206,17 +206,20 @@ describe('React > Components', () => {
     await expect.element(getByText('B3')).toBeInTheDocument();
   });
 
-  test('works with hooks', async () => {
+  test('reads reactive values directly inside component()', async () => {
     const greeting = signal('Hello');
     const name = signal('World');
     const derived = reactive(() => `${greeting.value}, ${name.value}`);
 
+    // Inside component(), the render body itself is a reactive compute. Read
+    // signals and reactive functions directly — `useReactive` is only for
+    // plain React components that need to bridge into the signal graph.
     const Component = component(() => {
       const local = useSignal('!');
       return (
         <div>
-          {useReactive(derived)}
-          {useReactive(local)}
+          {derived()}
+          {local.value}
           <button onClick={() => (name.value = 'Universe')}>Name</button>
           <button onClick={() => (greeting.value = 'Hi')}>Greeting</button>
           <button onClick={() => (local.value = '?')}>Local</button>

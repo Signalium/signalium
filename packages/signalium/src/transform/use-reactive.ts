@@ -23,12 +23,13 @@ function createSignaliumUseReactiveTransform(api: any, opts?: SignaliumUseReacti
   // also used by the callback/async transforms to retarget arbitrary identifiers
   // like `reactive`/`task`/`relay`; we must not accidentally pick those up here
   // or we'd wrap inner arrows with `useCallback` in non-React code paths.
-  const trackedNames = new Set(['useReactive', 'useReactiveDeep']);
+  const trackedNames = new Set(['useReactive', 'useReactiveShallow', 'useReactiveDeep']);
   const filteredAdditional = opts?.transformedImports?.filter(([name]) => trackedNames.has(name));
 
   const transformedImports = createTransformedImports(
     [
       ['useReactive', ['signalium/react']],
+      ['useReactiveShallow', ['signalium/react']],
       ['useReactiveDeep', ['signalium/react']],
     ],
     filteredAdditional,

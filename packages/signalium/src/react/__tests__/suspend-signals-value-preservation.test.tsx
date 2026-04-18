@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive, relay } from 'signalium';
-import { useReactive, SuspendSignalsProvider } from '../index.js';
+import { useReactive, SuspendSignalsProvider } from 'signalium/react';
 import React, { useState } from 'react';
 import { userEvent } from '@vitest/browser/context';
 import { sleep } from '../../__tests__/utils/async.js';
@@ -27,7 +27,7 @@ describe('React > Suspend Signals > Value Preservation', () => {
     let hasResolved = false;
 
     function Inner(): React.ReactNode {
-      const d = useReactive(derived);
+      const d = useReactive(() => derived());
 
       if (d.isResolved && d.value !== undefined) {
         hasResolved = true;
@@ -101,7 +101,7 @@ describe('React > Suspend Signals > Value Preservation', () => {
     let hasResolved = false;
 
     function Inner(): React.ReactNode {
-      const d = useReactive(derived);
+      const d = useReactive(() => derived());
 
       if (d.isResolved && d.value !== undefined) {
         hasResolved = true;
@@ -160,7 +160,7 @@ describe('React > Suspend Signals > Value Preservation', () => {
     let hasResolved = false;
 
     function Inner(): React.ReactNode {
-      const d = useReactive(derived);
+      const d = useReactive(() => derived());
 
       if (d.isResolved && d.value !== undefined) {
         hasResolved = true;
@@ -217,7 +217,7 @@ describe('React > Suspend Signals > Value Preservation', () => {
     });
 
     function Inner(): React.ReactNode {
-      const d = useReactive(derived);
+      const d = useReactive(() => derived());
       return <div data-testid="content">{d.isPending && !d.value ? 'Loading...' : d.value}</div>;
     }
 

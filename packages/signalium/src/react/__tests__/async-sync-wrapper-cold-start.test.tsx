@@ -5,7 +5,7 @@ import { reactive } from 'signalium';
 import { render } from 'vitest-browser-react';
 import { describe, expect, test } from 'vitest';
 import { sleep } from '../../__tests__/utils/async.js';
-import { ContextProvider, SuspendSignalsProvider, useReactive } from '../index.js';
+import { ContextProvider, SuspendSignalsProvider, useReactive } from 'signalium/react';
 
 /**
  * Creates a deferred promise that can be resolved from the test body.
@@ -78,11 +78,11 @@ function createDirectChain() {
  */
 function createWrappedApp({ getWrappedValue, getChildValue }: ReturnType<typeof createWrappedChain>) {
   function ChildConsumer(): React.ReactNode {
-    return <div data-testid="wrapped-value">{useReactive(getChildValue)}</div>;
+    return <div data-testid="wrapped-value">{useReactive(() => getChildValue())}</div>;
   }
 
   function DirectConsumer(): React.ReactNode {
-    return <div data-testid="wrapped-value">{useReactive(getWrappedValue)}</div>;
+    return <div data-testid="wrapped-value">{useReactive(() => getWrappedValue())}</div>;
   }
 
   return function App(): React.ReactNode {
@@ -108,11 +108,11 @@ function createWrappedApp({ getWrappedValue, getChildValue }: ReturnType<typeof 
  */
 function createDirectApp({ getAsyncValue, getChildValue }: ReturnType<typeof createDirectChain>) {
   function ChildConsumer(): React.ReactNode {
-    return <div data-testid="direct-value">{useReactive(getChildValue)}</div>;
+    return <div data-testid="direct-value">{useReactive(() => getChildValue())}</div>;
   }
 
   function DirectConsumer(): React.ReactNode {
-    const promise = useReactive(getAsyncValue);
+    const promise = useReactive(() => getAsyncValue());
 
     return <div data-testid="direct-value">{promise.value ?? 'pending'}</div>;
   }
@@ -181,7 +181,7 @@ describe('React > sync wrapper over async signal', () => {
     const chain = createWrappedChain();
 
     function Consumer(): React.ReactNode {
-      return <div data-testid="value">{useReactive(chain.getChildValue)}</div>;
+      return <div data-testid="value">{useReactive(() => chain.getChildValue())}</div>;
     }
 
     function App(): React.ReactNode {

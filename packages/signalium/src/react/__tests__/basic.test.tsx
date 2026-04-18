@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive } from 'signalium';
-import { useReactive, useSignal } from '../index.js';
+import { useReactive, useSignal } from 'signalium/react';
 import React, { useState } from 'react';
 import { userEvent } from '@vitest/browser/context';
 
@@ -10,7 +10,7 @@ describe('React > basic', () => {
     const text = signal('Hello');
 
     function Component(): React.ReactNode {
-      return <div>{useReactive(text)}</div>;
+      return <div>{useReactive(() => text.value)}</div>;
     }
 
     const { getByText } = render(<Component />);
@@ -28,7 +28,7 @@ describe('React > basic', () => {
 
       return (
         <div>
-          {useReactive(text)}
+          {useReactive(() => text.value)}
           <button onClick={() => (text.value = 'World')}>Toggle</button>
         </div>
       );
@@ -49,7 +49,7 @@ describe('React > basic', () => {
     const derived = reactive(() => `${text.value}, World`);
 
     function Component(): React.ReactNode {
-      return <div>{useReactive(derived)}</div>;
+      return <div>{useReactive(() => derived())}</div>;
     }
 
     const { getByText } = render(<Component />);
@@ -71,7 +71,7 @@ describe('React > basic', () => {
 
       return (
         <div>
-          {useReactive(derived, universe)}
+          {useReactive(() => derived(universe))}
           <button onClick={() => setUniverse(!universe)}>Toggle Universe</button>
         </div>
       );
