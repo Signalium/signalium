@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
-import { signal } from 'signalium';
-import { useReactive, useReactiveDeep } from 'signalium/react';
+import { signal, reactive } from 'signalium';
+import { useReactive, useReactiveShallow } from 'signalium/react';
 import React, { useState } from 'react';
 import { userEvent } from '@vitest/browser/context';
 import { sleep } from '../../__tests__/utils/async.js';
@@ -162,65 +162,24 @@ describe('React > useReactive thunk form', () => {
     await expect.element(getByText('Loading...')).toBeInTheDocument();
     await expect.element(getByText('Hey, World')).toBeInTheDocument();
   });
-});
 
-describe('React > useReactiveDeep thunk form', () => {
-  test('returns a structurally-shared snapshot and updates on change', async () => {
-    const a = signal(1);
-    const b = signal('hello');
+  describe('rules of use', () => {
+    // The Babel preset wraps inline thunks passed to `useReactive` /
+    // `useReactiveShallow` in `useCallback`, which is itself a React hook. To
+    // exercise the runtime guard without tripping that wrap, we define the
+    // thunk outside the tracked call so the transform leaves it alone.
+    const alwaysOne = () => 1;
 
-    const snapshots: unknown[] = [];
+    test('useReactive throws when called inside a reactive function', () => {
+      const derived = reactive(() => useReactive(alwaysOne));
 
-    function Component(): React.ReactNode {
-      const result = useReactiveDeep(() => ({ a: a.value, b: b.value }));
-      snapshots.push(result);
-      return <div data-testid="out">{JSON.stringify(result)}</div>;
-    }
+      expect(() => derived()).toThrow(/cannot be called inside a reactive function/);
+    });
 
-    const { getByTestId } = render(<Component />);
+    test('useReactiveShallow throws when called inside a reactive function', () => {
+      const derived = reactive(() => useReactiveShallow(alwaysOne));
 
-    await expect.element(getByTestId('out')).toHaveTextContent('{"a":1,"b":"hello"}');
-
-    // Set to same values: snapshot reference should be preserved.
-    a.value = 1;
-    b.value = 'hello';
-    await Promise.resolve();
-
-    const beforeChange = snapshots[snapshots.length - 1];
-
-    a.value = 2;
-    await expect.element(getByTestId('out')).toHaveTextContent('{"a":2,"b":"hello"}');
-
-    const afterChange = snapshots[snapshots.length - 1];
-    expect(afterChange).not.toBe(beforeChange);
-  });
-
-  test('recomputes when captured props change', async () => {
-    const source = signal(10);
-
-    function Inner({ multiplier }: { multiplier: number }): React.ReactNode {
-      const result = useReactiveDeep(() => ({ value: source.value * multiplier }));
-      return <div data-testid="out">{result.value}</div>;
-    }
-
-    function Parent(): React.ReactNode {
-      const [m, setM] = useState(2);
-      return (
-        <>
-          <Inner multiplier={m} />
-          <button onClick={() => setM(3)}>Bump</button>
-        </>
-      );
-    }
-
-    const { getByTestId, getByText } = render(<Parent />);
-
-    await expect.element(getByTestId('out')).toHaveTextContent('20');
-
-    source.value = 5;
-    await expect.element(getByTestId('out')).toHaveTextContent('10');
-
-    await userEvent.click(getByText('Bump'));
-    await expect.element(getByTestId('out')).toHaveTextContent('15');
+      expect(() => derived()).toThrow(/cannot be called inside a reactive function/);
+    });
   });
 });

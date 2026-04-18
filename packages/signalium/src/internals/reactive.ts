@@ -232,7 +232,12 @@ export class ReactiveSignal<T, Args extends unknown[]> {
         this.flags |= ReactiveFnFlags.isListener;
       }
 
-      schedulePull(this);
+      // Skip the initial pull when this listener is registered under a
+      // suspended context — otherwise `checkAndRunListeners` would fire the
+      // React listener on mount even though we're suspended.
+      if (!this._isSuspendedListener) {
+        schedulePull(this);
+      }
 
       current.set(listener, effective);
     }

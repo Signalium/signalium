@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive, relay } from 'signalium';
-import { useReactive, SuspendSignalsProvider } from '../index.js';
+import { useReactive, SuspendSignalsProvider } from 'signalium/react';
 import React, { useState } from 'react';
 import { userEvent } from '@vitest/browser/context';
 import { sleep } from '../../__tests__/utils/async.js';
@@ -13,7 +13,7 @@ describe('React > Suspend Signals', () => {
     const text = signal('Hello');
 
     function Component(): React.ReactNode {
-      return <div>{useReactive(text)}</div>;
+      return <div>{useReactive(() => text.value)}</div>;
     }
 
     const { getByText } = render(
@@ -40,7 +40,7 @@ describe('React > Suspend Signals', () => {
       return (
         <div>
           <SuspendSignalsProvider value={suspended}>
-            <div data-testid="content">{useReactive(text)}</div>
+            <div data-testid="content">{useReactive(() => text.value)}</div>
           </SuspendSignalsProvider>
           <button onClick={() => setDisabled(!suspended)}>Toggle Disabled</button>
         </div>
@@ -77,11 +77,11 @@ describe('React > Suspend Signals', () => {
     const text = signal('Hello');
 
     function Inner(): React.ReactNode {
-      return <div data-testid="inner">{useReactive(text)}</div>;
+      return <div data-testid="inner">{useReactive(() => text.value)}</div>;
     }
 
     function Outer(): React.ReactNode {
-      return <div data-testid="outer">{useReactive(text)}</div>;
+      return <div data-testid="outer">{useReactive(() => text.value)}</div>;
     }
 
     const { getByTestId } = render(
@@ -128,7 +128,7 @@ describe('React > Suspend Signals', () => {
     const count = signal(0);
 
     function Component(): React.ReactNode {
-      return <div>{useReactive(count)}</div>;
+      return <div>{useReactive(() => count.value)}</div>;
     }
 
     const { getByText } = render(
@@ -151,7 +151,7 @@ describe('React > Suspend Signals', () => {
     const derived = reactive(() => `${text.value}, World`);
 
     function Component(): React.ReactNode {
-      return <div>{useReactive(derived)}</div>;
+      return <div>{useReactive(() => derived())}</div>;
     }
 
     const { getByText } = render(
@@ -175,7 +175,7 @@ describe('React > Suspend Signals', () => {
       return (
         <div>
           <SuspendSignalsProvider value={suspended}>
-            <div data-testid="count">{useReactive(count)}</div>
+            <div data-testid="count">{useReactive(() => count.value)}</div>
           </SuspendSignalsProvider>
           <button onClick={() => setDisabled(!suspended)}>Toggle</button>
         </div>
@@ -316,9 +316,9 @@ describe('React > Suspend Signals', () => {
   test('multiple components with different suspended states', async () => {
     const count = signal(0);
 
-    const ComponentA = () => <div data-testid="a">{useReactive(count)}</div>;
-    const ComponentB = () => <div data-testid="b">{useReactive(count)}</div>;
-    const ComponentC = () => <div data-testid="c">{useReactive(count)}</div>;
+    const ComponentA = () => <div data-testid="a">{useReactive(() => count.value)}</div>;
+    const ComponentB = () => <div data-testid="b">{useReactive(() => count.value)}</div>;
+    const ComponentC = () => <div data-testid="c">{useReactive(() => count.value)}</div>;
 
     const { getByTestId } = render(
       <div>
@@ -349,7 +349,7 @@ describe('React > Suspend Signals', () => {
   test('disabling does not prevent new subscriptions', async () => {
     const count = signal(0);
 
-    const Child = () => <div data-testid="content">{useReactive(count)}</div>;
+    const Child = () => <div data-testid="content">{useReactive(() => count.value)}</div>;
 
     const Component = () => {
       const [show, setShow] = useState(false);
@@ -379,7 +379,7 @@ describe('React > Suspend Signals', () => {
 
   test('render count is not affected when signals update while suspended', async () => {
     const count = signal(0);
-    const Child = createRenderCounter(() => <div>{useReactive(count)}</div>);
+    const Child = createRenderCounter(() => <div>{useReactive(() => count.value)}</div>);
 
     const Component = () => {
       return (

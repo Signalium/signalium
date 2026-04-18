@@ -17,6 +17,7 @@ function createSignaliumCallbackTransform(api: any, opts?: SignaliumCallbackTran
       ['task', ['signalium']],
       ['watcher', ['signalium']],
       ['useReactive', ['signalium/react']],
+      ['useReactiveShallow', ['signalium/react']],
       ['useReactiveDeep', ['signalium/react']],
     ],
 

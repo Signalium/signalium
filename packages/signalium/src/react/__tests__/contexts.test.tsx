@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive, context, setGlobalContexts } from '../../index.js';
-import { ContextProvider, useReactive, useContext } from '../index.js';
+import { ContextProvider, useReactive, useContext } from 'signalium/react';
 import React from 'react';
 import { useScope } from '../context.js';
 
@@ -13,7 +13,7 @@ describe('React > contexts', () => {
     const derived = reactive(() => `${useContext(ctx).value}, World`);
 
     function Component(): React.ReactNode {
-      return <div>{useReactive(derived)}</div>;
+      return <div>{useReactive(() => derived())}</div>;
     }
 
     const { getByText } = render(<Component />);
@@ -32,7 +32,7 @@ describe('React > contexts', () => {
     function Component(): React.ReactNode {
       const v = useContext(ctx);
 
-      return <div>{useReactive(v)}, World</div>;
+      return <div>{useReactive(() => v.value)}, World</div>;
     }
 
     const { getByText } = render(
@@ -67,7 +67,7 @@ describe('React > contexts', () => {
       const value1 = useContext(ctx1);
       const value2 = useContext(ctx2);
       const derived = reactive(() => `${value1.value}-${value2.value}`);
-      return <div data-testid={testId}>{useReactive(derived)}</div>;
+      return <div data-testid={testId}>{useReactive(() => derived())}</div>;
     }
     const localOverride1 = signal('local1');
     const localOverride2 = signal('local2');
@@ -119,7 +119,7 @@ describe('React > contexts', () => {
     const derived = reactive(() => `${useContext(ctx).value}, World`);
 
     function Component(): React.ReactNode {
-      return <div>{useReactive(derived)}</div>;
+      return <div>{useReactive(() => derived())}</div>;
     }
 
     const { getByText } = render(
@@ -143,7 +143,7 @@ describe('React > contexts', () => {
     function Component(): React.ReactNode {
       const v = useContext(ctx);
 
-      return <div>{useReactive(v)}, World</div>;
+      return <div>{useReactive(() => v.value)}, World</div>;
     }
 
     const { getByText } = render(

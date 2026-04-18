@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive, relay } from 'signalium';
-import { useReactive } from '../index.js';
+import { useReactive } from 'signalium/react';
 import React from 'react';
 import { sleep } from '../../__tests__/utils/async.js';
 
@@ -35,7 +35,7 @@ describe('React > Relays', () => {
     }
 
     function Parent(): React.ReactNode {
-      const d = useReactive(derived);
+      const d = useReactive(() => derived());
       return <Child asyncValue={d} />;
     }
 

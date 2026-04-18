@@ -2,19 +2,19 @@ import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive } from 'signalium';
 import { registerCustomSnapshot, snapshot } from 'signalium/utils';
-import { useReactiveDeep } from '../index.js';
+import { useReactive } from 'signalium/react';
 import React, { memo, useState } from 'react';
 import { userEvent } from '@vitest/browser/context';
 import { sleep } from '../../__tests__/utils/async.js';
 
-describe('React > useReactiveDeep', () => {
+describe('React > useReactive (deep, default)', () => {
   describe('primitives', () => {
     test('returns string values and updates on change', async () => {
       const text = signal('Hello');
       const derived = reactive(() => text.value);
 
       function Component(): React.ReactNode {
-        return <div>{useReactiveDeep(derived)}</div>;
+        return <div>{useReactive(() => derived())}</div>;
       }
 
       const { getByText } = render(<Component />);
@@ -31,7 +31,7 @@ describe('React > useReactiveDeep', () => {
       const derived = reactive(() => num.value);
 
       function Component(): React.ReactNode {
-        return <div>{useReactiveDeep(derived)}</div>;
+        return <div>{useReactive(() => derived())}</div>;
       }
 
       const { getByText } = render(<Component />);
@@ -48,7 +48,7 @@ describe('React > useReactiveDeep', () => {
       const derived = reactive(() => val.value);
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         return <div>{result === null ? 'null' : result}</div>;
       }
 
@@ -72,7 +72,7 @@ describe('React > useReactiveDeep', () => {
       let capturedOriginal: unknown;
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         capturedSnapshot = result;
         capturedOriginal = obj.value;
         return <div>{JSON.stringify(result)}</div>;
@@ -93,7 +93,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: unknown[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         snapshots.push(result);
         return <div data-testid="out">{JSON.stringify(result)}</div>;
       }
@@ -121,7 +121,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: unknown[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         snapshots.push(result);
         return <div data-testid="out">{JSON.stringify(result)}</div>;
       }
@@ -149,7 +149,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: Array<{ x: number; child: { nested: string } }> = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as { x: number; child: { nested: string } };
+        const result = useReactive(() => derived()) as { x: number; child: { nested: string } };
         snapshots.push(result);
         return <div data-testid="out">{result.x}</div>;
       }
@@ -178,7 +178,7 @@ describe('React > useReactiveDeep', () => {
       const derived = reactive(() => items.value);
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as string[];
+        const result = useReactive(() => derived()) as string[];
         return <div data-testid="out">{result.join(',')}</div>;
       }
 
@@ -203,7 +203,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: unknown[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         snapshots.push(result);
         return <div data-testid="out">{(result as string[]).join(',')}</div>;
       }
@@ -230,7 +230,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: Array<Array<{ id: number }>> = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as Array<{ id: number }>;
+        const result = useReactive(() => derived()) as Array<{ id: number }>;
         snapshots.push(result);
         return <div data-testid="out">{result.map(o => o.id).join(',')}</div>;
       }
@@ -267,7 +267,7 @@ describe('React > useReactiveDeep', () => {
       }));
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as any;
+        const result = useReactive(() => derived()) as any;
         return <div data-testid="out">{result.level1.level2.level3}</div>;
       }
 
@@ -287,7 +287,7 @@ describe('React > useReactiveDeep', () => {
       }));
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as any;
+        const result = useReactive(() => derived()) as any;
         return (
           <div data-testid="out">
             {result.items[0].value},{result.items[1].value}
@@ -313,7 +313,7 @@ describe('React > useReactiveDeep', () => {
       let capturedDate: Date | undefined;
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as { created: Date };
+        const result = useReactive(() => derived()) as { created: Date };
         capturedDate = result.created;
         return <div data-testid="out">{result.created.toISOString()}</div>;
       }
@@ -335,7 +335,7 @@ describe('React > useReactiveDeep', () => {
       let capturedModel: MyModel | undefined;
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as { model: MyModel };
+        const result = useReactive(() => derived()) as { model: MyModel };
         capturedModel = result.model;
         return <div data-testid="out">{result.model.name}</div>;
       }
@@ -353,7 +353,7 @@ describe('React > useReactiveDeep', () => {
       let capturedRegex: RegExp | undefined;
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as { pattern: RegExp };
+        const result = useReactive(() => derived()) as { pattern: RegExp };
         capturedRegex = result.pattern;
         return <div data-testid="out">{result.pattern.source}</div>;
       }
@@ -377,7 +377,7 @@ describe('React > useReactiveDeep', () => {
       let capturedResult: any;
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         capturedResult = result;
         const r = result as any;
         return <div data-testid="out">{r.isPending ? 'Loading...' : r.value}</div>;
@@ -409,7 +409,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: any[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         snapshots.push(result);
         const r = result as any;
         return <div data-testid="out">{r.isPending && !r.isReady ? 'Loading...' : r.value}</div>;
@@ -447,7 +447,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: any[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as any;
+        const result = useReactive(() => derived()) as any;
         snapshots.push(result);
         return (
           <div data-testid="out">{result.isPending && !result.isReady ? 'Loading...' : result.value?.user?.name}</div>
@@ -483,7 +483,7 @@ describe('React > useReactiveDeep', () => {
 
       function Component(): React.ReactNode {
         const [greeting, setGreeting] = useState('Hello');
-        const result = useReactiveDeep(derived, greeting) as { message: string };
+        const result = useReactive(() => derived(greeting)) as { message: string };
 
         return (
           <div>
@@ -510,7 +510,7 @@ describe('React > useReactiveDeep', () => {
 
       function Component(): React.ReactNode {
         const [greeting, setGreeting] = useState('Hello');
-        const result = useReactiveDeep(derived, greeting) as { message: string };
+        const result = useReactive(() => derived(greeting)) as { message: string };
 
         return (
           <div>
@@ -552,7 +552,7 @@ describe('React > useReactiveDeep', () => {
       });
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as { name: string };
+        const result = useReactive(() => derived()) as { name: string };
         return <MemoChild data={result} />;
       }
 
@@ -581,7 +581,7 @@ describe('React > useReactiveDeep', () => {
       });
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as { name: string };
+        const result = useReactive(() => derived()) as { name: string };
         return <MemoChild data={result} />;
       }
 
@@ -605,7 +605,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: Map<string, string>[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as Map<string, string>;
+        const result = useReactive(() => derived()) as Map<string, string>;
         snapshots.push(result);
         return <div data-testid="out">{result.get('key')}</div>;
       }
@@ -637,7 +637,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: unknown[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         snapshots.push(result);
         return <div data-testid="out">{(result as Map<string, number>).get('a')}</div>;
       }
@@ -660,7 +660,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: Set<number>[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as Set<number>;
+        const result = useReactive(() => derived()) as Set<number>;
         snapshots.push(result);
         return <div data-testid="out">{Array.from(result).join(',')}</div>;
       }
@@ -688,7 +688,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: unknown[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         snapshots.push(result);
         return <div data-testid="out">{Array.from(result as Set<number>).join(',')}</div>;
       }
@@ -728,7 +728,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: any[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as any;
+        const result = useReactive(() => derived()) as any;
         snapshots.push(result);
         return (
           <div data-testid="out">
@@ -775,7 +775,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: any[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as any;
+        const result = useReactive(() => derived()) as any;
         snapshots.push(result);
         return <div data-testid="out">{result.box.value}</div>;
       }
@@ -814,7 +814,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: any[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as any;
+        const result = useReactive(() => derived()) as any;
         snapshots.push(result);
         return <div data-testid="out">{result.items.map((i: any) => i.name).join(',')}</div>;
       }
@@ -847,7 +847,7 @@ describe('React > useReactiveDeep', () => {
       });
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as any;
+        const result = useReactive(() => derived()) as any;
         return <div data-testid="out">{result.key}</div>;
       }
 
@@ -874,7 +874,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: unknown[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         snapshots.push(result);
         return <div data-testid="out">empty</div>;
       }
@@ -902,7 +902,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: unknown[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         snapshots.push(result);
         return <div data-testid="out">empty</div>;
       }
@@ -925,7 +925,7 @@ describe('React > useReactiveDeep', () => {
       let capturedFn: unknown;
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as { callback: () => string };
+        const result = useReactive(() => derived()) as { callback: () => string };
         capturedFn = result.callback;
         return <div data-testid="out">{result.callback()}</div>;
       }
@@ -941,7 +941,7 @@ describe('React > useReactiveDeep', () => {
       const derived = reactive(() => ({ a: val.value, b: 'present' }));
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as { a: string | undefined; b: string };
+        const result = useReactive(() => derived()) as { a: string | undefined; b: string };
         return (
           <div data-testid="out">
             a={String(result.a)},b={result.b}
@@ -969,7 +969,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: any[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         snapshots.push(result);
         return <div data-testid="out">{JSON.stringify(result)}</div>;
       }
@@ -994,7 +994,7 @@ describe('React > useReactiveDeep', () => {
       const derived = reactive(() => flag.value);
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived);
+        const result = useReactive(() => derived());
         return <div data-testid="out">{String(result)}</div>;
       }
 
@@ -1015,7 +1015,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: unknown[][] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as unknown[];
+        const result = useReactive(() => derived()) as unknown[];
         snapshots.push(result);
         return <div data-testid="out">{result.map(String).join('|')}</div>;
       }
@@ -1055,7 +1055,7 @@ describe('React > useReactiveDeep', () => {
       const snapshots: any[] = [];
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as any;
+        const result = useReactive(() => derived()) as any;
         snapshots.push(result);
         return (
           <div data-testid="out">
@@ -1094,7 +1094,7 @@ describe('React > useReactiveDeep', () => {
       const derived = reactive(() => ({ count: val.value }));
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as { count: number };
+        const result = useReactive(() => derived()) as { count: number };
         return <div data-testid="out">{result.count}</div>;
       }
 
@@ -1123,7 +1123,7 @@ describe('React > useReactiveDeep', () => {
       let capturedResult: any;
 
       function Component(): React.ReactNode {
-        const result = useReactiveDeep(derived) as any;
+        const result = useReactive(() => derived()) as any;
         capturedResult = result;
 
         if (result.isPending && !result.isReady) return <div data-testid="out">Loading...</div>;
