@@ -1,4 +1,3 @@
-import WeakRef from './weakref.js';
 import { Tracer, getTracerProxy, TracerMeta } from './trace.js';
 import { ReactiveValue, Equals, ReactiveOptions } from '../types.js';
 import { getUnknownSignalFnName } from './utils/debug-name.js';
@@ -9,7 +8,7 @@ import { cancelPull, schedulePull } from './scheduling.js';
 import { hashValue } from './utils/hash.js';
 import { stringifyValue } from './utils/stringify.js';
 import { Callback } from './callback.js';
-import { resumeSignal, suspendSignal, unwatchSignal, watchSignal } from './watch.js';
+import { unwatchSignal, watchSignal } from './watch.js';
 import { equalsFrom } from './utils/equals.js';
 import { dirtySignal } from './dirty.js';
 
@@ -41,9 +40,8 @@ export const enum ReactiveFnFlags {
   // Properties
   isRelay = 0b1000,
   isListener = 0b10000,
-  isSuspendedListener = 0b100000,
-  isActive = 0b1000000,
-  isLazy = 0b10000000,
+  isActive = 0b100000,
+  isLazy = 0b1000000,
 }
 
 let ID = 0;
@@ -117,7 +115,6 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   computedCount: number = 0;
 
   watchCount: number = 0;
-  suspendCount: number = 0;
 
   key: SignalId | undefined;
   args: Args;
@@ -160,15 +157,6 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
   get _isListener() {
     return (this.flags & ReactiveFnFlags.isListener) !== 0;
-  }
-
-  get _isSuspendedListener() {
-    return (this.flags & ReactiveFnFlags.isSuspendedListener) !== 0;
-  }
-
-  get _isSuspended() {
-    const { watchCount, suspendCount } = this;
-    return watchCount > 0 && watchCount === suspendCount;
   }
 
   get _isActive() {
@@ -228,14 +216,11 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       }
 
       if (!this._isListener) {
-        watchSignal(this, this._isSuspended);
+        watchSignal(this);
         this.flags |= ReactiveFnFlags.isListener;
       }
 
-      // Skip the initial pull when this listener is registered under a
-      // suspended context — otherwise `checkAndRunListeners` would fire the
-      // React listener on mount even though we're suspended.
-      if (!this._isSuspendedListener) {
+      if (this.watchCount > 0) {
         schedulePull(this);
       }
 
@@ -248,7 +233,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
         if (current.size === 0) {
           cancelPull(this);
-          unwatchSignal(this, this._isSuspended);
+          unwatchSignal(this);
           this.flags &= ~ReactiveFnFlags.isListener;
           this.listeners.updatedAt = 0;
         }
@@ -259,45 +244,17 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   // This method is used in React hooks specifically. It returns a bound add method
   // that is cached to avoid creating a new one on each call, and it eagerly sets
   // the listener as watched so that relays that are accessed will be activated.
-  addListenerLazy() {
+  addListenerLazy(watch = true) {
     if (!this._isListener) {
-      watchSignal(this, this._isSuspended);
+      if (watch) {
+        watchSignal(this);
+      }
       this.flags |= ReactiveFnFlags.isListener;
     }
 
     return this.listeners.cachedBoundAdd;
   }
 
-  setSuspended(suspended: boolean) {
-    const { flags } = this;
-    const isListener = (flags & ReactiveFnFlags.isListener) !== 0;
-    const isSuspendedListener = (flags & ReactiveFnFlags.isSuspendedListener) !== 0;
-
-    if (suspended && !isSuspendedListener) {
-      this.flags = flags | ReactiveFnFlags.isSuspendedListener;
-
-      if (isListener) {
-        suspendSignal(this);
-      }
-    } else if (!suspended && isSuspendedListener) {
-      this.flags = flags & ~ReactiveFnFlags.isSuspendedListener;
-
-      if (isListener) {
-        resumeSignal(this);
-      }
-    }
-  }
-
-  reset() {
-    this.flags = (this.def.isRelay ? ReactiveFnFlags.isRelay : 0) | ReactiveFnState.Dirty;
-    this.dirtyHead = undefined;
-    this.updatedCount = 0;
-    this.computedCount = 0;
-    this.deps = new Map();
-    this.subs = new Map();
-    this.watchCount = 0;
-    this.suspendCount = 0;
-  }
 }
 
 export const runListeners = (signal: ReactiveSignal<any, any>) => {

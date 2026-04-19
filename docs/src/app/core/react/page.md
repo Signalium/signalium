@@ -400,47 +400,47 @@ Multiple contexts can be provided to the `ContextProvider` component, removing t
 
 The primary reason for this is for performance. Each time we add a new provider, we create a new scope and rerun all of the Reactive Functions in that scope. This is why it's generally better to flatten multiple Contexts into a single provider, rather than nesting them.
 
-## Suspending Signals
+## Pausing Signals
 
 In certain scenarios, particularly in React Native applications, you may need to temporarily pause signal updates without fully unmounting components. For example, React Native keeps tab screens mounted in the background, but you don't want those background screens consuming resources or receiving updates.
 
-Signalium provides `SuspendSignalsProvider` to handle this use case:
+Signalium provides `PauseSignalsProvider` to handle this use case:
 
 ```tsx
-import { SuspendSignalsProvider } from 'signalium/react';
+import { PauseSignalsProvider } from 'signalium/react';
 
 function TabNavigator() {
   const [activeTab, setActiveTab] = useState('home');
 
   return (
     <>
-      <SuspendSignalsProvider value={activeTab !== 'home'}>
+      <PauseSignalsProvider value={activeTab !== 'home'}>
         <HomeScreen />
-      </SuspendSignalsProvider>
+      </PauseSignalsProvider>
 
-      <SuspendSignalsProvider value={activeTab !== 'profile'}>
+      <PauseSignalsProvider value={activeTab !== 'profile'}>
         <ProfileScreen />
-      </SuspendSignalsProvider>
+      </PauseSignalsProvider>
     </>
   );
 }
 ```
 
-### How Suspension Works
+### How Pausing Works
 
-When a signal subtree is suspended (`SuspendSignalsContext.Provider value={true}`):
+When a signal subtree is paused (`PauseSignalsProvider value={true}`):
 
-1. **No subscriptions**: Components don't subscribe to signal updates
+1. **Unwatched**: Signals are unwatched, relays are torn down
 2. **No re-renders**: Signal updates don't trigger component re-renders
-3. **Value retention**: Signals maintain their last known value in the component
-4. **Automatic GC**: Signals are unwatched and may be garbage collected if not used elsewhere
+3. **Value preservation**: Signals maintain their last known value in the component
+4. **No descendant re-renders**: Toggling the provider does not re-render descendants (the context value is a stable reference)
 
 When the signal subtree is resumed (`value={false}`):
 
-1. **Resubscribe**: Components subscribe to signals again
+1. **Re-watched**: Signals are re-watched, relays re-bootstrap
 2. **Immediate sync**: Components immediately show the current signal values
 3. **Normal operation**: Signal updates resume triggering re-renders
 
 {% callout type="warning" title="Note" %}
-Suspended signals will still rerun if accessed manually. This means that if the component tree rerenders for any other reason, the signals will rerun as well. However, none of the Relays _within_ the suspended subtree will be reactivated, so it will recompute with the last known values for all Relays.
+Paused signals will still rerun if accessed manually. This means that if the component tree rerenders for any other reason, the signals will rerun as well. However, none of the relays _within_ the paused subtree will be reactivated, so it will recompute with the last known values for all relays.
 {% /callout %}

@@ -6,18 +6,12 @@ import { runListeners as runStateListeners } from './signal.js';
 import type { Tracer } from './trace.js';
 import { deactivateSignal } from './watch.js';
 import { StateSignal } from './signal.js';
-import { SignalScope } from './contexts.js';
-
-// Determine once at startup which scheduling function to use for GC
-const scheduleIdleCallback =
-  typeof requestIdleCallback === 'function' ? requestIdleCallback : (cb: () => void) => _scheduleFlush(cb);
 
 let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
 let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
 let PENDING_DEACTIVE = new Set<ReactiveSignal<any, any>>();
 let PENDING_LISTENERS: (ReactiveSignal<any, any> | StateSignal<any>)[] = [];
 let PENDING_TRACERS: Tracer[] | undefined = IS_DEV ? [] : undefined;
-let PENDING_GC = new Set<SignalScope>();
 
 const microtask = () => Promise.resolve();
 
@@ -54,7 +48,6 @@ export const scheduleDeactivate = (signal: ReactiveSignal<any, any>) => {
 };
 
 export const cancelDeactivate = (signal: ReactiveSignal<any, any>) => {
-  signal.scope?.removeFromGc(signal);
   PENDING_DEACTIVE.delete(signal);
 };
 
@@ -68,20 +61,6 @@ export const scheduleTracer = (tracer: Tracer) => {
     PENDING_TRACERS!.push(tracer);
     scheduleFlush(flushWatchers);
   }
-};
-
-export const scheduleGcSweep = (scope: SignalScope) => {
-  PENDING_GC.add(scope);
-
-  if (PENDING_GC.size > 1) return;
-
-  scheduleIdleCallback(() => {
-    for (const scope of PENDING_GC) {
-      scope.sweepGc();
-    }
-
-    PENDING_GC.clear();
-  });
 };
 
 const flushWatchers = async () => {

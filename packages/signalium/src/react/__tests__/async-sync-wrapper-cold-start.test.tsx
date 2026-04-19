@@ -5,7 +5,7 @@ import { reactive } from 'signalium';
 import { render } from 'vitest-browser-react';
 import { describe, expect, test } from 'vitest';
 import { sleep } from '../../__tests__/utils/async.js';
-import { ContextProvider, SuspendSignalsProvider, useReactive } from 'signalium/react';
+import { ContextProvider, PauseSignalsProvider, useReactive } from 'signalium/react';
 
 /**
  * Creates a deferred promise that can be resolved from the test body.
@@ -189,9 +189,9 @@ describe('React > sync wrapper over async signal', () => {
 
       return (
         <ContextProvider contexts={[]}>
-          <SuspendSignalsProvider value={suspended}>
+          <PauseSignalsProvider value={suspended}>
             <Consumer />
-          </SuspendSignalsProvider>
+          </PauseSignalsProvider>
           <button
             data-testid="suspend-and-resume"
             onClick={() => {

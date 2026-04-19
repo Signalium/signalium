@@ -31,7 +31,7 @@ function propagateDirty(signal: ReactiveSignal<any, any>) {
 
     // else do nothing, only schedule if connected
   } else {
-    if (signal._isListener && !signal._isSuspendedListener) {
+    if (signal._isListener && signal.watchCount > 0) {
       schedulePull(signal);
     }
 

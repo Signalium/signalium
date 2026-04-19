@@ -316,21 +316,21 @@ const App = component(() => (
 | inherit  | `boolean`                     | Inherit parent scope (default true) |
 | children | `React.ReactNode`             | Children                            |
 
-### SuspendSignalsProvider
+### PauseSignalsProvider
 
 ```tsx
-export function SuspendSignalsProvider(props: {
+export function PauseSignalsProvider(props: {
   value: boolean;
   children: React.ReactNode;
 }): React.ReactElement;
 ```
 
-Temporarily suspend signal subscriptions for an entire React subtree. When `value={true}`, components in the subtree will not subscribe to signal updates, preventing re-renders and allowing signals to be garbage collected if not used elsewhere. When `value={false}`, components resume normal signal subscription.
+Temporarily pause signal subscriptions for an entire React subtree. When `value={true}`, signals in the subtree are unwatched — relays are torn down, updates don't trigger re-renders, and last known values are preserved. When `value={false}`, signals are re-watched and resume normal updates. Toggling `value` does not re-render descendants (the provider uses a stable context reference internally).
 
 This is particularly useful for React Native applications where screens remain mounted but inactive (e.g., background tabs), or when you need to temporarily pause expensive computations for performance reasons.
 
 ```tsx
-import { component, SuspendSignalsProvider, useSignal } from 'signalium/react';
+import { component, PauseSignalsProvider, useSignal } from 'signalium/react';
 import { reactive } from 'signalium';
 
 const expensiveComputation = reactive((input: Signal<number>) => {
@@ -345,18 +345,18 @@ const TabNavigator = component(() => {
   return (
     <>
       {/* Home tab - active when selected */}
-      <SuspendSignalsProvider value={activeTab !== 'home'}>
+      <PauseSignalsProvider value={activeTab !== 'home'}>
         <div style={{ display: activeTab === 'home' ? 'block' : 'none' }}>
           <HomeTab data={data} />
         </div>
-      </SuspendSignalsProvider>
+      </PauseSignalsProvider>
 
-      {/* Profile tab - suspended when not selected */}
-      <SuspendSignalsProvider value={activeTab !== 'profile'}>
+      {/* Profile tab - paused when not selected */}
+      <PauseSignalsProvider value={activeTab !== 'profile'}>
         <div style={{ display: activeTab === 'profile' ? 'block' : 'none' }}>
           <ProfileTab data={data} />
         </div>
-      </SuspendSignalsProvider>
+      </PauseSignalsProvider>
 
       <button onClick={() => setActiveTab('home')}>Home</button>
       <button onClick={() => setActiveTab('profile')}>Profile</button>
@@ -371,25 +371,25 @@ const TabScreen = component(() => {
   const isFocused = useIsFocused();
 
   return (
-    <SuspendSignalsProvider value={!isFocused}>
+    <PauseSignalsProvider value={!isFocused}>
       <YourTabContent />
-    </SuspendSignalsProvider>
+    </PauseSignalsProvider>
   );
 });
 ```
 
 **Behavior:**
 
-- **Suspended (`value={true}`)**: Components don't subscribe to signals, updates don't trigger re-renders, last known values are retained, signals may be garbage collected
+- **Paused (`value={true}`)**: Signals are unwatched, relays are torn down, updates don't trigger re-renders, last known values are preserved
 - **Active (`value={false}`)**: Normal signal subscription, updates trigger re-renders, signals show current values
 
 **Important notes:**
 
-- Suspended signals will still rerun if the component tree re-renders for other reasons (e.g., prop changes), but they will compute with the last known values for any Relays in the suspended subtree
-- For permanent cleanup, unmount the component normally — suspension is for temporary pauses
+- Paused signals will still rerun if the component tree re-renders for other reasons (e.g., prop changes), but they will compute with the last known values for any relays in the paused subtree
+- For permanent cleanup, unmount the component normally — pausing is for temporary resource savings
 - Works with both `useReactive` and `component()` which are the primary signal entry points in React
 
-| Prop     | Type              | Description                      |
-| -------- | ----------------- | -------------------------------- |
-| value    | `boolean`         | Whether to suspend (true) or not |
-| children | `React.ReactNode` | Children to suspend/resume       |
+| Prop     | Type              | Description                       |
+| -------- | ----------------- | --------------------------------- |
+| value    | `boolean`         | Whether to pause (true) or not    |
+| children | `React.ReactNode` | Children to pause/resume          |
