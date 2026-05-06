@@ -254,7 +254,6 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
     return this.listeners.cachedBoundAdd;
   }
-
 }
 
 export const runListeners = (signal: ReactiveSignal<any, any>) => {

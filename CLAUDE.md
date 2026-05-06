@@ -106,14 +106,14 @@ When a signal has external listeners (React components, watchers):
 
 ### React integration (`src/react/`)
 
-| File                         | Purpose                                                             |
-| ---------------------------- | ------------------------------------------------------------------- |
-| `use-reactive.ts`            | `useReactive()` — main hook bridging signals to React               |
-| `component.tsx`              | `component()` — wraps a function component in a lazy ReactiveSignal |
-| `context.ts`                 | `ScopeContext`, `useScope()`, `useContext()`                        |
-| `provider.tsx`               | `ContextProvider` component                                         |
-| `use-signal.ts`              | `useSignal()` — creates a StateSignal scoped to a component         |
-| `pause-signals-context.ts`   | `PauseSignalsProvider` for pausing signal subscriptions             |
+| File                       | Purpose                                                             |
+| -------------------------- | ------------------------------------------------------------------- |
+| `use-reactive.ts`          | `useReactive()` — main hook bridging signals to React               |
+| `component.tsx`            | `component()` — wraps a function component in a lazy ReactiveSignal |
+| `context.ts`               | `ScopeContext`, `useScope()`, `useContext()`                        |
+| `provider.tsx`             | `ContextProvider` component                                         |
+| `use-signal.ts`            | `useSignal()` — creates a StateSignal scoped to a component         |
+| `pause-signals-context.ts` | `PauseSignalsProvider` for pausing signal subscriptions             |
 
 `useReactive` has three code paths (function, StateSignal, direct ReactivePromise), each calling the same hook pattern: one `useSyncExternalStore` for primary subscription + one for deep dependency tracking via `CONSUME_DEEP`.
 
