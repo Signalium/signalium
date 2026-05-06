@@ -1,15 +1,15 @@
 import { describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive, relay } from 'signalium';
-import { useReactive, SuspendSignalsProvider } from 'signalium/react';
+import { useReactive, PauseSignalsProvider } from 'signalium/react';
 import React, { useState } from 'react';
 import { userEvent } from '@vitest/browser/context';
 import { sleep } from '../../__tests__/utils/async.js';
 import { createRenderCounter } from './utils.js';
 import component from '../component.js';
 
-describe('React > Suspend Signals', () => {
-  test('basic suspension - signals do not trigger re-renders when suspended', async () => {
+describe('React > Pause Signals', () => {
+  test('basic pausing - signals do not trigger re-renders when paused', async () => {
     const text = signal('Hello');
 
     function Component(): React.ReactNode {
@@ -17,9 +17,9 @@ describe('React > Suspend Signals', () => {
     }
 
     const { getByText } = render(
-      <SuspendSignalsProvider value={true}>
+      <PauseSignalsProvider value={true}>
         <Component />
-      </SuspendSignalsProvider>,
+      </PauseSignalsProvider>,
     );
 
     await expect.element(getByText('Hello')).toBeInTheDocument();
@@ -39,9 +39,9 @@ describe('React > Suspend Signals', () => {
 
       return (
         <div>
-          <SuspendSignalsProvider value={suspended}>
+          <PauseSignalsProvider value={suspended}>
             <div data-testid="content">{useReactive(() => text.value)}</div>
-          </SuspendSignalsProvider>
+          </PauseSignalsProvider>
           <button onClick={() => setDisabled(!suspended)}>Toggle Disabled</button>
         </div>
       );
@@ -85,12 +85,12 @@ describe('React > Suspend Signals', () => {
     }
 
     const { getByTestId } = render(
-      <SuspendSignalsProvider value={true}>
+      <PauseSignalsProvider value={true}>
         <Outer />
-        <SuspendSignalsProvider value={false}>
+        <PauseSignalsProvider value={false}>
           <Inner />
-        </SuspendSignalsProvider>
-      </SuspendSignalsProvider>,
+        </PauseSignalsProvider>
+      </PauseSignalsProvider>,
     );
 
     await expect.element(getByTestId('outer')).toHaveTextContent('Hello');
@@ -106,15 +106,15 @@ describe('React > Suspend Signals', () => {
     await expect.element(getByTestId('inner')).toHaveTextContent('World');
   });
 
-  test('component function respects suspended context', async () => {
+  test('component function respects paused context', async () => {
     const text = signal('Hello');
 
     const Component = component(() => <div>{text.value}</div>);
 
     const { getByText } = render(
-      <SuspendSignalsProvider value={true}>
+      <PauseSignalsProvider value={true}>
         <Component />
-      </SuspendSignalsProvider>,
+      </PauseSignalsProvider>,
     );
 
     await expect.element(getByText('Hello')).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe('React > Suspend Signals', () => {
     await expect.element(getByText('Hello')).toBeInTheDocument();
   });
 
-  test('useReactive with signals respects suspended context', async () => {
+  test('useReactive with signals respects paused context', async () => {
     const count = signal(0);
 
     function Component(): React.ReactNode {
@@ -132,9 +132,9 @@ describe('React > Suspend Signals', () => {
     }
 
     const { getByText } = render(
-      <SuspendSignalsProvider value={true}>
+      <PauseSignalsProvider value={true}>
         <Component />
-      </SuspendSignalsProvider>,
+      </PauseSignalsProvider>,
     );
 
     await expect.element(getByText('0')).toBeInTheDocument();
@@ -146,7 +146,7 @@ describe('React > Suspend Signals', () => {
     await expect.element(getByText('0')).toBeInTheDocument();
   });
 
-  test('useReactive with reactive functions respects suspended context', async () => {
+  test('useReactive with reactive functions respects paused context', async () => {
     const text = signal('Hello');
     const derived = reactive(() => `${text.value}, World`);
 
@@ -155,9 +155,9 @@ describe('React > Suspend Signals', () => {
     }
 
     const { getByText } = render(
-      <SuspendSignalsProvider value={true}>
+      <PauseSignalsProvider value={true}>
         <Component />
-      </SuspendSignalsProvider>,
+      </PauseSignalsProvider>,
     );
 
     await expect.element(getByText('Hello, World')).toBeInTheDocument();
@@ -166,7 +166,7 @@ describe('React > Suspend Signals', () => {
     await expect.element(getByText('Hello, World')).toBeInTheDocument();
   });
 
-  test('value retention - suspended signals maintain their last value', async () => {
+  test('value retention - paused signals maintain their last value', async () => {
     const count = signal(0);
 
     function Component(): React.ReactNode {
@@ -174,9 +174,9 @@ describe('React > Suspend Signals', () => {
 
       return (
         <div>
-          <SuspendSignalsProvider value={suspended}>
+          <PauseSignalsProvider value={suspended}>
             <div data-testid="count">{useReactive(() => count.value)}</div>
-          </SuspendSignalsProvider>
+          </PauseSignalsProvider>
           <button onClick={() => setDisabled(!suspended)}>Toggle</button>
         </div>
       );
@@ -209,7 +209,7 @@ describe('React > Suspend Signals', () => {
     await expect.element(getByTestId('count')).toHaveTextContent('5');
   });
 
-  test('reactive promises respect suspended context', async () => {
+  test('reactive promises respect paused context', async () => {
     const value = signal('Hello');
 
     const derived = reactive(async () => {
@@ -220,9 +220,9 @@ describe('React > Suspend Signals', () => {
 
     const Component = component(({ suspended }: { suspended: boolean }) => {
       return (
-        <SuspendSignalsProvider value={suspended}>
+        <PauseSignalsProvider value={suspended}>
           <Inner />
-        </SuspendSignalsProvider>
+        </PauseSignalsProvider>
       );
     });
 
@@ -259,7 +259,7 @@ describe('React > Suspend Signals', () => {
     await expect.element(getByText('Hello, World')).toBeInTheDocument();
   });
 
-  test('relays respect suspended context', async () => {
+  test('relays respect paused context', async () => {
     const content = signal('World');
 
     const derived = reactive(() => {
@@ -283,10 +283,10 @@ describe('React > Suspend Signals', () => {
       const [suspended, setDisabled] = useState(false);
       return (
         <div>
-          <SuspendSignalsProvider value={suspended}>
+          <PauseSignalsProvider value={suspended}>
             <Inner />
             <button onClick={() => setDisabled(!suspended)}>Toggle</button>
-          </SuspendSignalsProvider>
+          </PauseSignalsProvider>
         </div>
       );
     };
@@ -313,7 +313,7 @@ describe('React > Suspend Signals', () => {
     await expect.element(getByText('Hello, Universe')).toBeInTheDocument();
   });
 
-  test('multiple components with different suspended states', async () => {
+  test('multiple components with different paused states', async () => {
     const count = signal(0);
 
     const ComponentA = () => <div data-testid="a">{useReactive(() => count.value)}</div>;
@@ -322,12 +322,12 @@ describe('React > Suspend Signals', () => {
 
     const { getByTestId } = render(
       <div>
-        <SuspendSignalsProvider value={true}>
+        <PauseSignalsProvider value={true}>
           <ComponentA />
-        </SuspendSignalsProvider>
-        <SuspendSignalsProvider value={false}>
+        </PauseSignalsProvider>
+        <PauseSignalsProvider value={false}>
           <ComponentB />
-        </SuspendSignalsProvider>
+        </PauseSignalsProvider>
         <ComponentC />
       </div>,
     );
@@ -346,7 +346,7 @@ describe('React > Suspend Signals', () => {
     await expect.element(getByTestId('c')).toHaveTextContent('1');
   });
 
-  test('disabling does not prevent new subscriptions', async () => {
+  test('pausing does not prevent new subscriptions', async () => {
     const count = signal(0);
 
     const Child = () => <div data-testid="content">{useReactive(() => count.value)}</div>;
@@ -355,12 +355,12 @@ describe('React > Suspend Signals', () => {
       const [show, setShow] = useState(false);
 
       return (
-        <SuspendSignalsProvider value={true}>
+        <PauseSignalsProvider value={true}>
           <div>
             {show && <Child />}
             <button onClick={() => setShow(true)}>Show</button>
           </div>
-        </SuspendSignalsProvider>
+        </PauseSignalsProvider>
       );
     };
 
@@ -377,15 +377,90 @@ describe('React > Suspend Signals', () => {
     await expect.element(getByTestId('content')).toHaveTextContent('0');
   });
 
-  test('render count is not affected when signals update while suspended', async () => {
+  test('relay is not activated when component mounts inside an already-paused provider', async () => {
+    let relayActivateCount = 0;
+
+    const derived = reactive(() => {
+      return relay<string>(state => {
+        relayActivateCount++;
+        state.value = 'activated';
+      });
+    });
+
+    function Inner(): React.ReactNode {
+      const d = useReactive(() => derived());
+      return <div data-testid="content">{d.isPending ? 'pending' : d.value}</div>;
+    }
+
+    function Wrapper(): React.ReactNode {
+      const [show, setShow] = useState(false);
+
+      return (
+        <PauseSignalsProvider value={true}>
+          {show && <Inner />}
+          <button onClick={() => setShow(true)}>Mount</button>
+        </PauseSignalsProvider>
+      );
+    }
+
+    const { getByText, getByTestId } = render(<Wrapper />);
+
+    // Mount the component inside the already-suspended provider
+    await userEvent.click(getByText('Mount'));
+
+    // The component renders with the initial value, but the relay
+    // should NOT have been activated since the provider is suspended.
+    await sleep(50);
+    expect(relayActivateCount).toBe(0);
+    await expect.element(getByTestId('content')).toHaveTextContent('pending');
+  });
+
+  test('toggling pause does not cause re-renders when signals have not changed', async () => {
+    const count = signal(0);
+    const Child = createRenderCounter(() => <div data-testid="content">{useReactive(() => count.value)}</div>);
+    const MemoChild = React.memo(Child);
+
+    function Wrapper(): React.ReactNode {
+      const [suspended, setSuspended] = useState(false);
+
+      return (
+        <div>
+          <PauseSignalsProvider value={suspended}>
+            <MemoChild />
+          </PauseSignalsProvider>
+          <button onClick={() => setSuspended(s => !s)}>Toggle</button>
+        </div>
+      );
+    }
+
+    const { getByText, getByTestId } = render(<Wrapper />);
+
+    await expect.element(getByTestId('content')).toHaveTextContent('0');
+    const afterMount = Child.renderCount;
+
+    // Suspend
+    await userEvent.click(getByText('Toggle'));
+    await sleep(50);
+
+    // Resume — signal hasn't changed and the child is memoized, so
+    // the context change is fully absorbed by the provider. Zero
+    // extra renders on the child.
+    await userEvent.click(getByText('Toggle'));
+    await sleep(50);
+
+    expect(Child.renderCount).toBe(afterMount);
+    await expect.element(getByTestId('content')).toHaveTextContent('0');
+  });
+
+  test('render count is not affected when signals update while paused', async () => {
     const count = signal(0);
     const Child = createRenderCounter(() => <div>{useReactive(() => count.value)}</div>);
 
     const Component = () => {
       return (
-        <SuspendSignalsProvider value={true}>
+        <PauseSignalsProvider value={true}>
           <Child />
-        </SuspendSignalsProvider>
+        </PauseSignalsProvider>
       );
     };
 

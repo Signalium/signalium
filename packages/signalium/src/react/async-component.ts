@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type * as ReactTypes from 'react';
 import { getCurrentConsumer, setCurrentConsumer } from '../internals/consumer.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
@@ -7,7 +7,7 @@ import { isReactivePromise, ReactivePromiseImpl } from '../internals/async.js';
 import { hashValue } from '../internals/utils/hash.js';
 import { isPromise, isThennable } from '../internals/utils/type-utils.js';
 import { useScope } from './context.js';
-import { useSignalsSuspended } from './suspend-signals-context.js';
+import { usePauseSignalsManager } from './pause-signals-context.js';
 
 /**
  * Remembers settled outcomes for yielded thenables so synchronous replay can inject
@@ -146,7 +146,7 @@ export function createAsyncComponentWrapper<P extends object>(
 ): (props: P) => ReactTypes.ReactNode {
   const Inner = (props: P) => {
     const scope = useScope();
-    const suspended = useSignalsSuspended();
+    const manager = usePauseSignalsManager();
 
     const fnSignalRef = useRef<ReactiveSignal<ReactTypes.ReactNode | ReactTypes.ReactNode[] | null, []> | undefined>(
       undefined,
@@ -172,10 +172,15 @@ export function createAsyncComponentWrapper<P extends object>(
       fnSignalRef.current = sig = owned;
     }
 
-    sig.setSuspended(suspended);
+    const watch = !manager?.paused;
+    manager?.register(sig);
+
+    useEffect(() => {
+      return () => manager?.unregister(sig!);
+    }, [manager, sig]);
 
     useSyncExternalStore(
-      sig.addListenerLazy(),
+      sig.addListenerLazy(watch),
       () => sig!.updatedCount,
       () => sig!.updatedCount,
     );

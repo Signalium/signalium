@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive, relay } from 'signalium';
-import { useReactive, SuspendSignalsProvider } from 'signalium/react';
+import { useReactive, PauseSignalsProvider } from 'signalium/react';
 import React, { useState } from 'react';
 import { userEvent } from '@vitest/browser/context';
 import { sleep } from '../../__tests__/utils/async.js';
 import { createRenderCounter } from './utils.js';
 import component from '../component.js';
 
-describe('React > Suspend Signals > Value Preservation', () => {
+describe('React > Pause Signals > Value Preservation', () => {
   test('async reactive value is preserved across suspend/resume cycle', async () => {
     const input = signal('Hello');
 
@@ -46,9 +46,9 @@ describe('React > Suspend Signals > Value Preservation', () => {
 
       return (
         <div>
-          <SuspendSignalsProvider value={suspended}>
+          <PauseSignalsProvider value={suspended}>
             <Inner />
-          </SuspendSignalsProvider>
+          </PauseSignalsProvider>
           <button onClick={() => setSuspended(s => !s)}>Toggle</button>
         </div>
       );
@@ -119,9 +119,9 @@ describe('React > Suspend Signals > Value Preservation', () => {
 
       return (
         <div>
-          <SuspendSignalsProvider value={suspended}>
+          <PauseSignalsProvider value={suspended}>
             <Inner />
-          </SuspendSignalsProvider>
+          </PauseSignalsProvider>
           <button onClick={() => setSuspended(s => !s)}>Toggle</button>
         </div>
       );
@@ -178,9 +178,9 @@ describe('React > Suspend Signals > Value Preservation', () => {
 
       return (
         <div>
-          <SuspendSignalsProvider value={suspended}>
+          <PauseSignalsProvider value={suspended}>
             <Inner />
-          </SuspendSignalsProvider>
+          </PauseSignalsProvider>
           <button data-testid="toggle" onClick={() => setSuspended(s => !s)}>
             Toggle
           </button>
@@ -227,7 +227,7 @@ describe('React > Suspend Signals > Value Preservation', () => {
 
       return (
         <div>
-          <SuspendSignalsProvider value={suspended}>{mounted ? <Inner /> : null}</SuspendSignalsProvider>
+          <PauseSignalsProvider value={suspended}>{mounted ? <Inner /> : null}</PauseSignalsProvider>
           <button data-testid="toggle-suspend" onClick={() => setSuspended(s => !s)}>
             Toggle Suspend
           </button>

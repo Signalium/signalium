@@ -699,7 +699,7 @@ describe('async computeds', () => {
         { desc: 'outer' },
       );
 
-      // Initial run with useDep1 = true
+      // Initial run with useDep2 = true
       const r1 = outer();
       await sleep(20);
       expect(r1.value).toBe(210);
@@ -707,7 +707,7 @@ describe('async computeds', () => {
       expect(dep2Count).toBe(1);
       expect(outerCount).toBe(1);
 
-      // Now change useDep2 to false - this dirties outer
+      // Change useDep2 to false — this dirties outer
       useDep2.value = false;
 
       const r2 = outer();
@@ -722,7 +722,7 @@ describe('async computeds', () => {
       // (it wasn't consumed this time and should have been disconnected)
       expect(dep2Count).toBe(1);
 
-      // Now change useDep2 to true again
+      // Change useDep2 to true again
       useDep2.value = true;
 
       const r3 = outer();
@@ -732,6 +732,9 @@ describe('async computeds', () => {
       expect(r3.isResolved).toBe(true);
       expect(r3.value).toBe(210); // 2*10 + 2*100
 
+      // dep2 was disconnected when useDep2 was false and marked Dirty, but
+      // since state2 hasn't changed, it revalidates to the same value.
+      // The recompute still happens because it was fully unwatched.
       expect(dep2Count).toBe(2);
     });
 

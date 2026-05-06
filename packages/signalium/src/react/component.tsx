@@ -1,8 +1,8 @@
 import * as React from 'react';
-import { useMemo, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import { useScope } from './context.js';
-import { useSignalsSuspended } from './suspend-signals-context.js';
+import { usePauseSignalsManager } from './pause-signals-context.js';
 import { setRequestScopeGetter, SignalScope } from '../internals/contexts.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { runSignal } from '../internals/get.js';
@@ -75,7 +75,7 @@ export default function component<Props extends object>(
 
   const Component = (props: Props) => {
     const scope = useScope();
-    const suspended = useSignalsSuspended();
+    const manager = usePauseSignalsManager();
 
     const fnSignalRef = useRef<ReactiveSignal<ComponentRender, []> | undefined>(undefined);
     const propsRef = useRef<Props>(props);
@@ -100,13 +100,15 @@ export default function component<Props extends object>(
       fnSignalRef.current = signal = created;
     }
 
-    signal.setSuspended(suspended);
+    const watch = !manager?.paused;
+    manager?.register(signal);
 
-    // We always want to re-render when the signal is updated, regardless of
-    // whether or not the result changed. This is because the signal is lazy,
-    // so it will not be updated until the next render.
+    useEffect(() => {
+      return () => manager?.unregister(signal!);
+    }, [manager, signal]);
+
     useSyncExternalStore(
-      signal.addListenerLazy(),
+      signal.addListenerLazy(watch),
       () => signal.updatedCount,
       () => signal.updatedCount,
     );

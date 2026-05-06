@@ -3,7 +3,7 @@ import { createPromise, isReactivePromise, ReactivePromiseImpl } from './async.j
 import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
 import { createEdge, Edge, EdgeType } from './edge.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
-import { isRelay, ReactiveFnState, ReactiveSignal } from './reactive.js';
+import { ReactiveFnState, isRelay, ReactiveSignal } from './reactive.js';
 import { scheduleListeners, scheduleTracer } from './scheduling.js';
 import { getTracerProxy, SignalType, TracerEventType } from './trace.js';
 import { isGeneratorResult, isPromise } from './utils/type-utils.js';
@@ -31,7 +31,7 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
         }
 
         if (currentConsumer.watchCount > 0) {
-          watchSignal(signal, currentConsumer._isSuspended);
+          watchSignal(signal);
         }
       }
 
@@ -206,13 +206,18 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
 }
 
 export function disconnectSignal(signal: ReactiveSignal<any, any>, computedCount: number = signal.computedCount) {
-  const { ref, deps, _isSuspended: isSuspended } = signal;
+  const { ref, deps } = signal;
 
   for (const [dep, edge] of deps) {
     if (edge.consumedAt !== computedCount) {
-      unwatchSignal(dep, isSuspended);
+      unwatchSignal(dep);
       dep.subs.delete(ref);
       deps.delete(dep);
+      // Mark disconnected dep as Dirty so it revalidates when re-read.
+      // Its subscription chain is broken and it may miss notifications.
+      if (dep._state < ReactiveFnState.Dirty) {
+        dep._state = ReactiveFnState.Dirty;
+      }
     }
   }
 }

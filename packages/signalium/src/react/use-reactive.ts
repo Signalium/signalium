@@ -1,24 +1,29 @@
-import { useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { ReactiveValue } from '../types.js';
 import { getReactiveFnAndDefinition, reactiveSignal } from '../internals/core-api.js';
 import { getCurrentConsumer } from '../internals/consumer.js';
 import { ReactiveSignal } from '../internals/reactive.js';
 import { snapshot } from '../internals/utils/snapshot.js';
 import { useScope } from './context.js';
-import { useSignalsSuspended } from './suspend-signals-context.js';
+import { usePauseSignalsManager } from './pause-signals-context.js';
 import { getGlobalScope } from '../internals/contexts.js';
 
-const useReactiveFnSignal = <R, Args extends unknown[]>(signal: ReactiveSignal<R, Args>): ReactiveValue<R> => {
-  const suspended = useSignalsSuspended();
+function useSignalWithSuspension(signal: ReactiveSignal<any, any>) {
+  const manager = usePauseSignalsManager();
+  const watch = !manager?.paused;
 
-  signal.setSuspended(suspended);
+  manager?.register(signal);
+
+  useEffect(() => {
+    return () => manager?.unregister(signal);
+  }, [manager, signal]);
 
   return useSyncExternalStore(
-    signal.addListenerLazy(),
+    signal.addListenerLazy(watch),
     () => signal.value,
     () => signal.value,
   );
-};
+}
 
 /**
  * Subscribe to a reactive thunk without structural cloning. The thunk's
@@ -48,7 +53,7 @@ export function useReactiveShallow<R>(fn: () => R): ReactiveValue<R> {
   const scope = useScope() ?? getGlobalScope();
   const signal = scope.get(def, [] as []);
 
-  return useReactiveFnSignal(signal) as ReactiveValue<R>;
+  return useSignalWithSuspension(signal) as ReactiveValue<R>;
 }
 
 /**
@@ -70,7 +75,8 @@ export function useReactive<R>(fn: () => R): ReactiveValue<R> {
     );
   }
 
-  const suspended = useSignalsSuspended();
+  const manager = usePauseSignalsManager();
+  const watch = !manager?.paused;
 
   const scope = useScope() ?? getGlobalScope();
   const innerSignalRef = useRef<ReactiveSignal<R, []> | undefined>(undefined);
@@ -94,10 +100,14 @@ export function useReactive<R>(fn: () => R): ReactiveValue<R> {
 
   const cloneSignal = cloneSignalRef.current!;
 
-  cloneSignal.setSuspended(suspended);
+  manager?.register(cloneSignal);
+
+  useEffect(() => {
+    return () => manager?.unregister(cloneSignal);
+  }, [manager, cloneSignal]);
 
   return useSyncExternalStore(
-    cloneSignal.addListenerLazy(),
+    cloneSignal.addListenerLazy(watch),
     () => cloneSignal.value as ReactiveValue<R>,
     () => cloneSignal.value as ReactiveValue<R>,
   );

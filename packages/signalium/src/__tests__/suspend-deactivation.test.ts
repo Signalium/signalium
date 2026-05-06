@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { reactive, watcher } from '../index.js';
+import { watchSignal, unwatchSignal } from '../internals/watch.js';
+import { schedulePull } from '../internals/scheduling.js';
+import { ReactiveSignal } from '../internals/reactive.js';
 import { nextTick, sleep } from './utils/async.js';
 
 function createDeferred<T>() {
@@ -8,20 +11,18 @@ function createDeferred<T>() {
   return { promise, resolve };
 }
 
-describe('suspend then resume before deactivation fires', () => {
+describe('unwatch then rewatch before deactivation fires', () => {
   /**
    * Exercises the path where:
    * 1. A watcher actively subscribes to a sync-wrapper-over-async signal
-   * 2. The watcher is suspended (schedules deactivation)
-   * 3. The watcher is immediately resumed (before deactivation fires)
+   * 2. The watcher is unwatched (schedules deactivation)
+   * 3. The watcher is immediately rewatched (before deactivation fires)
    * 4. The async value resolves
    *
-   * resumeSignal sees _isActive === true (deactivation hasn't run yet)
-   * so it skips reactivation AND does not cancel the pending deactivation.
-   * When the deactivation later fires, suspendCount is 0 so it takes the
-   * hard-deactivation path and damages deps' watchCounts.
+   * The rewatch via watchSignal must cancel the pending deactivation
+   * so deps' watchCounts are not damaged when the flush runs.
    */
-  test('signal resolves after suspend → resume with pending deactivation', async () => {
+  test('signal resolves after unwatch → rewatch with pending deactivation', async () => {
     const deferred = createDeferred<string>();
 
     const getAsyncValue = reactive(async () => {
@@ -33,10 +34,8 @@ describe('suspend then resume before deactivation fires', () => {
       return promise.isPending ? 'pending' : promise.value;
     });
 
-    // Create a watcher that mimics a React component
     const w = watcher(() => getWrappedValue());
 
-    // Step 1: actively subscribe
     let latestValue: unknown;
     const unsub = w.addListener(() => {
       latestValue = w.value;
@@ -44,15 +43,14 @@ describe('suspend then resume before deactivation fires', () => {
     await nextTick();
     expect(w.value).toBe('pending');
 
-    // Step 2: suspend (like SuspendSignalsProvider changing to true)
-    w.setSuspended(true);
+    // Step 2: unwatch (like PauseSignalsProvider changing to true)
+    unwatchSignal(w as unknown as ReactiveSignal<any, any>);
 
-    // Step 3: immediately resume (like a second component unsuspending)
-    // This is BEFORE the scheduled deactivation fires.
-    w.setSuspended(false);
+    // Step 3: immediately rewatch (before deactivation fires)
+    watchSignal(w as unknown as ReactiveSignal<any, any>);
+    schedulePull(w as unknown as ReactiveSignal<any, any>);
 
-    // Let the scheduled flush run — if deactivation isn't cancelled,
-    // it will damage deps
+    // Let the scheduled flush run — deactivation should have been cancelled
     await nextTick();
 
     // Step 4: resolve the async value
