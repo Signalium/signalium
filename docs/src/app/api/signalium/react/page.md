@@ -389,7 +389,7 @@ const TabScreen = component(() => {
 - For permanent cleanup, unmount the component normally — pausing is for temporary resource savings
 - Works with both `useReactive` and `component()` which are the primary signal entry points in React
 
-| Prop     | Type              | Description                       |
-| -------- | ----------------- | --------------------------------- |
-| value    | `boolean`         | Whether to pause (true) or not    |
-| children | `React.ReactNode` | Children to pause/resume          |
+| Prop     | Type              | Description                    |
+| -------- | ----------------- | ------------------------------ |
+| value    | `boolean`         | Whether to pause (true) or not |
+| children | `React.ReactNode` | Children to pause/resume       |

@@ -39,14 +39,8 @@ class PauseSignalsManager {
 
 const PauseSignalsManagerContext = createContext<PauseSignalsManager | null>(null);
 
-export function PauseSignalsProvider({
-  value,
-  children,
-}: {
-  value: boolean;
-  children: React.ReactNode;
-}) {
-  const managerRef = useRef<PauseSignalsManager>(null);
+export function PauseSignalsProvider({ value, children }: { value: boolean; children: React.ReactNode }) {
+  const managerRef = useRef<PauseSignalsManager | null>(null);
   if (managerRef.current === null) {
     managerRef.current = new PauseSignalsManager(value);
   }

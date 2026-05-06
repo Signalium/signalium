@@ -1,4 +1,4 @@
-import { describe, expect, test, afterEach } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { reactive, setRequestScopeGetter } from 'signalium';
 import { setupRscRequestScope } from '../react/server.js';
 
