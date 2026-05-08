@@ -18,7 +18,7 @@ module.exports = {
               marginBottom: '-0.15rem',
               borderRadius: '0.25rem',
               border: '1px solid var(--color-divider)',
-              color: 'var(--color-pink-400)',
+              color: 'var(--color-tertiary-300)',
             },
             'code::before': {
               content: '""',

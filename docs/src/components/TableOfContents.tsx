@@ -62,13 +62,13 @@ export function TableOfContents({
   }
 
   return (
-    <div className="hidden xl:sticky xl:top-[4.75rem] xl:-mr-6 xl:block xl:h-[calc(100vh-4.75rem)] xl:flex-none xl:overflow-y-auto xl:py-16 xl:pr-6">
+    <div className="hidden xl:sticky xl:top-14 xl:-mr-6 xl:block xl:h-[calc(100vh-3.5rem)] xl:flex-none xl:overflow-y-auto xl:py-8 xl:pr-6">
       <nav aria-labelledby="on-this-page-title" className="w-56">
         {tableOfContents.length > 0 && (
           <>
             <h2
               id="on-this-page-title"
-              className="font-display text-sm font-medium text-white"
+              className="text-[11px] font-semibold tracking-wider text-primary-400 uppercase"
             >
               On this page
             </h2>
@@ -79,10 +79,10 @@ export function TableOfContents({
                     <Link
                       href={`#${section.id}`}
                       className={clsx(
-                        'transition-all',
+                        'block border-l-2 pl-3 transition-colors',
                         isActive(section)
-                          ? 'font-bold text-secondary-300'
-                          : 'font-normal text-primary-300/70 hover:text-primary-100',
+                          ? 'border-tertiary-300 font-medium text-tertiary-300'
+                          : 'border-transparent text-primary-300/70 hover:text-primary-100',
                       )}
                     >
                       {section.title}
@@ -91,17 +91,17 @@ export function TableOfContents({
                   {section.children.length > 0 && (
                     <ol
                       role="list"
-                      className="mt-2 space-y-3 pl-5 text-primary-300/70"
+                      className="mt-2 space-y-3 text-primary-300/70"
                     >
                       {section.children.map((subSection) => (
                         <li key={subSection.id}>
                           <Link
                             href={`#${subSection.id}`}
                             className={clsx(
-                              'transition-all',
+                              'block border-l-2 pl-6 transition-colors',
                               isActive(subSection)
-                                ? 'font-bold text-secondary-300'
-                                : 'hover:text-primary-100',
+                                ? 'border-tertiary-300 font-medium text-tertiary-300'
+                                : 'border-transparent hover:text-primary-100',
                             )}
                           >
                             {subSection.title}

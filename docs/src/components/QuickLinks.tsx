@@ -22,8 +22,8 @@ export function QuickLink({
   icon: React.ComponentProps<typeof Icon>['icon'];
 }) {
   return (
-    <div className="group relative rounded-xl border border-primary-300/10">
-      <div className="absolute -inset-px rounded-xl border-2 border-transparent opacity-0 transition-opacity duration-300 [--quick-links-hover-bg:var(--color-primary-900)] [background:linear-gradient(var(--quick-links-hover-bg,var(--color-primary-50)),var(--quick-links-hover-bg,var(--color-primary-50)))_padding-box,linear-gradient(to_top,var(--color-secondary-400),var(--color-secondary-200),var(--color-primary-400))_border-box] group-hover:opacity-100" />
+    <div className="group relative rounded-xl border border-secondary-400/10">
+      <div className="absolute -inset-px rounded-xl border-2 border-transparent opacity-0 transition-opacity duration-300 [--quick-links-hover-bg:var(--color-primary-900)] [background:linear-gradient(var(--quick-links-hover-bg,var(--color-primary-50)),var(--quick-links-hover-bg,var(--color-primary-50)))_padding-box,linear-gradient(to_top,var(--color-secondary-400),var(--color-tertiary-400),var(--color-secondary-300))_border-box] group-hover:opacity-100" />
       <div className="relative overflow-hidden rounded-xl p-6">
         <Icon icon={icon} className="h-8 w-8" />
         <h2 className="mt-4 font-display text-base text-white">
@@ -32,7 +32,7 @@ export function QuickLink({
             {title}
           </Link>
         </h2>
-        <p className="mt-1 text-sm text-slate-400">{description}</p>
+        <p className="mt-1 text-sm text-primary-300">{description}</p>
       </div>
     </div>
   );

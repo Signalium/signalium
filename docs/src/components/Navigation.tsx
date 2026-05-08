@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
@@ -40,15 +42,10 @@ function GroupNavigationListItem({
 }) {
   return (
     <li key={item.title}>
-      <h2
-        className={clsx(
-          'font-display font-medium text-white',
-          !isRoot && 'ml-px pl-3.5',
-        )}
-      >
+      <h2 className="px-6 font-display text-[11px] font-semibold tracking-wider text-primary-500 uppercase">
         {item.title}
       </h2>
-      <ul role="list" className="mt-2 space-y-2 lg:mt-4 lg:space-y-4">
+      <ul role="list" className="mt-3 space-y-0.5">
         {item.items.map((item) => (
           <NavigationListItem
             key={item.title}
@@ -69,20 +66,18 @@ function LinkNavigationListItem({
   onLinkClick?: React.MouseEventHandler<HTMLAnchorElement>;
 }) {
   let pathname = usePathname();
+  let isActive = item.href === pathname;
 
   return (
-    <li
-      key={item.title}
-      className="relative my-0 ml-px border-l border-divider py-1.5"
-    >
+    <li key={item.title}>
       <Link
         href={item.href}
         onClick={onLinkClick}
         className={clsx(
-          'block w-full pl-3.5 transition-all before:pointer-events-none before:absolute before:top-1/2 before:left-[-0.5px] before:h-1.5 before:w-1.5 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-secondary-300 before:transition-all',
-          item.href === pathname
-            ? 'font-semibold text-secondary-300 before:opacity-100'
-            : 'text-primary-300/70 before:opacity-0 hover:text-white hover:before:opacity-100',
+          'block border-r-2 py-2 pr-4 pl-6 text-sm transition-colors',
+          isActive
+            ? 'border-tertiary-300 bg-tertiary-300/10 font-medium text-tertiary-300'
+            : 'border-transparent text-primary-300/70 hover:text-white',
         )}
       >
         {item.title}
@@ -99,8 +94,8 @@ export function Navigation({
   onLinkClick?: React.MouseEventHandler<HTMLAnchorElement>;
 }) {
   return (
-    <nav className={clsx('text-base lg:text-sm', className)}>
-      <ul role="list" className="space-y-9">
+    <nav className={clsx('text-sm', className)}>
+      <ul role="list" className="space-y-6">
         {navigation.map((item) => (
           <NavigationListItem
             key={item.title}

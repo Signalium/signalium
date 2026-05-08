@@ -18,7 +18,7 @@ const icons = {
 };
 
 const iconStyles = {
-  blue: '[--icon-foreground:var(--color-indigo-950)] [--icon-background:var(--color-white)]',
+  blue: '[--icon-foreground:var(--color-primary-950)] [--icon-background:var(--color-white)]',
   amber:
     '[--icon-foreground:var(--color-amber-900)] [--icon-background:var(--color-amber-100)]',
 };
@@ -49,10 +49,10 @@ export function Icon({
 }
 
 const gradients = {
-  blue: [{ stopColor: '#a197e2' }, { stopColor: '#8582FB', offset: 1 }],
+  blue: [{ stopColor: '#A8E848' }, { stopColor: '#60A028', offset: 1 }],
   amber: [
-    { stopColor: '#FDE68A', offset: '.08' },
-    { stopColor: '#F59E0B', offset: '.837' },
+    { stopColor: '#F8A0C8', offset: '.08' },
+    { stopColor: '#F050A0', offset: '.837' },
   ],
 };
 

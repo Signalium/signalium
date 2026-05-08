@@ -37,6 +37,7 @@ describe('React > async component()', () => {
   test('(sanity) raw thrown Promise works with Suspense', async () => {
     let p: Promise<void> | undefined;
     let done = false;
+
     function RawChild() {
       if (!done) {
         if (!p) {

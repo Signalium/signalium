@@ -72,61 +72,140 @@ export const flattenNavigation = (
 
 export const navigation: GroupNavigationItem[] = [
   {
-    title: 'Introduction',
+    title: 'Getting started',
     type: 'group',
     items: [
-      { type: 'link', title: 'Getting started', href: '/#getting-started' },
+      { type: 'link', title: 'Quick start', href: '/quickstart' },
+      { type: 'link', title: 'Installation & setup', href: '/setup/install' },
+      { type: 'link', title: 'Why Signalium?', href: '/setup/why' },
     ],
   },
   {
-    title: 'Core concepts',
+    title: 'Components',
     type: 'group',
     items: [
       {
         type: 'link',
-        title: 'Signals and Reactive Functions',
-        href: '/core/signals-and-reactive-functions',
+        title: 'Your first component',
+        href: '/components/first-component',
       },
       {
         type: 'link',
-        title: 'Reactive Promises',
-        href: '/core/reactive-promises',
+        title: 'Local state with useSignal',
+        href: '/components/use-signal',
       },
       {
         type: 'link',
-        title: 'Relays and Watchers',
-        href: '/core/relays-and-watchers',
+        title: 'Derived values with reactive',
+        href: '/components/reactive-values',
       },
       {
         type: 'link',
-        title: 'Contexts',
-        href: '/core/contexts',
+        title: 'Async components & Suspense',
+        href: '/components/async',
       },
       {
         type: 'link',
-        title: 'React Integration',
-        href: '/core/react',
+        title: 'Providing context',
+        href: '/components/contexts',
+      },
+      {
+        type: 'link',
+        title: 'Pausing signal subtrees',
+        href: '/components/pausing',
+      },
+      {
+        type: 'link',
+        title: 'Layering on React',
+        href: '/components/layering',
       },
     ],
   },
   {
-    title: 'Guides & Articles',
+    title: 'The reactivity system',
+    type: 'group',
+    items: [
+      { type: 'link', title: 'Signals', href: '/reactivity/signals' },
+      {
+        type: 'link',
+        title: 'Reactive functions',
+        href: '/reactivity/reactive-functions',
+      },
+      {
+        type: 'link',
+        title: 'Reactive promises',
+        href: '/reactivity/reactive-promises',
+      },
+      { type: 'link', title: 'Relays', href: '/reactivity/relays' },
+      { type: 'link', title: 'Watchers', href: '/reactivity/watchers' },
+      { type: 'link', title: 'Contexts', href: '/reactivity/contexts' },
+      {
+        type: 'link',
+        title: 'Scheduling & batching',
+        href: '/reactivity/scheduling',
+      },
+    ],
+  },
+  {
+    title: 'Integrating Signalium',
     type: 'group',
     items: [
       {
         type: 'link',
-        title: 'Advanced Reactive Techniques & Behaviors',
-        href: '/advanced/reactive-function-behaviors',
+        title: 'Incremental adoption',
+        href: '/integrating/existing-apps',
       },
       {
         type: 'link',
-        title: 'Signals as Monads',
-        href: '/advanced/signals-as-monads',
+        title: 'Hooks interop',
+        href: '/integrating/hooks',
       },
       {
         type: 'link',
-        title: 'Code Transforms and Async Context',
-        href: '/advanced/code-transforms-and-async-context',
+        title: 'useReactive & imperative reads',
+        href: '/integrating/use-reactive',
+      },
+      {
+        type: 'link',
+        title: 'RSC & SSR',
+        href: '/integrating/rsc-ssr',
+      },
+      {
+        type: 'link',
+        title: 'React Native',
+        href: '/integrating/react-native',
+      },
+      {
+        type: 'link',
+        title: 'State libraries',
+        href: '/integrating/state-libraries',
+      },
+      { type: 'link', title: 'Testing', href: '/integrating/testing' },
+      {
+        type: 'link',
+        title: 'Bundler setup',
+        href: '/integrating/bundlers',
+      },
+    ],
+  },
+  {
+    title: 'Guides & deep dives',
+    type: 'group',
+    items: [
+      {
+        type: 'link',
+        title: 'Advanced reactive behaviors',
+        href: '/guides/reactive-function-behaviors',
+      },
+      {
+        type: 'link',
+        title: 'Signals as monads',
+        href: '/guides/signals-as-monads',
+      },
+      {
+        type: 'link',
+        title: 'Code transforms & async context',
+        href: '/guides/code-transforms',
       },
     ],
   },

@@ -135,7 +135,7 @@ export default defineConfig({
           browser: {
             enabled: true,
             provider: 'playwright',
-            headless: true,
+            // headless: true,
             instances: [{ browser: 'chromium' }],
           },
         },

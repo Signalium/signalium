@@ -69,23 +69,23 @@ export function ThemeSelector(
     <Listbox as="div" value={theme} onChange={setTheme} {...props}>
       <Label className="sr-only">Theme</Label>
       <ListboxButton
-        className="flex h-6 w-6 items-center justify-center rounded-lg shadow-md ring-1 shadow-black/5 ring-black/5 dark:bg-indigo-800 dark:ring-white/5 dark:ring-inset"
+        className="flex h-6 w-6 items-center justify-center rounded-lg bg-primary-800 shadow-md ring-1 shadow-black/5 ring-white/5 ring-inset"
         aria-label="Theme"
       >
         <LightIcon
           className={clsx(
             'h-4 w-4 dark:hidden',
-            theme === 'system' ? 'fill-slate-400' : 'fill-sky-400',
+            theme === 'system' ? 'fill-primary-400' : 'fill-secondary-400',
           )}
         />
         <DarkIcon
           className={clsx(
             'hidden h-4 w-4 dark:block',
-            theme === 'system' ? 'fill-slate-400' : 'fill-sky-400',
+            theme === 'system' ? 'fill-primary-400' : 'fill-secondary-400',
           )}
         />
       </ListboxButton>
-      <ListboxOptions className="absolute top-full left-1/2 mt-3 w-36 -translate-x-1/2 space-y-1 rounded-xl bg-white p-3 text-sm font-medium shadow-md ring-1 shadow-black/5 ring-black/5 dark:bg-indigo-900 dark:ring-white/5">
+      <ListboxOptions className="absolute top-full left-1/2 mt-3 w-36 -translate-x-1/2 space-y-1 rounded-xl bg-primary-900 p-3 text-sm font-medium shadow-md ring-1 shadow-black/5 ring-white/5">
         {themes.map((theme) => (
           <ListboxOption
             key={theme.value}
@@ -94,23 +94,21 @@ export function ThemeSelector(
               clsx(
                 'flex cursor-pointer items-center rounded-[0.625rem] p-1 select-none',
                 {
-                  'text-purple-300': selected,
-                  'text-slate-900 dark:text-white': focus && !selected,
-                  'text-slate-700 dark:text-slate-400': !focus && !selected,
-                  'bg-indigo-150 dark:bg-indigo-950/40': focus,
+                  'text-secondary-300': selected,
+                  'text-white': focus && !selected,
+                  'text-primary-400': !focus && !selected,
+                  'bg-primary-800/40': focus,
                 },
               )
             }
           >
             {({ selected }) => (
               <>
-                <div className="rounded-md bg-white p-1 shadow-sm ring-1 ring-slate-900/5 dark:bg-indigo-800 dark:ring-white/5 dark:ring-inset">
+                <div className="rounded-md bg-primary-800 p-1 shadow-sm ring-1 ring-white/5 ring-inset">
                   <theme.icon
                     className={clsx(
                       'h-4 w-4',
-                      selected
-                        ? 'fill-sky-400 dark:fill-sky-400'
-                        : 'fill-slate-400',
+                      selected ? 'fill-secondary-400' : 'fill-primary-400',
                     )}
                   />
                 </div>

@@ -34,51 +34,56 @@
   --text-9xl--line-height: 1;
 
   --font-sans: var(--font-inter);
-  --font-display: var(--font-lexend);
-  --font-display--font-feature-settings: 'ss01';
+  --font-display: var(--font-dm-mono), ui-monospace, monospace;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
 
   --container-8xl: 88rem;
 
-  --color-primary-50: #f0f3fd;
-  --color-primary-100: #e3e9fc;
-  --color-primary-200: #cdd5f8;
-  --color-primary-300: #aebbf3;
-  --color-primary-400: #8e97eb;
-  --color-primary-500: #7275e2;
-  --color-primary-600: #5d57d4;
-  --color-primary-700: #4f47bb;
-  --color-primary-800: #413c97;
-  --color-primary-900: #383778;
-  --color-primary-950: #232148;
-  --color-primary-1000: #1f1d3d;
+  /* Neutral near-black base */
+  --color-primary-50: #e8e8ec;
+  --color-primary-100: #d0d0d6;
+  --color-primary-200: #b0b0b8;
+  --color-primary-300: #909098;
+  --color-primary-400: #707078;
+  --color-primary-500: #585860;
+  --color-primary-600: #4a4a52;
+  --color-primary-700: #3a3a42;
+  --color-primary-800: #2c2c32;
+  --color-primary-900: #1a1a1e;
+  --color-primary-950: #131315;
+  --color-primary-1000: #0c0c0e;
 
-  --color-secondary-50: #faf5ff;
-  --color-secondary-100: #f3e8ff;
-  --color-secondary-200: #e9d4ff;
-  --color-secondary-300: #d8b4ff;
-  --color-secondary-400: #bf82fe;
-  --color-secondary-500: #a753f9;
-  --color-secondary-600: #9231ec;
-  --color-secondary-700: #7d20d0;
-  --color-secondary-800: #6a1faa;
-  --color-secondary-900: #571b88;
-  --color-secondary-950: #3a0665;
+  /* Amber / gold accent */
+  --color-secondary-50: #fdf7e3;
+  --color-secondary-100: #faecb3;
+  --color-secondary-200: #f4dc7a;
+  --color-secondary-300: #e8b830;
+  --color-secondary-400: #d0a028;
+  --color-secondary-500: #b88820;
+  --color-secondary-600: #9a7018;
+  --color-secondary-700: #7a5814;
+  --color-secondary-800: #5c4210;
+  --color-secondary-900: #3a2a0a;
+  --color-secondary-950: #282008;
+  --color-secondary-1000: #150f04;
 
-  --color-tertiary-50: #f0f9ff;
-  --color-tertiary-100: #e1f2fd;
-  --color-tertiary-200: #bce5fb;
-  --color-tertiary-300: #81d2f8;
-  --color-tertiary-400: #40bcf2;
-  --color-tertiary-500: #15a3e2;
-  --color-tertiary-600: #0883c1;
-  --color-tertiary-700: #08699c;
-  --color-tertiary-800: #0b5881;
-  --color-tertiary-900: #0f496b;
-  --color-tertiary-950: #0a2f47;
+  /* Violet accent */
+  --color-tertiary-50: #faf5ff;
+  --color-tertiary-100: #f3e8ff;
+  --color-tertiary-200: #e9d4ff;
+  --color-tertiary-300: #a753f9;
+  --color-tertiary-400: #9231ec;
+  --color-tertiary-500: #7d20d0;
+  --color-tertiary-600: #6a1faa;
+  --color-tertiary-700: #571b88;
+  --color-tertiary-800: #431666;
+  --color-tertiary-900: #2f0e47;
+  --color-tertiary-950: #1c0730;
+  --color-tertiary-1000: #0e031a;
 
   --color-divider: color-mix(
     in oklab,
-    var(--color-primary-900) 80%,
+    var(--color-primary-800) 80%,
     transparent
   );
 }
@@ -89,17 +94,8 @@
   }
 }
 
-.loader {
-  @apply border-2 border-yellow-400;
-  border-bottom-color: transparent;
-  border-radius: 50%;
-  display: inline-block;
-  box-sizing: border-box;
-  animation: rotation 1s linear infinite;
-}
-
 table {
-  @apply border-separate border-spacing-0 rounded-xl border border-primary-900 bg-primary-1000;
+  @apply border-separate border-spacing-0 rounded-xl border border-primary-800 bg-primary-1000;
 }
 
 table code {
@@ -107,7 +103,7 @@ table code {
 }
 
 table th {
-  @apply border-b-2 border-primary-900 px-4 py-2;
+  @apply border-b-2 border-primary-800 px-4 py-2;
 }
 
 table td {
@@ -115,7 +111,7 @@ table td {
 }
 
 table tr:not(:last-child) > td {
-  @apply border-b border-primary-900;
+  @apply border-b border-primary-800;
 }
 
 code {
@@ -128,11 +124,62 @@ pre > code {
   display: block;
 }
 
-@keyframes rotation {
+/* -------------------------------------------------------------------------
+   Home page animations (used by the reactive-graph hero demo and search demo)
+   ------------------------------------------------------------------------- */
+@keyframes sigBreath {
+  0%,
+  100% {
+    stroke-opacity: 0.55;
+  }
+  50% {
+    stroke-opacity: 1;
+  }
+}
+
+@keyframes loadSpin {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+@keyframes propFlash {
   0% {
-    transform: rotate(0deg);
+    stroke: var(--color-secondary-200);
+    stroke-width: 2.2;
   }
   100% {
-    transform: rotate(360deg);
+    stroke: var(--color-secondary-300);
+    stroke-width: 1.8;
   }
+}
+
+@keyframes propTextFlash {
+  0% {
+    fill: #fff;
+  }
+  100% {
+    fill: var(--color-secondary-200);
+  }
+}
+
+.sig-breath {
+  animation: sigBreath 3.2s ease-in-out infinite;
+}
+
+.load-spin {
+  stroke-dasharray: 3 2;
+  animation: loadSpin 1s linear infinite;
+}
+
+.prop-flash {
+  stroke: var(--color-secondary-300);
+  stroke-width: 1.8;
+  animation: propFlash 0.45s ease-out;
+}
+
+.prop-text-flash {
+  fill: var(--color-secondary-200);
+  font-weight: 500;
+  animation: propTextFlash 0.45s ease-out;
 }

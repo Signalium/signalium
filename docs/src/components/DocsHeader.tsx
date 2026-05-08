@@ -15,9 +15,15 @@ export function DocsHeader({ title }: { title?: string }) {
   return (
     <header className="mb-9 space-y-1">
       {section && (
-        <p className="font-display text-sm font-medium text-secondary-300">
-          {section.title}
-        </p>
+        <div className="flex items-center gap-2 text-sm text-primary-400">
+          <span>{section.title}</span>
+          {title && (
+            <>
+              <span className="text-primary-600">/</span>
+              <span className="text-secondary-300">{title}</span>
+            </>
+          )}
+        </div>
       )}
       {title && (
         <h1 className="font-display text-3xl tracking-tight text-white">

@@ -578,25 +578,40 @@ export interface ReactiveOptions<T, Args extends unknown[]>
 
 ### ReactivePromise
 
+`ReactivePromise<T>` is a discriminated union of `PendingReactivePromise<T>` (no value yet) and `ReadyReactivePromise<T>` (value resolved at least once). The `isReady` flag narrows `value` from `undefined` to `T`.
+
 ```ts
-export interface ReactivePromise<T> extends Promise<T> {
-  readonly value: T | undefined;
+export interface PendingReactivePromise<T> extends Promise<T> {
+  readonly value: undefined;
   readonly error: unknown;
 
   readonly isPending: boolean;
   readonly isRejected: boolean;
   readonly isResolved: boolean;
   readonly isSettled: boolean;
-  readonly isReady: boolean;
+  readonly isReady: false;
 }
+
+export interface ReadyReactivePromise<T> extends Promise<T> {
+  readonly value: T;
+  readonly error: unknown;
+
+  readonly isPending: boolean;
+  readonly isRejected: boolean;
+  readonly isResolved: boolean;
+  readonly isSettled: boolean;
+  readonly isReady: true;
+}
+
+export type ReactivePromise<T> = PendingReactivePromise<T> | ReadyReactivePromise<T>;
 ```
 
-| Property     | Type                    | Description                        |
-| ------------ | ----------------------- | ---------------------------------- |
-| `value`      | `T        \| undefined` | Current resolved value             |
-| `error`      | `unknown`               | Current error if rejected          |
-| `isPending`  | `boolean`               | Promise is pending                 |
-| `isRejected` | `boolean`               | Promise was rejected               |
-| `isResolved` | `boolean`               | Promise was resolved               |
-| `isSettled`  | `boolean`               | Promise is settled                 |
-| `isReady`    | `boolean`               | Value is available (non-undefined) |
+| Property     | Type                                          | Description                                                       |
+| ------------ | --------------------------------------------- | ----------------------------------------------------------------- |
+| `value`      | `T` when `isReady`, else `undefined`          | Current resolved value; narrowed by `isReady`                     |
+| `error`      | `unknown`                                     | Current error if rejected                                         |
+| `isPending`  | `boolean`                                     | Promise is pending                                                |
+| `isRejected` | `boolean`                                     | Promise was rejected                                              |
+| `isResolved` | `boolean`                                     | Promise was resolved                                              |
+| `isSettled`  | `boolean`                                     | Promise is settled                                                |
+| `isReady`    | `true \| false`                               | Discriminates the union: when `true`, `value` is guaranteed `T`   |

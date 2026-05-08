@@ -168,7 +168,7 @@ function SearchResult({
 
   return (
     <li
-      className="group aria-selected:bg-indigo-150 block cursor-default rounded-lg px-3 py-2 aria-selected:bg-indigo-800/30"
+      className="group block cursor-default rounded-lg px-3 py-2 aria-selected:bg-primary-800/30"
       aria-labelledby={`${id}-hierarchy ${id}-title`}
       {...autocomplete.getItemProps({
         item: result,
@@ -363,7 +363,7 @@ function SearchDialog({
         onClose={() => close(autocomplete)}
         className={clsx('fixed inset-0 z-50', className)}
       >
-        <div className="fixed inset-0 bg-indigo-950/50 backdrop-blur-sm" />
+        <div className="fixed inset-0 bg-primary-950/50 backdrop-blur-sm" />
 
         <div className="fixed inset-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-20 md:py-32 lg:px-8 lg:py-[15vh]">
           <DialogPanel className="mx-auto transform-gpu overflow-hidden rounded-xl bg-primary-900 shadow-xl ring-1 ring-primary-400/50 sm:max-w-xl">

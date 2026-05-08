@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Dialog, DialogPanel } from '@headlessui/react';
 
-import { Logomark } from '@/components/Logo';
+import { SgTile } from '@/components/Logo';
 import { Navigation } from '@/components/Navigation';
 
 function MenuIcon(props: React.ComponentPropsWithoutRef<'svg'>) {
@@ -71,7 +71,7 @@ export function MobileNavigation() {
         className="relative"
         aria-label="Open navigation"
       >
-        <MenuIcon className="h-6 w-6 stroke-slate-500" />
+        <MenuIcon className="h-6 w-6 stroke-primary-400" />
       </button>
       <Suspense fallback={null}>
         <CloseOnNavigation close={close} />
@@ -79,20 +79,23 @@ export function MobileNavigation() {
       <Dialog
         open={isOpen}
         onClose={() => close()}
-        className="fixed inset-0 z-50 flex items-start overflow-y-auto bg-indigo-950/50 pr-10 backdrop-blur-sm lg:hidden"
+        className="fixed inset-0 z-50 flex items-start overflow-y-auto bg-primary-1000/80 pr-10 backdrop-blur-sm lg:hidden"
         aria-label="Navigation"
       >
-        <DialogPanel className="min-h-full w-full max-w-xs bg-primary-950 px-4 pt-8 pb-12 sm:px-6">
-          <div className="flex items-center">
+        <DialogPanel className="min-h-full w-full max-w-xs border-r border-primary-800 bg-primary-1000 px-6 pt-6 pb-12">
+          <div className="flex items-center justify-between">
+            <Link href="/" onClick={() => close()}>
+              <SgTile size="sm" />
+            </Link>
             <button
               type="button"
               onClick={() => close()}
               aria-label="Close navigation"
             >
-              <CloseIcon className="h-6 w-6 stroke-slate-500" />
+              <CloseIcon className="h-6 w-6 stroke-primary-400" />
             </button>
           </div>
-          <Navigation className="mt-5 px-1" onLinkClick={onLinkClick} />
+          <Navigation className="mt-6" onLinkClick={onLinkClick} />
         </DialogPanel>
       </Dialog>
     </>

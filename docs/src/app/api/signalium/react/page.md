@@ -22,7 +22,7 @@ export default function component<Props extends object>(
 
 Create a reactive component from a pure function. Inside the function, read `Signal` values and other reactive sources directly. Re-renders are scheduled automatically when dependencies change.
 
-You may pass an **`async`** function only when the **Signalium async transform** is enabled; it compiles `await` for Suspense. Wrap those components in `<Suspense>`. See [React integration — Async components with Suspense](/core/react#async-components-with-suspense) for the transition-like update model (eager for React state, lazy while async reactives are pending).
+You may pass an **`async`** function only when the **Signalium async transform** is enabled; it compiles `await` for Suspense. Wrap those components in `<Suspense>`. See [Async components & Suspense](/components/async) for the transition-like update model (eager for React state, lazy while async reactives are pending).
 
 ```tsx
 import { component, useSignal } from 'signalium/react';
