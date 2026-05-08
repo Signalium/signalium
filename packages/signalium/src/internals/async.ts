@@ -19,14 +19,6 @@ import { getCurrentConsumer } from './consumer.js';
 import { createCallback } from './callback.js';
 import { getTracerProxy, TracerEventType } from './trace.js';
 
-function isAbortError(error: unknown): boolean {
-  if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
-    return error.name === 'AbortError';
-  }
-
-  return error instanceof Error && error.name === 'AbortError';
-}
-
 const enum AsyncFlags {
   // ======= Notifiers ========
 
@@ -492,11 +484,6 @@ export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
   }
 
   private _setError(nextError: unknown, awaitSubs = this._awaitSubs) {
-    if (nextError !== this._error && !isAbortError(nextError)) {
-      const desc = this._signal?.desc ?? (IS_DEV ? this._signal?.tracerMeta?.desc : undefined);
-      console.error(`[signalium] Unhandled async error${desc ? ` in "${desc}"` : ''}:`, nextError);
-    }
-
     let error = this._error;
 
     let notifyFlags = 0;
