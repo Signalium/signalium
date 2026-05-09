@@ -51,18 +51,30 @@ However, we want a _declarative_ way of representing this data, one that derives
 The way Signalium handles this is by exposing the various states of a Promise as properties:
 
 ```ts
-interface ReactivePromise<T> extends Promise<T> {
-  value: T | undefined;
+interface PendingReactivePromise<T> extends Promise<T> {
+  value: undefined;
   error: unknown;
   isPending: boolean;
   isResolved: boolean;
   isRejected: boolean;
   isSettled: boolean;
-  isReady: boolean;
+  isReady: false;
 }
+
+interface ReadyReactivePromise<T> extends Promise<T> {
+  value: T;
+  error: unknown;
+  isPending: boolean;
+  isResolved: boolean;
+  isRejected: boolean;
+  isSettled: boolean;
+  isReady: true;
+}
+
+type ReactivePromise<T> = PendingReactivePromise<T> | ReadyReactivePromise<T>;
 ```
 
-Whenever a Reactive Function returns a Promise, Signalium converts that Promise into a Reactive Promise with these properties.
+Whenever a Reactive Function returns a Promise, Signalium converts that Promise into a Reactive Promise with these properties. The `isReady` flag discriminates the two states: once `isReady` is `true`, `value` is guaranteed to be `T` (no `undefined` check needed), so `if (p.isReady) { /* p.value: T */ }` narrows correctly.
 
 ```js {% visualize=true %}
 import { signal, reactive } from 'signalium';

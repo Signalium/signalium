@@ -46,31 +46,58 @@ export interface ReactiveOptions<T, Params extends unknown[]> extends SignalOpti
   paramKey?: (...params: Params) => string | number;
 }
 
-export interface ReactivePromise<T> extends Promise<T> {
-  readonly value: T | undefined;
+/**
+ * Internal shape shared by both branches of the {@link ReactivePromise} union.
+ * Not part of the public API — consumers should use {@link ReactivePromise},
+ * {@link PendingReactivePromise}, or {@link ReadyReactivePromise}.
+ */
+export interface BaseReactivePromise<T> extends Promise<T> {
   readonly error: unknown;
 
   readonly isPending: boolean;
   readonly isRejected: boolean;
   readonly isResolved: boolean;
   readonly isSettled: boolean;
-  readonly isReady: boolean;
 }
 
-export interface PendingReactivePromise<T> extends ReactivePromise<T> {
+export interface PendingReactivePromise<T> extends BaseReactivePromise<T> {
   readonly value: undefined;
   readonly isReady: false;
 }
 
-export interface ReadyReactivePromise<T> extends ReactivePromise<T> {
+export interface ReadyReactivePromise<T> extends BaseReactivePromise<T> {
   readonly value: T;
   readonly isReady: true;
 }
 
-export type DiscriminatedReactivePromise<T> = PendingReactivePromise<T> | ReadyReactivePromise<T>;
+export type ReactivePromise<T> = PendingReactivePromise<T> | ReadyReactivePromise<T>;
 
-export type ReactiveTask<T, Params extends unknown[]> = DiscriminatedReactivePromise<T> & {
-  run(...params: Params): DiscriminatedReactivePromise<T>;
+export interface ReactivePromiseConstructor {
+  readonly prototype: ReactivePromise<any>;
+
+  new <T>(
+    executor?: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason: unknown) => void) => void,
+  ): ReactivePromise<T>;
+
+  all<T extends readonly unknown[] | []>(values: T): ReactivePromise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
+  race<T extends readonly unknown[] | []>(values: T): ReactivePromise<Awaited<T[number]>>;
+  any<T>(values: Iterable<T | PromiseLike<T>>): ReactivePromise<Awaited<T>>;
+  any<T extends readonly unknown[] | []>(values: T): ReactivePromise<Awaited<T[number]>>;
+  allSettled<T>(values: Iterable<T | PromiseLike<T>>): Promise<PromiseSettledResult<Awaited<T>>[]>;
+  allSettled<T extends readonly unknown[] | []>(
+    values: T,
+  ): Promise<{ -readonly [P in keyof T]: PromiseSettledResult<Awaited<T[P]>> }>;
+  resolve<T>(value: T): ReactivePromise<T>;
+  reject<T = never>(reason: any): ReactivePromise<T>;
+  withResolvers<T>(): {
+    promise: ReactivePromise<T>;
+    resolve: (value: T | PromiseLike<T>) => void;
+    reject: (reason: unknown) => void;
+  };
+}
+
+export type ReactiveTask<T, Params extends unknown[]> = ReactivePromise<T> & {
+  run(...params: Params): ReactivePromise<T>;
 };
 
 export type ReactiveValue<T> =
@@ -78,9 +105,9 @@ export type ReactiveValue<T> =
   T extends ReactiveTask<infer U, infer Args>
     ? ReactiveTask<U, Args>
     : T extends Promise<infer U>
-      ? DiscriminatedReactivePromise<U>
+      ? ReactivePromise<U>
       : T extends Generator<any, infer U>
-        ? DiscriminatedReactivePromise<U>
+        ? ReactivePromise<U>
         : T;
 
 export interface Context<T> {

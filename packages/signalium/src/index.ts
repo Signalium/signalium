@@ -1,6 +1,5 @@
 export {
   type Context,
-  type DiscriminatedReactivePromise,
   type Equals,
   type Notifier,
   type PendingReactivePromise,
@@ -22,6 +21,10 @@ export { reactive, reactiveMethod, reactiveSignal, task, relay, watcher } from '
 
 export { signal, notifier, isSignal } from './internals/signal.js';
 
+// Note: this re-export carries BOTH the value AND the type `ReactivePromise<T>`
+// (the discriminated `Pending | Ready` union), because `internals/async.js`
+// declares both under the same name. Mirrors the lib.es5.d.ts pattern where
+// `Promise` is both the constructor value and the union type.
 export { ReactivePromise } from './internals/async.js';
 
 export { callback } from './internals/callback.js';
