@@ -4,7 +4,7 @@ import {
   Watcher,
   ReactiveOptions,
   RelayActivate,
-  type DiscriminatedReactivePromise,
+  type ReactivePromise,
   SignalOptions,
   ReactiveFn,
   ReadonlySignal,
@@ -70,10 +70,10 @@ export const reactiveMethod = <T, Args extends unknown[]>(
   return reactiveFn;
 };
 
-export function relay<T>(activate: RelayActivate<T>, opts?: SignalOptions<T>): DiscriminatedReactivePromise<T> {
+export function relay<T>(activate: RelayActivate<T>, opts?: SignalOptions<T>): ReactivePromise<T> {
   const scope = getCurrentScope();
 
-  return createRelay(activate, scope, opts) as DiscriminatedReactivePromise<T>;
+  return createRelay(activate, scope, opts) as unknown as ReactivePromise<T>;
 }
 
 export const task = <T, Args extends unknown[]>(

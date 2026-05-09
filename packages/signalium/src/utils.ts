@@ -7,7 +7,7 @@ import { getSignal } from './internals/get.js';
 import { isReactivePromise, ReactivePromiseImpl } from './internals/async.js';
 import type { ReactiveSignal } from './internals/reactive.js';
 import { isPromise } from './internals/utils/type-utils.js';
-import { ReactiveValue, RelayState, DiscriminatedReactivePromise } from './types.js';
+import { ReactiveValue, RelayState, ReactivePromise } from './types.js';
 
 /**
  * Watches a function once in a reactive context, activating any relays,
@@ -89,7 +89,7 @@ export { setReactivePromise } from './internals/async.js';
  * });
  * ```
  */
-export function forwardRelay<T>(state: RelayState<T>, sourceRelay: DiscriminatedReactivePromise<T>): void {
+export function forwardRelay<T>(state: RelayState<T>, sourceRelay: ReactivePromise<T>): void {
   // Verify that sourceRelay is actually a ReactivePromiseImpl
   if (!isReactivePromise(sourceRelay)) {
     throw new Error('forwardRelay: sourceRelay must be a ReactivePromise');

@@ -1,5 +1,6 @@
 import {
   ReactivePromise as IReactivePromise,
+  ReactivePromiseConstructor,
   ReactiveTask,
   Equals,
   ReactiveOptions,
@@ -61,7 +62,7 @@ function thenLoop(v: unknown, onFulfill: (value: unknown) => void, onReject: (re
   }
 }
 
-export class ReactivePromiseImpl<T> implements IReactivePromise<T> {
+export class ReactivePromiseImpl<T> {
   private _value: T | undefined = undefined;
 
   private _error: unknown | undefined = undefined;
@@ -827,8 +828,14 @@ export function createTask<T, Args extends unknown[]>(
   return p as unknown as ReactiveTask<T, Args>;
 }
 
-// Type-cast to make sure we don't expose any internal properties
-export const ReactivePromise = ReactivePromiseImpl;
-
-// Export the instance type separately to avoid the "value used as type" error
+// We mirror the standard `Promise` pattern in lib.es5.d.ts: declare a value
+// (the constructor) and a generic type with the same name, side-by-side, in
+// the same module. This way they merge into one identifier — re-exporting
+// `{ ReactivePromise }` from `index.ts` carries both meanings.
+//
+// - The value is the implementation class cast to `ReactivePromiseConstructor`
+//   (so `new ReactivePromise<T>()`, the statics, and `instanceof` are all
+//   typed against the public `Pending | Ready` union with internals hidden).
+// - The type is just the public discriminated union from `types.ts`.
+export const ReactivePromise = ReactivePromiseImpl as unknown as ReactivePromiseConstructor;
 export type ReactivePromise<T> = IReactivePromise<T>;

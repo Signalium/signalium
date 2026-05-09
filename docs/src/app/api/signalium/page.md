@@ -341,7 +341,7 @@ export function reactiveMethod<T, Args extends unknown[]>(
   owner: object,
   fn: (...args: Args) => T,
   opts?: ReactiveOptions<T, Args>,
-): (...args: Args) => T | DiscriminatedReactivePromise<T>;
+): (...args: Args) => T | ReactivePromise<T>;
 ```
 
 Like `reactive`, but bound to an owner object for scoping.
