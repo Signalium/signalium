@@ -2,6 +2,7 @@ node_modules
 dist
 .tsc-out
 .turbo
+*.tsbuildinfo
 packages/signalium/*.js
 packages/signalium/*.d.ts
 packages/query/**/*.d.ts
