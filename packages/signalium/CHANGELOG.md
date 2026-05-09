@@ -1,5 +1,200 @@
 # signalium
 
+## 3.0.0
+
+### Major Changes
+
+- 97a1d00: Add async component support with Suspense + RSC/SSR integration.
+
+  - `component(async (props) => { await ... })` on the client: the Signalium Babel preset
+    rewrites the async body to a generator, and a synchronous replay driver throws pending
+    thenables for `<Suspense>` while re-injecting settled values on replay. Reactive reads
+    inside the component participate in the signal graph like any other `compute`.
+  - New `signalium/react` `react-server` export condition: in RSC bundles, `component()`
+    returns a real `async function` (for generator authoring) or a thin sync wrapper, with
+    no React hook imports — safe for the server module graph.
+  - New `signalium/react/server` entry exposing `setupRscRequestScope()`, which installs a
+    per-request `SignalScope` via `React.cache` so server-side `reactive()` / `task()` /
+    `relay()` don't leak across requests.
+  - New core API `setRequestScopeGetter(get)` that frameworks/tests can use to supply a
+    per-request scope; consulted by `getCurrentScope` after `CURRENT_SCOPE` and the current
+    consumer's scope.
+  - Babel async transform now tracks `component` imported from `signalium/react` alongside
+    `reactive` / `reactiveMethod` / `relay` / `task`, so `component(async ...)` is rewritten
+    to a generator without extra configuration.
+
+  Breaking: `react` peer dependency is now `>=19.0.0` (required for `React.cache` and
+  React 19's thenable handling in `<Suspense>`).
+
+- 9fa0d88: `ReactivePromise<T>` is now the discriminated union by default.
+
+  The exported `ReactivePromise<T>` _type_ is now
+  `PendingReactivePromise<T> | ReadyReactivePromise<T>` — the same shape that was
+  previously named `DiscriminatedReactivePromise<T>`. This means `if (p.isReady)`
+  narrows `p.value` to `T` (no `| undefined`) directly, with no extra type
+  gymnastics.
+
+  The exported `ReactivePromise` _value_ (the class for `instanceof`, `new`, and
+  the static methods `all` / `race` / `any` / `allSettled` / `resolve` / `reject`
+  / `withResolvers`, plus the identifier emitted by the Babel preset's promise
+  methods transform) is unchanged at runtime. It's now typed as a constructor
+  interface (the same pattern lib.es5.d.ts uses for the global `Promise`), so:
+
+  - `new ReactivePromise<T>()` returns `ReactivePromise<T>` (the union)
+  - `value instanceof ReactivePromise` narrows to the union
+  - `ReactivePromise.resolve(x)`, `.all([...])`, etc. return the union
+
+  ### Breaking changes
+
+  - `DiscriminatedReactivePromise<T>` is removed. Replace every reference with
+    `ReactivePromise<T>`. The two types are now identical, so the migration is a
+    rename.
+  - The previous wide `ReactivePromise<T>` interface (with `value: T | undefined`
+    and `isReady: boolean`) is no longer exported. If you had code that explicitly
+    asked for that wide shape, switch to discriminating on `isReady` (or accept
+    `PendingReactivePromise<T>` / `ReadyReactivePromise<T>` directly).
+
+  ### Why
+
+  The previous split between a non-discriminated `ReactivePromise<T>` (the class
+  instance type) and a separate `DiscriminatedReactivePromise<T>` union (what
+  `useReactive`, `relay()`, async `reactive()`, etc. actually returned) was a
+  frequent source of confusion. The names suggested they were different shapes
+  when in practice users almost always wanted the discriminated form. Merging
+  them removes a footgun and matches the runtime behavior.
+
+- 46facb0: `useReactive` is now thunk-only and deep-by-default.
+
+  ### New API surface
+
+  - `useReactive(() => expr)` — deep-by-default. Returns a structurally-shared
+    snapshot of the reactive value, so referential equality at the React boundary
+    Just Works (memoized children keep the same props when unchanged subtrees are
+    re-read). This is the behavior of the old `useReactiveDeep`.
+  - `useReactiveShallow(() => expr)` — new named export. Minimal wrapper:
+    returns the reactive value by reference without any structural cloning or
+    `ReactivePromise` entanglement. Re-renders only when the underlying
+    `ReactiveSignal` itself re-runs (e.g. the thunk produces a new reference).
+    Use it when you need to preserve class identity on a synchronously-changing
+    value. If you need promise state transitions at the React boundary, use
+    `useReactive` — its structural snapshot reads the promise's flags and
+    automatically re-renders on each transition.
+  - `useReactiveDeep(() => expr)` — kept as a deprecated alias that forwards to
+    `useReactive` and logs a one-time `console.warn` in dev. Will be removed in
+    the next major.
+
+  ### Breaking changes
+
+  - The non-thunk overloads are removed:
+    - `useReactive(signal)` → `useReactive(() => signal.value)`
+    - `useReactive(promise)` → `useReactive(() => promise)` for a plain
+      snapshot that updates on every promise state transition.
+    - `useReactive(reactiveFn, arg1, arg2)` → `useReactive(() => reactiveFn(arg1, arg2))`
+    - `useReactiveDeep(reactiveFn, arg1)` → `useReactive(() => reactiveFn(arg1))`
+  - Calling `useReactive` / `useReactiveShallow` / `useReactiveDeep` inside a
+    reactive function (e.g. inside `reactive(...)` or a `component()` render
+    body) now throws in dev (the guard is tree-shaken from production builds).
+    These hooks are the bridge from plain React components into the signal
+    graph — inside reactive code you should call your signals and
+    `reactive()`-returned functions directly, since the surrounding compute
+    already participates in the graph. This replaces the previous behavior of
+    silently forking and invoking the thunk.
+  - The internal `addListener` on `ReactiveSignal` no longer schedules an
+    initial pull when the signal is registered as a suspended listener. This
+    fixes a case where a component mounted inside a suspended provider would
+    render twice on mount.
+
+  ### Recommended migration
+
+  1. Land this version and enable (or keep) the Signalium Babel preset. The
+     preset wraps thunks in `useCallback(fn, [captures])` so identity stays
+     stable across renders and the same `ReactiveSignal` is reused.
+  2. Rewrite `useReactive(signal)` / `useReactive(fn, ...args)` call sites as
+     thunks. A safe blanket replacement is `useReactive(() => oldArg)` /
+     `useReactive(() => oldFn(...oldArgs))`.
+  3. If you were relying on `ReactivePromise` class identity (e.g. `instanceof`
+     checks or passing through `React.memo` by reference), switch those sites to
+     `useReactiveShallow`.
+  4. Rename `useReactiveDeep` call sites to `useReactive` at your leisure — they
+     behave identically but the old name will be removed in the next major.
+
+  ### Philosophy
+
+  `useReactive` is the bridge from plain React components into the signal graph.
+  Every call site is a hook, so there's per-render bookkeeping overhead. Prefer
+  `component(fn)` (from `signalium/react`) for components that are meaningfully
+  reactive — the whole render body becomes one `ReactiveSignal`'s `compute`,
+  which avoids the hook overhead entirely.
+
+- 5031ce1: Switch to native `WeakRef` for scope-cached signals, remove suspension from the core graph, and introduce `PauseSignalsProvider`.
+
+  ### Native WeakRef GC
+
+  `SignalScope` now stores signals as `WeakRef` entries instead of strong references with manual GC sweeps. Signals stay alive as long as something holds a strong reference (the `deps` chain, a React component closure, a local variable, etc.). When nothing references a signal, the JS garbage collector reclaims it naturally.
+
+  Removed:
+
+  - The `WeakRef` polyfill (`weakref.ts`) — environments without native `WeakRef` are no longer supported.
+  - The manual GC sweep system (`markForGc`, `removeFromGc`, `sweepGc`, `gcCandidates`, `scheduleGcSweep`, `scheduleIdleCallback`).
+  - `reset()` on `ReactiveSignal` — signals are no longer eagerly torn down on unwatch. Their value and dep graph are preserved for reuse if re-watched before GC collects them.
+
+  ### Suspension removed from core
+
+  The core signal graph has zero suspension concepts. Removed:
+
+  - `suspendCount` field and `_isSuspended` getter on `ReactiveSignal`
+  - `setSuspended()` method and `isSuspendedListener` flag
+  - `watchSuspendedSignal`, `unwatchSuspendedSignal`, `suspendSignal`, `resumeSignal`
+  - The `parentIsSuspended` parameter on `watchSignal` / `unwatchSignal`
+  - The `isSuspending` branch in `deactivateSignal`
+
+  ### `PauseSignalsProvider` (replaces `SuspendSignalsProvider`)
+
+  `SuspendSignalsProvider` is replaced by `PauseSignalsProvider` to avoid confusion with React Suspense.
+
+  `PauseSignalsProvider` uses a stable `PauseSignalsManager` context (not a changing boolean), so toggling the `value` prop does not re-render descendants. React hooks register their signals during render; the manager calls `watchSignal` / `unwatchSignal` directly to pause and resume the signal graph. Signals mounted inside an already-paused provider skip activation entirely.
+
+  ### Breaking changes
+
+  - `SuspendSignalsProvider` → `PauseSignalsProvider`
+  - `useSignalsSuspended()` is removed from the public API.
+  - `setSuspended()` is removed from the `Watcher` interface.
+  - Environments without native `WeakRef` are no longer supported.
+
+### Minor Changes
+
+- 500514d: Remove the implicit `console.error('[signalium] Unhandled async error...')`
+  that fired whenever a `ReactivePromise` (including `relay()` and `task()`)
+  transitioned to a rejected state.
+
+  The log was misleading in practice: it ran synchronously inside `_setError`,
+  before any reactive consumer or async `component()` had a chance to react. So
+  it printed "Unhandled" for rejections that were in fact handled — declaratively
+  via `isRejected` / `error` reads, by `await` in an async `component()` (which
+  re-throws into a React error boundary), or by an explicit `.catch()` on the
+  `ReactivePromise` surface. There's no general definition of "handled" in a
+  reactive graph, so any single heuristic was going to mislabel some path.
+
+  Rejected `ReactivePromise`s are now silent at the library layer. Existing
+  ways to observe a rejection are unchanged:
+
+  - Read `isRejected` / `error` on the `ReactivePromise` (or its
+    `useReactive` snapshot) and branch in your reactive code.
+  - `await` / `yield` the `ReactivePromise` from an async `component()`; the
+    replay driver throws `error` into the nearest React error boundary on
+    rejection (and throws a thenable for `<Suspense>` while pending).
+  - `.catch()` / `.then(null, fn)` on the `ReactivePromise` — it still
+    implements the `Promise` surface.
+
+  A first-class global hook for unhandled reactive rejections is intentionally
+  deferred: defining "handled" in a way that doesn't mislabel the cases above
+  needs more design and isn't required for v3.
+
+  If you were relying on the log for debugging, attach your own logging in a
+  declarative branch (e.g. inside a `reactive()` that reads `isRejected` /
+  `error`) or rethrow from an async `component()` so the error reaches a React
+  error boundary.
+
 ## 2.4.0
 
 ### Minor Changes
