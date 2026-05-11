@@ -835,6 +835,53 @@ describe('React > useReactive (deep, default)', () => {
       expect(second.items[1]).toBe(first.items[1]);
       expect(second.items[0]).not.toBe(first.items[0]);
     });
+
+    test('custom snapshot registered on a base class applies to subclasses', async () => {
+      class Entity {
+        constructor(
+          public id: number,
+          public name: string,
+        ) {}
+      }
+
+      registerCustomSnapshot(Entity, (current, prev, snap) => {
+        const name = snap((current as Entity).name, (prev as any)?.name) as string;
+        const id = (current as Entity).id;
+        if (prev && id === (prev as any).id && name === (prev as any).name) return prev;
+        return { id, name } as any;
+      });
+
+      // Subclass with no separate registration — should still flow through the
+      // base-class handler via the prototype chain.
+      class User extends Entity {}
+
+      const name = signal('Alice');
+      const derived = reactive(() => new User(1, name.value));
+
+      const snapshots: any[] = [];
+
+      function Component(): React.ReactNode {
+        const result = useReactive(() => derived()) as any;
+        snapshots.push(result);
+        return <div data-testid="out">{result.name}</div>;
+      }
+
+      const { getByTestId } = render(<Component />);
+
+      await expect.element(getByTestId('out')).toHaveTextContent('Alice');
+
+      const first = snapshots[snapshots.length - 1];
+      expect(first).toEqual({ id: 1, name: 'Alice' });
+      expect(first).not.toBeInstanceOf(User);
+
+      name.value = 'Bob';
+
+      await expect.element(getByTestId('out')).toHaveTextContent('Bob');
+
+      const second = snapshots[snapshots.length - 1];
+      expect(second).toEqual({ id: 1, name: 'Bob' });
+      expect(second).not.toBe(first);
+    });
   });
 
   describe('null-prototype objects', () => {
