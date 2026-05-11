@@ -105,8 +105,17 @@ function snapshotSet(current: Set<unknown>, prev: unknown, _snap: SnapshotFn): S
 
   return changed ? result : prevSet!;
 }
-
-const PROTO_TO_SNAPSHOT = new Map<object | null, SnapshotHandler>([
+/**
+ * Built-in handlers for plain structural types. Matched by exact prototype
+ * only — subclasses of `Object` / `Array` / `Map` / `Set` are NOT routed
+ * through these handlers (they fall through and, if no custom ancestor is
+ * registered, are returned as-is). We use a Map here rather than installing
+ * a symbol property on the built-in prototypes, because mutating built-in
+ * prototypes (even with a symbol key) changes their hidden class and
+ * invalidates V8's fast-path inline caches for every plain object / array
+ * in the program.
+ */
+const BUILTIN_PROTO_TO_SNAPSHOT = new Map<object | null, SnapshotHandler>([
   [Object.prototype, snapshotPlainObject],
   [Array.prototype, snapshotArray],
   [Map.prototype, snapshotMap],
@@ -115,9 +124,27 @@ const PROTO_TO_SNAPSHOT = new Map<object | null, SnapshotHandler>([
 ]);
 
 /**
+ * Custom registrations are stored as a non-enumerable symbol property on the
+ * class prototype. JS prototype lookup walks the chain natively, so subclass
+ * inheritance and override-by-redefinition are free — no resolver, no cache,
+ * no invalidation. The symbol is module-private (created with `Symbol()`,
+ * not `Symbol.for()`), so it cannot collide with anything else and cannot
+ * be addressed by user code.
+ */
+const SNAPSHOT_HANDLER = Symbol('signalium.snapshot.handler');
+
+interface MaybeSnapshottable {
+  [SNAPSHOT_HANDLER]?: SnapshotHandler;
+}
+
+/**
  * Register a custom snapshot function for instances of a class.
  * The function receives the current value, the previous snapshot (or undefined),
  * and the recursive `snapshot` function for snapshotting nested values.
+ *
+ * Subclasses inherit the handler automatically via prototype lookup, so
+ * registering once on a base class applies to all descendants. A descendant
+ * can override by registering its own handler.
  *
  * Return `prev` when nothing has changed to preserve reference stability.
  *
@@ -135,7 +162,15 @@ export const registerCustomSnapshot = <T extends object>(
   ctor: new (...args: any[]) => T,
   snapshotFn: (current: T, prev: T | undefined, snapshot: SnapshotFn) => T,
 ): void => {
-  PROTO_TO_SNAPSHOT.set(ctor.prototype, snapshotFn);
+  // Use defineProperty so the handler is non-enumerable (it shouldn't show up
+  // in `Reflect.ownKeys` walks any more than necessary) and so re-registration
+  // overwrites cleanly even if a subclass has shadowed it.
+  Object.defineProperty(ctor.prototype, SNAPSHOT_HANDLER, {
+    value: snapshotFn as SnapshotHandler,
+    writable: true,
+    configurable: true,
+    enumerable: false,
+  });
 };
 
 /**
@@ -143,7 +178,8 @@ export const registerCustomSnapshot = <T extends object>(
  *
  * - Plain objects and arrays are deep-cloned; unchanged subtrees keep the same reference.
  * - ReactivePromise instances are read (establishing deps) and flattened to a plain object.
- * - Class instances (non-plain prototypes) are returned as-is unless a custom handler is registered.
+ * - Class instances are returned as-is unless a custom handler is registered
+ *   for the class or any of its ancestors via `registerCustomSnapshot`.
  * - Primitives are returned directly.
  */
 export function snapshot(currentValue: unknown, prevValue: unknown): unknown {
@@ -155,10 +191,17 @@ export function snapshot(currentValue: unknown, prevValue: unknown): unknown {
     return snapshotReactivePromise(currentValue as ReactivePromiseImpl<unknown>, prevValue, snapshot);
   }
 
-  const handler = PROTO_TO_SNAPSHOT.get(getProto(currentValue));
+  // Custom registrations check first: native prototype lookup walks the chain
+  // for us, so subclasses inherit their ancestor's handler with no extra work.
+  const customHandler = (currentValue as MaybeSnapshottable)[SNAPSHOT_HANDLER];
+  if (customHandler !== undefined) {
+    return customHandler(currentValue, prevValue, snapshot);
+  }
 
-  if (handler !== undefined) {
-    return handler(currentValue, prevValue, snapshot);
+  // Built-in handlers are looked up by exact prototype only.
+  const builtIn = BUILTIN_PROTO_TO_SNAPSHOT.get(getProto(currentValue));
+  if (builtIn !== undefined) {
+    return builtIn(currentValue, prevValue, snapshot);
   }
 
   return currentValue;
