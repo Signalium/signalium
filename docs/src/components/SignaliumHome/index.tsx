@@ -18,17 +18,29 @@ import {
 // Hero
 // ---------------------------------------------------------------------------
 
-const HERO_CODE = `export const UserCard = component(async (userId) => {
-  const user = await fetchUser(userId.value);
-  const posts = await fetchPosts(user.blogId);
-
-  return (
-    <div>
-      <h2>{user.name}</h2>
-      <PostList posts={posts} />
-    </div>
+const HERO_CODE = `// Declare a reactive async function
+const fetchUser = reactive(async (userId) => {
+  const response = await fetch(
+    '/api/users/' + userId
   );
+  return response.json();
 });
+
+// Declare an async component
+export const UserCard = component(
+  async ({ userId }) => {
+    // Await the result in your component.
+    // Yes, it's that simple.
+    const user = await fetchUser(userId);
+
+    return (
+      <div>
+        <h2>{user.name}</h2>
+        <PostList posts={posts} />
+      </div>
+    );
+  }
+);
 `;
 
 function ElementStrip() {
@@ -84,13 +96,7 @@ const STRIKETHROUGHS: { name: string; reason: string }[] = [
   },
 ];
 
-function StrikethroughCard({
-  name,
-  reason,
-}: {
-  name: string;
-  reason: string;
-}) {
+function StrikethroughCard({ name, reason }: { name: string; reason: string }) {
   return (
     <div className="rounded-md border border-primary-800 bg-primary-900 p-4">
       <div className="mb-1.5 font-mono text-sm text-primary-400 line-through decoration-primary-600">
@@ -291,28 +297,39 @@ export function SignaliumHome() {
     <div className="w-full bg-primary-950 text-primary-50 antialiased">
       <div className="mx-auto max-w-6xl px-6">
         {/* ---- Hero ---- */}
-        <section className="flex min-h-screen flex-col justify-center px-16 pb-48">
-          <div>
+        <section className="flex min-h-[calc(100vh-5rem)] flex-col justify-center px-16 pb-16">
+          {/* <div>
             <ElementStrip />
-          </div>
+          </div> */}
           <div className="grid grid-cols-1 items-center gap-10 md:grid-cols-2 md:gap-12">
             <div>
-              <h1 className="mb-6 font-sans text-4xl leading-[1.1] font-semibold tracking-tight text-primary-50 md:text-5xl">
-                What if components were{' '}
+              <h1 className="mb-6 font-sans text-3xl leading-[1.1] font-semibold tracking-tight text-primary-50 md:text-4xl">
+                What if components were...{' '}
                 <span className="text-amber-400">just functions</span>?
               </h1>
-              <p className="mb-4 font-sans text-base leading-relaxed text-primary-200">
+              <p className="mb-4 font-sans text-lg leading-relaxed text-primary-50">
                 Not functions with seventeen rules about ordering and
                 dependencies. Not functions that need a magical compiler to
-                perform well. Just functions — where reactivity is the execution
-                model and everything else follows.
+                perform well.
               </p>
-              <p className="mb-10 font-sans text-base leading-relaxed text-primary-200">
-                Signalium. React, made simple.
+              <p className="mb-4 font-sans text-lg leading-relaxed font-bold text-primary-50">
+                Just. Functions.
               </p>
-              <div className="flex flex-wrap gap-3">
+              <p className="mb-4 font-sans text-lg leading-relaxed text-primary-50">
+                In Signalium, we introduce{' '}
+                <em className="font-bold text-amber-400">reactive functions</em>{' '}
+                - a drop-in replacement for Hooks, with all of the benefits and
+                none of the drawbacks. They're performant by default,
+                composable, and they have first class support for async without
+                any of the ceremony.
+              </p>
+              <p className="mb-4 font-sans text-lg leading-relaxed text-primary-50">
+                Stop fighting your hooks. Start writing <em>simple</em>,{' '}
+                <em>predictable</em>, and <em>performant</em> reactive code.
+              </p>
+              <div className="mt-10 flex flex-wrap gap-3">
                 <CTAButton variant="primary" href="/quickstart">
-                  Get started in 5 minutes
+                  Get started
                 </CTAButton>
                 <CTAButton
                   variant="secondary"
@@ -329,126 +346,19 @@ export function SignaliumHome() {
           </div>
         </section>
 
-        {/* ---- Problem ---- */}
-        <Section className="border-t border-primary-800">
-          <h2 className="mb-6 font-sans text-2xl font-semibold tracking-tight text-primary-50 md:text-3xl">
-            Remember when Hooks felt like magic?
-          </h2>
-          <div className="space-y-4">
-            <p className="font-sans text-base leading-relaxed text-primary-300">
-              For one brief, glorious moment, it felt like we had really figured
-              something out. Functional programming suddenly{' '}
-              <em className="italic">made sense</em>, and you could see a future
-              where every day wasn&apos;t spent fighting state, managing
-              lifecycle hooks, and tracking down stale event listeners.
-            </p>
-            <p className="font-sans text-base leading-relaxed text-primary-300">
-              What happened?
-            </p>
-            <p className="font-sans text-base leading-relaxed text-primary-300">
-              It started slowly. One <InlineCode>useEffect</InlineCode> turned
-              into two, turned into many. State updates started interacting,
-              and suddenly we were rerendering 10 times or 20 times or more
-              just to paint one page, and <InlineCode>useMemo</InlineCode>{' '}
-              became nearly mandatory. Data fetching and state management
-              decisions started to cascade, and a plethora of libraries sprung
-              up to try to plug the gaps.
-            </p>
-            <p className="font-sans text-base leading-relaxed text-primary-300">
-              Now, it feels like every statement, every codepath, needed to be
-              thought through and analyzed and understood in an every expanding
-              web of{' '}
-              <em className="italic">combinatorial complexity</em>. An average
-              developer needs to keep this whole{' '}
-              <em className="italic">system</em> in their heads.
-            </p>
-            <p className="font-sans text-base leading-relaxed text-primary-300">
-              <strong className="font-semibold text-primary-50">
-                It&apos;s too much.
-              </strong>
-            </p>
-          </div>
-        </Section>
-
-        {/* ---- Model ---- */}
-        <Section className="border-t border-primary-800">
-          <h2 className="mb-6 font-sans text-2xl font-semibold tracking-tight text-primary-50 md:text-3xl">
-            The Wrong Atom
-          </h2>
-          <div className="space-y-4">
-            <p className="font-sans text-base leading-relaxed text-primary-300">
-              React got a lot of things right. But at its core, its a{' '}
-              <em className="italic">view layer</em>, and that&apos;s its fatal
-              limitation.
-            </p>
-            <p className="font-sans text-base leading-relaxed text-primary-300">
-              The atom of React is the{' '}
-              <em className="italic">component</em>. Whenever state changes in
-              a single component, every hook is forced to rerun. All of our
-              state, all of our derivations, must be idempotent. And if
-              we&apos;re not careful, we&apos;ll end up causing a cascade of
-              updates to every component below us.
-            </p>
-            <p className="font-sans text-base leading-relaxed text-primary-300">
-              The React compiler promises to solve this by automagically
-              determining what changes and what doesn&apos;t. Signalium asks a
-              different question:
-            </p>
-            <blockquote className="border-l-2 border-tertiary-200 pl-4 font-sans text-base leading-relaxed text-primary-200">
-              What if the atom of reactivity was the{' '}
-              <em className="italic font-semibold text-primary-50">
-                function
-              </em>
-              ?
-            </blockquote>
-          </div>
-        </Section>
-
         {/* ---- Cascade ---- */}
         <Section
           eyebrow="Fine-grained re-execution"
-          title="Hooks rerun every node."
-          accent="Signalium runs what changed."
+          title="Hooks rerun everything."
+          accent="Signalium only runs what changed."
         >
           <div className="mx-auto max-w-3xl space-y-4">
-            <p className="font-sans text-base leading-relaxed text-primary-300">
-              Signalium introduces Reactive Functions. These functions are a{' '}
-              <em className="italic">drop-in replacement for hooks</em>. You
-              can access contexts, subscribe and unsubscribe from resources,
-              manage long lived state, fetch data — everything you can do in
-              a Hook.
-            </p>
-          </div>
-          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <CodeBlock
-              filename="hooks.ts"
-              lang="ts"
-              code={`function useDashboard(userId: string) {
-  const user = useUser(userId);
-  const feed = useFeed(user);
-
-  return { user, feed };
-}`}
-            />
-            <CodeBlock
-              filename="reactive.ts"
-              lang="ts"
-              accent
-              code={`const getDashboard = reactive((userId: Signal<string>) => {
-  const user = getUser(userId);
-  const feed = getFeed(user);
-
-  return { user, feed };
-});`}
-            />
-          </div>
-          <div className="mx-auto mt-6 max-w-3xl space-y-4">
-            <p className="font-sans text-base leading-relaxed text-primary-300">
+            <p className="font-sans text-base leading-relaxed text-primary-100">
               But, when state changes, the{' '}
-              <em className="italic">Reactive Function</em> — not the
-              Component — reruns.
+              <em className="italic">Reactive Function</em> — not the Component
+              — reruns.
             </p>
-            <p className="font-sans text-base leading-relaxed text-primary-300">
+            <p className="font-sans text-base leading-relaxed text-primary-100">
               And if the <em className="italic">output</em> of the function
               didn&apos;t change,{' '}
               <strong className="font-semibold text-primary-50">

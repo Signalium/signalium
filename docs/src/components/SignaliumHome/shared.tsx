@@ -233,18 +233,23 @@ export function ElementsRow({
 // ---------------------------------------------------------------------------
 
 const CODE_THEME: PrismTheme = {
-  plain: { color: '#d0d0d6' },
+  plain: { color: '#e4e4ea' },
   styles: [
-    { types: ['keyword', 'builtin', 'important'], style: { color: '#e9d4ff' } },
-    { types: ['string', 'attr-value'], style: { color: '#f4dc7a' } },
-    { types: ['number', 'boolean'], style: { color: '#e8b830' } },
-    { types: ['class-name', 'tag', 'function'], style: { color: '#7dd3fc' } },
+    { types: ['keyword', 'builtin', 'important'], style: { color: '#c084fc' } },
+    { types: ['string', 'attr-value'], style: { color: '#fcd34d' } },
+    { types: ['number', 'boolean'], style: { color: '#fb923c' } },
+    { types: ['class-name'], style: { color: '#22d3ee' } },
+    { types: ['function'], style: { color: '#38bdf8' } },
+    { types: ['tag'], style: { color: '#f472b6' } },
+    { types: ['attr-name'], style: { color: '#a5b4fc' } },
+    { types: ['property'], style: { color: '#e4e4ea' } },
+    { types: ['regex'], style: { color: '#34d399' } },
     {
       types: ['comment'],
-      style: { color: '#4ade80', opacity: 0.8, fontStyle: 'italic' as const },
+      style: { color: '#4ade80', opacity: 0.7, fontStyle: 'italic' as const },
     },
-    { types: ['punctuation', 'operator'], style: { color: '#909098' } },
-    { types: ['attr-name', 'property'], style: { color: '#d0d0d6' } },
+    { types: ['punctuation'], style: { color: '#a1a1aa' } },
+    { types: ['operator'], style: { color: '#fb7185' } },
   ],
 };
 
@@ -281,7 +286,9 @@ export function CodeBlock({
           <pre
             className={clsx(
               'overflow-x-auto font-mono leading-relaxed',
-              compact ? 'px-5 py-4 text-[13px]' : 'px-3 py-3 text-[11px]',
+              compact
+                ? 'px-5 py-4 text-[13px] lg:text-[14px]'
+                : 'px-3 py-3 text-[11px]',
             )}
           >
             <code>
@@ -336,12 +343,7 @@ export function Section({
   accent?: ReactNode;
 }) {
   return (
-    <section
-      className={clsx(
-        'flex min-h-screen flex-col justify-center py-16',
-        className,
-      )}
-    >
+    <section className={clsx('flex flex-col justify-center py-16', className)}>
       {(eyebrow || title) && (
         <div className="mb-10 text-center">
           {eyebrow && (
@@ -361,7 +363,6 @@ export function Section({
     </section>
   );
 }
-
 
 // ---------------------------------------------------------------------------
 // Misc
@@ -385,7 +386,7 @@ export function CTAButton({
       ? 'bg-tertiary-300 hover:bg-tertiary-200 text-tertiary-950 border-tertiary-300'
       : 'bg-transparent hover:bg-primary-900 text-primary-100 border-primary-700 hover:border-primary-500';
   const cls = clsx(
-    'inline-flex items-center gap-1.5 rounded-md border px-5 py-2.5 font-mono text-xs font-medium transition-colors',
+    'inline-flex items-center gap-1.5 rounded-md border px-5 py-2.5 font-mono text-sm font-medium transition-colors',
     styles,
   );
   if (external) {
