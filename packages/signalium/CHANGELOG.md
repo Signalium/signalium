@@ -1,5 +1,11 @@
 # signalium
 
+## 3.0.2
+
+### Patch Changes
+
+- 20767d3: Fix `useReactive` snapshots of `ReactiveTask` to carry over the `run` method. Previously, when a task was read through `useReactive`, the deep-snapshot returned a plain object with `value`/`error`/`isPending`/etc. but no `run`, so consumers couldn't invoke `result.run(...)` against the underlying task. The snapshot now includes `run`, and its identity is included in the structural-equality short-circuit so reference stability across pending → resolved transitions is preserved.
+
 ## 3.0.1
 
 ### Patch Changes
