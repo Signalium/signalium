@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
-import { signal, reactive } from 'signalium';
+import { signal, reactive, task } from 'signalium';
 import { registerCustomSnapshot, snapshot } from 'signalium/utils';
 import { useReactive } from 'signalium/react';
 import React, { memo, useState } from 'react';
@@ -474,6 +474,44 @@ describe('React > useReactive (deep, default)', () => {
       const secondResolved = snapshots[snapshots.length - 1];
       expect(secondResolved.value).toEqual({ user: { name: 'Bob' } });
       expect(secondResolved.value).not.toBe(firstResolved.value);
+    });
+
+    test('snapshot of a ReactiveTask exposes a callable `run`', async () => {
+      const greetTask = reactive(() =>
+        task(async (name: string) => {
+          await sleep(50);
+          return `Hello, ${name}`;
+        }),
+      );
+
+      const snapshots: any[] = [];
+
+      function Component(): React.ReactNode {
+        const result = useReactive(() => greetTask()) as any;
+        snapshots.push(result);
+        return (
+          <div>
+            <div data-testid="value">{result.value ?? 'idle'}</div>
+            <button onClick={() => result.run('World')}>run</button>
+          </div>
+        );
+      }
+
+      const { getByTestId, getByText } = render(<Component />);
+
+      await expect.element(getByTestId('value')).toHaveTextContent('idle');
+
+      const initial = snapshots[snapshots.length - 1];
+      expect(typeof initial.run).toBe('function');
+
+      await userEvent.click(getByText('run'));
+
+      await expect.element(getByTestId('value')).toHaveTextContent('Hello, World');
+
+      const settled = snapshots[snapshots.length - 1];
+      // `run` identity is stable across the lifetime of the underlying task,
+      // so the snapshot's `run` reference shouldn't change between transitions.
+      expect(settled.run).toBe(initial.run);
     });
   });
 

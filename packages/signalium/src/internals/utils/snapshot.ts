@@ -58,6 +58,14 @@ function snapshotReactivePromise(current: ReactivePromiseImpl<unknown>, prev: un
   const isReady = current.isReady;
   const isSettled = current.isSettled;
 
+  // `run` is set once in the task constructor and never mutated, so its identity
+  // is stable for the lifetime of the underlying ReactivePromiseImpl. Carrying
+  // it on the snapshot lets consumers (e.g. React components reading a task via
+  // `useReactive`) invoke `result.run(...)` against the live task. For non-task
+  // promises this is `undefined`; we still assign the slot so the resulting
+  // object's hidden class is stable across task and non-task snapshots.
+  const run = (current as unknown as { run: ((...args: unknown[]) => unknown) | undefined }).run;
+
   if (
     prevObj &&
     value === prevObj.value &&
@@ -66,12 +74,13 @@ function snapshotReactivePromise(current: ReactivePromiseImpl<unknown>, prev: un
     isRejected === prevObj.isRejected &&
     isResolved === prevObj.isResolved &&
     isReady === prevObj.isReady &&
-    isSettled === prevObj.isSettled
+    isSettled === prevObj.isSettled &&
+    run === prevObj.run
   ) {
     return prevObj;
   }
 
-  return { value, error, isPending, isRejected, isResolved, isReady, isSettled };
+  return { value, error, isPending, isRejected, isResolved, isReady, isSettled, run };
 }
 
 function snapshotMap(current: Map<unknown, unknown>, prev: unknown, snap: SnapshotFn): Map<unknown, unknown> {
