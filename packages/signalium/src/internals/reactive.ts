@@ -42,6 +42,7 @@ export const enum ReactiveFnFlags {
   isListener = 0b10000,
   isActive = 0b100000,
   isLazy = 0b1000000,
+  isPullQueued = 0b10000000,
 }
 
 let ID = 0;
@@ -104,12 +105,16 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
   id = ++ID;
 
-  subs = new Map<WeakRef<ReactiveSignal<any, any>>, Edge>();
-  deps = new Map<ReactiveSignal<any, any>, Edge>();
+  subsHead: Edge | undefined = undefined;
+  depsHead: Edge | undefined = undefined;
+  activeEdge: Edge | undefined = undefined;
 
   ref: WeakRef<ReactiveSignal<T, Args>> = new WeakRef(this);
 
   dirtyHead: Edge | undefined = undefined;
+  dirtyEpoch: number = 0;
+  nextPull: ReactiveSignal<any, any> | undefined = undefined;
+  prevPull: ReactiveSignal<any, any> | undefined = undefined;
 
   updatedCount: number = 0;
   computedCount: number = 0;
@@ -180,6 +185,18 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       this.flags |= ReactiveFnFlags.isLazy;
     } else {
       this.flags &= ~ReactiveFnFlags.isLazy;
+    }
+  }
+
+  get _isPullQueued() {
+    return (this.flags & ReactiveFnFlags.isPullQueued) !== 0;
+  }
+
+  set _isPullQueued(isQueued: boolean) {
+    if (isQueued) {
+      this.flags |= ReactiveFnFlags.isPullQueued;
+    } else {
+      this.flags &= ~ReactiveFnFlags.isPullQueued;
     }
   }
 

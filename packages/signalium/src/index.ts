@@ -17,7 +17,7 @@ export {
   type Watcher,
 } from './types.js';
 
-export { reactive, reactiveMethod, reactiveSignal, task, relay, watcher } from './internals/core-api.js';
+export { reactive, reactiveMethod, reactiveSignal, task, relay, watcher, effect } from './internals/core-api.js';
 
 export { signal, notifier, isSignal } from './internals/signal.js';
 
@@ -29,7 +29,7 @@ export { ReactivePromise } from './internals/async.js';
 
 export { callback } from './internals/callback.js';
 
-export { settled } from './internals/scheduling.js';
+export { batch, flushSync, settled } from './internals/scheduling.js';
 
 export {
   context,

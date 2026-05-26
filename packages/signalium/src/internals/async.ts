@@ -10,13 +10,13 @@ import {
 } from '../types.js';
 import { createReactiveSignal, ReactiveSignal, ReactiveDefinition, ReactiveFnState } from './reactive.js';
 import { disconnectSignal, getSignal } from './get.js';
-import { dirtySignal, dirtySignalConsumers } from './dirty.js';
+import { dirtyPromiseConsumers, dirtySignal } from './dirty.js';
 import { scheduleAsyncPull, trackPendingStart, trackPendingEnd } from './scheduling.js';
-import { createEdge, EdgeType, findAndRemoveDirty, PromiseEdge } from './edge.js';
+import { clearSubLinks, createEdge, EdgeType, findDepEdge, findAndRemoveDirty, linkDep, linkSub, PromiseEdge } from './edge.js';
 import { SignalScope } from './contexts.js';
 import { signal } from './signal.js';
 import { DEFAULT_EQUALS, equalsFrom } from './utils/equals.js';
-import { getCurrentConsumer } from './consumer.js';
+import { getCurrentConsumer, type ReactiveConsumer } from './consumer.js';
 import { createCallback } from './callback.js';
 import { getTracerProxy, TracerEventType } from './trace.js';
 
@@ -42,7 +42,7 @@ const enum AsyncFlags {
 }
 
 interface PendingResolve<T> {
-  ref: WeakRef<ReactiveSignal<unknown, unknown[]>> | undefined;
+  ref: WeakRef<ReactiveConsumer> | undefined;
   edge: PromiseEdge | undefined;
   resolve: ((value: T) => void) | undefined | null;
   reject: ((error: unknown) => void) | undefined | null;
@@ -74,8 +74,8 @@ export class ReactivePromiseImpl<T> {
 
   private _pending: PendingResolve<T>[] = [];
 
-  private _stateSubs = new Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, number>();
-  _awaitSubs = new Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, PromiseEdge>();
+  private _stateSubs = new Map<WeakRef<ReactiveConsumer>, number>();
+  _awaitSubs = new Map<WeakRef<ReactiveConsumer>, PromiseEdge>();
 
   _updatedCount = 0;
 
@@ -305,14 +305,14 @@ export class ReactivePromiseImpl<T> {
     if (currentConsumer === signal) return;
 
     if (currentConsumer?.watchCount === 0) {
-      const { ref, computedCount, deps } = currentConsumer;
-      const prevEdge = deps.get(signal);
+      const { ref, computedCount } = currentConsumer;
+      const prevEdge = findDepEdge(currentConsumer, signal);
 
       if (prevEdge?.consumedAt !== computedCount) {
-        const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, signal.updatedCount, computedCount);
+        const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, signal.updatedCount, computedCount, ref, currentConsumer);
 
-        signal.subs.set(ref, newEdge);
-        deps.set(signal, newEdge);
+        linkSub(signal, newEdge);
+        linkDep(currentConsumer, newEdge);
       }
     } else {
       getSignal(signal);
@@ -397,7 +397,7 @@ export class ReactivePromiseImpl<T> {
     // called again, it will see the promise edge and halt computation. This way we
     // ensure that we recompute the promises _in order_, without calling subsequent
     // dirty promises until the previous promise is resolved.
-    dirtySignalConsumers(this._awaitSubs);
+    dirtyPromiseConsumers(this._awaitSubs);
     return (this._awaitSubs = new Map());
   }
 
@@ -456,7 +456,7 @@ export class ReactivePromiseImpl<T> {
     if ((flags & AsyncFlags.Pending) !== 0) {
       this._scheduleSubs(awaitSubs, notifyFlags !== 0);
     } else if (notifyFlags !== 0) {
-      dirtySignalConsumers(awaitSubs);
+      dirtyPromiseConsumers(awaitSubs);
     }
 
     this._awaitSubs = awaitSubs = new Map();
@@ -497,7 +497,7 @@ export class ReactivePromiseImpl<T> {
     if ((this._flags & AsyncFlags.Pending) !== 0) {
       this._scheduleSubs(awaitSubs, notifyFlags !== 0);
     } else if (notifyFlags !== 0) {
-      dirtySignalConsumers(awaitSubs);
+      dirtyPromiseConsumers(awaitSubs);
     }
 
     this._awaitSubs = awaitSubs = new Map();
@@ -525,7 +525,7 @@ export class ReactivePromiseImpl<T> {
     }
   }
 
-  private _scheduleSubs(awaitSubs: Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, PromiseEdge>, dirty: boolean) {
+  private _scheduleSubs(awaitSubs: Map<WeakRef<ReactiveConsumer>, PromiseEdge>, dirty: boolean) {
     /**
      * Await subscribers represent `await` statements, which is why they have a bit
      * of a different notification path in general. But this area in particular is
@@ -559,7 +559,11 @@ export class ReactivePromiseImpl<T> {
 
       signal._state = newState;
 
-      scheduleAsyncPull(signal);
+      // Effects can't reach this path (they don't await ReactivePromises and
+      // are never inserted into `_awaitSubs`), so the cast to ReactiveSignal
+      // is safe at runtime. The widened type comes from sharing the WeakRef
+      // map between RS and Effect consumers.
+      scheduleAsyncPull(signal as ReactiveSignal<any, any>);
     }
   }
 
@@ -633,6 +637,8 @@ export class ReactivePromiseImpl<T> {
           this as ReactivePromiseImpl<any>,
           this._updatedCount,
           currentConsumer.computedCount,
+          ref,
+          currentConsumer,
         );
       }
       // Create wrapper functions that will call the original callbacks and then resolve/reject the new Promise
@@ -743,7 +749,7 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
     const signal = p['_signal'] as ReactiveSignal<any, any>;
 
     // Reset the signal state, preparing it for next activation
-    signal.subs = new Map();
+    clearSubLinks(signal);
     signal._state = ReactiveFnState.Dirty;
     active = false;
     currentSub = undefined;

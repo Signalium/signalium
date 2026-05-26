@@ -1,9 +1,10 @@
 import { ReactiveValue } from '../types.js';
 import { createPromise, isReactivePromise, ReactivePromiseImpl } from './async.js';
 import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
-import { createEdge, Edge, EdgeType } from './edge.js';
+import { createEdge, Edge, EdgeType, findDepEdge, linkDep, linkSub, prepareDeps, unlinkDep, unlinkSub } from './edge.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
 import { ReactiveFnState, isRelay, ReactiveSignal } from './reactive.js';
+import type { Effect } from './effect.js';
 import { scheduleListeners, scheduleTracer } from './scheduling.js';
 import { getTracerProxy, SignalType, TracerEventType } from './trace.js';
 import { isGeneratorResult, isPromise } from './utils/type-utils.js';
@@ -12,8 +13,8 @@ import { unwatchSignal, watchSignal } from './watch.js';
 export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, Args>): ReactiveValue<T> {
   const currentConsumer = getCurrentConsumer();
   if (currentConsumer !== undefined) {
-    const { ref, computedCount, deps } = currentConsumer;
-    const prevEdge = deps.get(signal);
+    const { ref, computedCount } = currentConsumer;
+    const prevEdge = findDepEdge(currentConsumer, signal);
 
     const prevConsumedAt = prevEdge?.consumedAt;
 
@@ -36,10 +37,16 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
       }
 
       const updatedAt = checkSignal(signal);
-      const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, updatedAt, computedCount);
 
-      signal.subs.set(ref, newEdge);
-      deps.set(signal, newEdge);
+      if (prevEdge === undefined) {
+        const newEdge = createEdge(undefined, EdgeType.Signal, signal, updatedAt, computedCount, ref, currentConsumer);
+        linkSub(signal, newEdge);
+        linkDep(currentConsumer, newEdge);
+      } else {
+        const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, updatedAt, computedCount, ref, currentConsumer);
+        linkSub(signal, newEdge);
+        linkDep(currentConsumer, newEdge);
+      }
     } else {
       const updatedAt = checkSignal(signal);
 
@@ -99,7 +106,7 @@ export function checkSignal(signal: ReactiveSignal<any, any>): number {
       const dep = edge.dep;
       const updatedAt = checkSignal(dep);
 
-      dep.subs.set(ref, edge);
+      linkSub(dep, edge);
 
       if (edge.updatedAt !== updatedAt) {
         signal.dirtyHead = edge.nextDirty;
@@ -128,6 +135,7 @@ export function checkSignal(signal: ReactiveSignal<any, any>): number {
 
   signal._state = ReactiveFnState.Clean;
   signal.dirtyHead = undefined;
+  signal.dirtyEpoch++;
 
   if (IS_DEV && getTracerProxy() !== undefined && signal.tracerMeta?.tracer) {
     scheduleTracer(signal.tracerMeta.tracer);
@@ -152,11 +160,17 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
   const computedCount = ++signal.computedCount;
 
   try {
+    prepareDeps(signal);
     setCurrentConsumer(signal);
 
     const initialized = updatedCount !== 0;
     const prevValue = signal._value;
-    let nextValue = signal.def.compute(...signal.args);
+    // Avoid the spread call when there are no args. For `reactiveSignal()` and
+    // `watcher()` (the common cases) args is `undefined`; the spread call has
+    // measurable overhead at scale.
+    const args = signal.args;
+    let nextValue: any =
+      args === undefined || args.length === 0 ? (signal.def.compute as () => any)() : signal.def.compute(...args);
     let valueIsPromise = false;
 
     if (nextValue !== null && typeof nextValue === 'object') {
@@ -205,20 +219,37 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
   }
 }
 
-export function disconnectSignal(signal: ReactiveSignal<any, any>, computedCount: number = signal.computedCount) {
-  const { ref, deps } = signal;
+/**
+ * Walks `consumer.depsHead` and unlinks/unwatches any edges that weren't
+ * consumed at the given `computedCount`. Shared by `runSignal` and
+ * `runEffect` — works for any consumer that carries the dep-graph linked
+ * list (`ReactiveSignal` and `Effect`).
+ */
+export function disconnectSignal(
+  consumer: ReactiveSignal<any, any> | Effect,
+  computedCount: number = consumer.computedCount,
+) {
+  let edge = consumer.depsHead;
 
-  for (const [dep, edge] of deps) {
+  while (edge !== undefined) {
+    const next = edge.nextDep;
+    if (edge.type === EdgeType.Promise) {
+      edge = next;
+      continue;
+    }
+
+    const dep = edge.dep;
     if (edge.consumedAt !== computedCount) {
       unwatchSignal(dep);
-      dep.subs.delete(ref);
-      deps.delete(dep);
+      unlinkSub(dep, edge);
+      unlinkDep(consumer as any, edge);
       // Mark disconnected dep as Dirty so it revalidates when re-read.
       // Its subscription chain is broken and it may miss notifications.
       if (dep._state < ReactiveFnState.Dirty) {
         dep._state = ReactiveFnState.Dirty;
       }
     }
+    edge = next;
   }
 }
 

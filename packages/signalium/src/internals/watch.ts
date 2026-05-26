@@ -1,6 +1,7 @@
 import { ReactiveSignal, isRelay } from './reactive.js';
 import { checkSignal } from './get.js';
 import { cancelDeactivate, scheduleDeactivate } from './scheduling.js';
+import { EdgeType } from './edge.js';
 
 export function watchSignal(signal: ReactiveSignal<any, any>): void {
   const { watchCount } = signal;
@@ -12,8 +13,12 @@ export function watchSignal(signal: ReactiveSignal<any, any>): void {
     return;
   }
 
-  for (const dep of signal.deps.keys()) {
-    watchSignal(dep);
+  let edge = signal.depsHead;
+  while (edge !== undefined) {
+    if (edge.type === EdgeType.Signal) {
+      watchSignal(edge.dep);
+    }
+    edge = edge.nextDep;
   }
 
   activateSignal(signal);
@@ -43,13 +48,21 @@ export function activateSignal(signal: ReactiveSignal<any, any>): void {
 export function deactivateSignal(signal: ReactiveSignal<any, any>) {
   signal._isActive = false;
 
-  for (const dep of signal.deps.keys()) {
+  let edge = signal.depsHead;
+  while (edge !== undefined) {
+    if (edge.type !== EdgeType.Signal) {
+      edge = edge.nextDep;
+      continue;
+    }
+
+    const dep = edge.dep;
     const newWatchCount = Math.max(dep.watchCount - 1, 0);
     dep.watchCount = newWatchCount;
 
     if (newWatchCount === 0) {
       deactivateSignal(dep);
     }
+    edge = edge.nextDep;
   }
 
   if (isRelay(signal)) {

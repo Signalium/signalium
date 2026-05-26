@@ -6,8 +6,12 @@ import { runListeners as runStateListeners } from './signal.js';
 import type { Tracer } from './trace.js';
 import { deactivateSignal } from './watch.js';
 import { StateSignal } from './signal.js';
+import { Effect, checkAndRunEffect } from './effect.js';
 
-let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
+type PullNode = ReactiveSignal<any, any> | Effect;
+
+let PENDING_PULLS_HEAD: PullNode | undefined = undefined;
+let PENDING_PULLS_TAIL: PullNode | undefined = undefined;
 let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
 let PENDING_DEACTIVE = new Set<ReactiveSignal<any, any>>();
 let PENDING_LISTENERS: (ReactiveSignal<any, any> | StateSignal<any>)[] = [];
@@ -16,6 +20,12 @@ let PENDING_TRACERS: Tracer[] | undefined = IS_DEV ? [] : undefined;
 const microtask = () => Promise.resolve();
 
 let currentFlush: { promise: Promise<void>; resolve: () => void } | null = null;
+// Re-entrancy guard for flushSync. If a listener (running inside flushSync's
+// listener phase) directly calls flushSync, we early-return — the outer call
+// will pick up newly added pulls in its next drain iteration if it's still in
+// the drain loop, otherwise they fall through to the existing setTimeout path.
+let inFlushSync = false;
+let batchDepth = 0;
 
 const scheduleFlush = (fn: () => void) => {
   if (currentFlush) return;
@@ -28,13 +38,52 @@ const scheduleFlush = (fn: () => void) => {
   _scheduleFlush(flushWatchers);
 };
 
-export const schedulePull = (signal: ReactiveSignal<any, any>) => {
-  PENDING_PULLS.add(signal);
+export const schedulePull = (signal: PullNode) => {
+  if (!signal._isPullQueued) {
+    signal._isPullQueued = true;
+    signal.nextPull = undefined;
+    signal.prevPull = PENDING_PULLS_TAIL;
+
+    if (PENDING_PULLS_TAIL === undefined) {
+      PENDING_PULLS_HEAD = signal;
+    } else {
+      PENDING_PULLS_TAIL.nextPull = signal;
+    }
+
+    PENDING_PULLS_TAIL = signal;
+  }
+
+  if (batchDepth > 0) {
+    return;
+  }
   scheduleFlush(flushWatchers);
 };
 
-export const cancelPull = (signal: ReactiveSignal<any, any>) => {
-  PENDING_PULLS.delete(signal);
+export const cancelPull = (signal: PullNode) => {
+  if (!signal._isPullQueued) return;
+
+  const next = signal.nextPull;
+  const prev = signal.prevPull;
+
+  if (PENDING_PULLS_HEAD === signal) {
+    PENDING_PULLS_HEAD = next;
+  }
+
+  if (PENDING_PULLS_TAIL === signal) {
+    PENDING_PULLS_TAIL = prev;
+  }
+
+  if (prev !== undefined) {
+    prev.nextPull = next;
+  }
+
+  if (next !== undefined) {
+    next.prevPull = prev;
+  }
+
+  signal.nextPull = undefined;
+  signal.prevPull = undefined;
+  signal._isPullQueued = false;
 };
 
 export const scheduleAsyncPull = (signal: ReactiveSignal<any, any>) => {
@@ -53,6 +102,9 @@ export const cancelDeactivate = (signal: ReactiveSignal<any, any>) => {
 
 export const scheduleListeners = (signal: ReactiveSignal<any, any> | StateSignal<any>) => {
   PENDING_LISTENERS.push(signal);
+  if (inFlushSync) {
+    return;
+  }
   scheduleFlush(flushWatchers);
 };
 
@@ -70,7 +122,7 @@ const flushWatchers = async () => {
 
   // Flush all auto-pulled signals recursively, clearing
   // the microtask queue until they are all settled
-  while (PENDING_ASYNC_PULLS.length > 0 || PENDING_PULLS.size > 0) {
+  while (PENDING_ASYNC_PULLS.length > 0 || PENDING_PULLS_HEAD !== undefined) {
     const asyncPulls = PENDING_ASYNC_PULLS;
 
     PENDING_ASYNC_PULLS = [];
@@ -79,12 +131,21 @@ const flushWatchers = async () => {
       checkSignal(pull);
     }
 
-    const pulls = PENDING_PULLS;
+    let pull: PullNode | undefined = PENDING_PULLS_HEAD;
+    PENDING_PULLS_HEAD = undefined;
+    PENDING_PULLS_TAIL = undefined;
 
-    PENDING_PULLS = new Set();
-
-    for (const pull of pulls) {
-      checkAndRunListeners(pull);
+    while (pull !== undefined) {
+      const next: PullNode | undefined = pull.nextPull;
+      pull.nextPull = undefined;
+      pull.prevPull = undefined;
+      pull._isPullQueued = false;
+      if (pull instanceof Effect) {
+        checkAndRunEffect(pull);
+      } else {
+        checkAndRunListeners(pull);
+      }
+      pull = next;
     }
 
     // This is used to tell the scheduler to wait if any async values have been resolved
@@ -180,18 +241,84 @@ export const asyncSettled = async (timeout = 100) => {
   }
 };
 
+// Synchronous flush: drains PENDING_PULLS and runs the listener/deactivation
+// tail without yielding to a microtask. Does NOT process PENDING_ASYNC_PULLS
+// (those need the microtask-yield contract for relay/async-task resolution
+// ordering, and remain handled by the existing setTimeout-driven flushWatchers
+// path). Does NOT touch `currentFlush` — async pulls scheduled during the
+// drain still get their setTimeout pickup via scheduleFlush as before.
+//
+// This is the workhorse that `batch()` uses to provide synchronous flush
+// semantics with zero per-call Promise allocation. Pre-existing `currentFlush`
+// (if any) and its queued setTimeout are left intact; when that timer fires
+// and finds the queues drained, flushWatchers becomes a cheap no-op.
+export const flushSync = () => {
+  if (inFlushSync) {
+    return;
+  }
+
+  inFlushSync = true;
+  try {
+    while (PENDING_PULLS_HEAD !== undefined) {
+      let pull: PullNode | undefined = PENDING_PULLS_HEAD;
+      PENDING_PULLS_HEAD = undefined;
+      PENDING_PULLS_TAIL = undefined;
+
+      while (pull !== undefined) {
+        const next: PullNode | undefined = pull.nextPull;
+        pull.nextPull = undefined;
+        pull.prevPull = undefined;
+        pull._isPullQueued = false;
+        if (pull instanceof Effect) {
+          checkAndRunEffect(pull);
+        } else {
+          checkAndRunListeners(pull);
+        }
+        pull = next;
+      }
+    }
+
+    if (PENDING_DEACTIVE.size > 0 || PENDING_LISTENERS.length > 0 || (IS_DEV && PENDING_TRACERS!.length > 0)) {
+      runBatch(() => {
+        for (const signal of PENDING_DEACTIVE) {
+          deactivateSignal(signal);
+        }
+
+        PENDING_DEACTIVE.clear();
+
+        for (const signal of PENDING_LISTENERS) {
+          if (signal instanceof ReactiveSignal) {
+            runDerivedListeners(signal as any);
+          } else {
+            runStateListeners(signal as any);
+          }
+        }
+
+        if (IS_DEV) {
+          for (const tracer of PENDING_TRACERS!) {
+            tracer.flush();
+          }
+          PENDING_TRACERS = [];
+        }
+
+        PENDING_LISTENERS = [];
+      });
+    }
+  } finally {
+    inFlushSync = false;
+  }
+};
+
 export const batch = (fn: () => void) => {
-  const prevFlush = currentFlush;
-
-  let resolve: () => void;
-  const promise = new Promise<void>(r => (resolve = r));
-
-  currentFlush = { promise, resolve: resolve! };
-
-  fn();
-  flushWatchers();
-
-  if (prevFlush) {
-    promise.then(prevFlush.resolve);
+  batchDepth++;
+  let didThrow = true;
+  try {
+    fn();
+    didThrow = false;
+  } finally {
+    batchDepth--;
+    if (!didThrow && batchDepth === 0) {
+      flushSync();
+    }
   }
 };

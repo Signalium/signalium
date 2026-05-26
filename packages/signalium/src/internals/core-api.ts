@@ -17,6 +17,7 @@ import {
 } from './reactive.js';
 import { createRelay, createTask } from './async.js';
 import type { Tracer } from './trace.js';
+import { Effect, runEffect, disposeEffect } from './effect.js';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 export const DERIVED_DEFINITION_MAP = new WeakMap<Function, [(...args: any) => any, ReactiveDefinition<any, any>]>();
@@ -91,6 +92,23 @@ export function watcher<T>(fn: () => T, opts?: SignalOptions<T> & { isolate?: bo
   const scope = opts?.isolate ? new SignalScope([]) : getCurrentScope();
 
   return createReactiveSignal(def, undefined, undefined, scope);
+}
+
+/**
+ * Creates a reactive autorun effect. The function is invoked once eagerly,
+ * with reads tracked as dependencies, and re-invoked whenever those
+ * dependencies change. Returns a dispose function that tears down the
+ * subscription; further dependency changes will not trigger the effect.
+ *
+ * Scope rules match {@link watcher}: the effect captures the current
+ * `SignalScope` at creation time. Pass `isolate: true` to create the effect
+ * in a fresh root scope.
+ */
+export function effect(fn: () => void, opts?: { isolate?: boolean }): () => void {
+  const scope = opts?.isolate ? new SignalScope([]) : getCurrentScope();
+  const e = new Effect(fn, scope);
+  runEffect(e);
+  return () => disposeEffect(e);
 }
 
 /**
