@@ -19,7 +19,7 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
     const prevConsumedAt = prevEdge?.consumedAt;
 
     if (prevConsumedAt !== computedCount) {
-      if (prevEdge === undefined) {
+      if (prevEdge === undefined || prevEdge.sub === undefined) {
         if (IS_DEV) {
           getTracerProxy()?.emit({
             type: TracerEventType.Connected,

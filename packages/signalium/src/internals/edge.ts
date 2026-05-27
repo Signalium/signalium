@@ -135,12 +135,9 @@ export function unlinkDep(sub: ReactiveConsumer, edge: Edge): void {
     next.prevDep = prev;
   }
 
-  if (edge.type === EdgeType.Signal && edge.dep.activeEdge === edge) {
-    edge.dep.activeEdge = undefined;
-  }
-
   edge.nextDep = undefined;
   edge.prevDep = undefined;
+  edge.sub = undefined;
 }
 
 export function prepareDeps(sub: ReactiveConsumer): void {
@@ -156,7 +153,7 @@ export function prepareDeps(sub: ReactiveConsumer): void {
 
 export function findDepEdge(sub: ReactiveConsumer, dep: ReactiveSignal<any, any>): Edge | undefined {
   const active = dep.activeEdge;
-  if (active !== undefined && active.sub === sub) {
+  if (active !== undefined && active.subRef === sub.ref) {
     return active;
   }
 
