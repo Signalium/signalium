@@ -254,6 +254,36 @@ describe('effect', () => {
       dispose();
     });
 
+    test('re-watches a computed dep after it is dropped and later re-added', async () => {
+      const useA = signal(true);
+      const a = signal(1);
+      const b = signal(10);
+      const aValue = reactiveSignal(() => a.value);
+      const bValue = reactiveSignal(() => b.value);
+      const selected = reactiveSignal(() => (useA.value ? aValue.value : bValue.value));
+      const seen: number[] = [];
+
+      const dispose = effect(() => {
+        seen.push(selected.value);
+      });
+
+      expect(seen).toEqual([1]);
+
+      useA.value = false;
+      await nextTick();
+      expect(seen).toEqual([1, 10]);
+
+      useA.value = true;
+      await nextTick();
+      expect(seen).toEqual([1, 10, 1]);
+
+      a.value = 2;
+      await nextTick();
+      expect(seen).toEqual([1, 10, 1, 2]);
+
+      dispose();
+    });
+
     test('coalesces multiple updates inside a batch into a single re-run', async () => {
       const a = signal(1);
       const b = signal(2);
