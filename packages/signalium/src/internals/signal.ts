@@ -123,11 +123,7 @@ export class StateSignal<T> implements Signal<T> {
       subs.lastNode = null;
     }
 
-    // Only schedule a listener flush if any external listeners are registered.
-    const listeners = this._listeners;
-    if (listeners !== null && listeners.size > 0) {
-      scheduleListeners(this);
-    }
+    scheduleListeners(this);
   }
 
   addListener(listener: () => void): () => void {

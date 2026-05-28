@@ -116,12 +116,8 @@ function dirtyConsumerEdge(sub: ReactiveConsumer, edge: Edge) {
       }
       break;
 
-    case ReactiveFnState.MaybeDirty:
-      edge.nextDirty = sub.dirtyHead;
-      sub.dirtyHead = edge;
-      break;
-
     case ReactiveFnState.Pending:
+    case ReactiveFnState.MaybeDirty:
     case ReactiveFnState.PendingDirty: {
       let subEdge = sub.dirtyHead!;
       const ord = edge.ord;
