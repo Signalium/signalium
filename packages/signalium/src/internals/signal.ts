@@ -13,26 +13,12 @@ export function isSignal(value: unknown): value is Signal<unknown> {
   return typeof value === 'object' && value !== null && (value as any)[SIGNAL_BRAND] === true;
 }
 
-class StateSub {
-  sub: ReactiveConsumer;
-  consumedAt: number;
-  next: StateSub | null;
-
-  constructor(sub: ReactiveConsumer, consumedAt: number, next: StateSub | null) {
-    this.sub = sub;
-    this.consumedAt = consumedAt;
-    this.next = next;
-  }
-}
-
 export class StateSignal<T> implements Signal<T> {
   // SIGNAL_BRAND is set on the prototype below the class definition rather than
   // as an instance field, so we don't pay a per-instance Symbol-keyed slot.
   private _value: T;
   private _equals: Equals<T>;
-  private _subsHead: StateSub | null = null;
-  private _lastSub: ReactiveConsumer | null = null;
-  private _lastNode: StateSub | null = null;
+  private _subs: Set<ReactiveConsumer> | ReactiveConsumer | null = null;
   private _listeners: Set<() => void> | null = null;
 
   constructor(value: T, equals: Equals<T> = DEFAULT_EQUALS as Equals<T>, desc: string = 'signal') {
@@ -82,48 +68,50 @@ export class StateSignal<T> implements Signal<T> {
         });
       }
 
-      const lastNode = this._lastNode;
-      if (this._lastSub === currentConsumer && lastNode !== null) {
-        lastNode.consumedAt = currentConsumer.computedCount;
+      let subs = this._subs;
+      if (subs === null) {
+        this._subs = subs = currentConsumer;
+      } else if (subs instanceof Set) {
+        subs.add(currentConsumer);
       } else {
-        const node = new StateSub(currentConsumer, currentConsumer.computedCount, this._subsHead);
-        this._subsHead = node;
-        this._lastSub = currentConsumer;
-        this._lastNode = node;
+        const newSubs = new Set<ReactiveConsumer>();
+        newSubs.add(currentConsumer);
+        newSubs.add(subs);
+        this._subs = newSubs;
+      }
+
+      let stateDeps = currentConsumer.stateDeps;
+      if (stateDeps === null) {
+        currentConsumer.stateDeps = this;
+      } else if (stateDeps instanceof WeakSet) {
+        stateDeps.add(this);
+      } else {
+        const newStateDeps = new WeakSet();
+        newStateDeps.add(this);
+        newStateDeps.add(stateDeps);
+        currentConsumer.stateDeps = newStateDeps;
       }
     }
   }
 
   notify(): void {
-    let node = this._subsHead;
-    if (node !== null) {
-      while (node !== null) {
-        const { sub, consumedAt } = node;
-        if (consumedAt === sub.computedCount) {
+    const subs = this._subs;
+
+    if (subs === null) {
+      return;
+    }
+
+    if (subs instanceof Set) {
+      for (const sub of subs) {
+        const stateDeps = sub.stateDeps!;
+
+        if (stateDeps === this || (stateDeps as WeakSet<object>).has(this)) {
           dirtySignal(sub);
         }
-
-        node = node.next;
       }
-
-      this._subsHead = null;
-      this._lastSub = null;
-      this._lastNode = null;
+    } else {
+      dirtySignal(subs);
     }
-
-    scheduleListeners(this);
-  }
-
-  addListener(listener: () => void): () => void {
-    let listeners = this._listeners;
-
-    if (listeners === null) {
-      this._listeners = listeners = new Set();
-    }
-
-    listeners.add(listener);
-
-    return () => listeners.delete(listener);
   }
 }
 
@@ -132,18 +120,6 @@ export class StateSignal<T> implements Signal<T> {
 // fully equivalent for the consumer-facing check while saving an own-property
 // per StateSignal instance.
 (StateSignal.prototype as any)[SIGNAL_BRAND] = true;
-
-export function runListeners(signal: StateSignal<any>) {
-  const listeners = signal['_listeners'];
-
-  if (listeners === null) {
-    return;
-  }
-
-  for (const listener of listeners) {
-    listener();
-  }
-}
 
 export function signal<T>(initialValue: T, opts?: SignalOptions<T>): Signal<T> {
   const equals =

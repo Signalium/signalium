@@ -7,6 +7,7 @@ import { unwatchSignal } from './watch.js';
 import type { SignalScope } from './contexts.js';
 import type { TracerMeta } from './trace.js';
 import type { Callback } from './callback.js';
+import { StateSignal } from './signal.js';
 
 let EFFECT_ID = 0;
 
@@ -40,6 +41,8 @@ export class Effect {
 
   updatedCount: number = 0;
   computedCount: number = 0;
+
+  stateDeps: WeakSet<object> | StateSignal<any> | null = null;
 
   // Effects are self-watched: they're always considered "live" between
   // creation and dispose. This makes `propagateDirty` schedule them via the
@@ -140,6 +143,7 @@ export function runEffect(e: Effect): void {
 
   try {
     e.depsTail = undefined;
+    e.stateDeps = null;
     setCurrentConsumer(e as any);
     e.fn();
     disconnectSignal(e);

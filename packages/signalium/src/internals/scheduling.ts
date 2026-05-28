@@ -2,10 +2,8 @@ import { scheduleFlush as _scheduleFlush, runBatch } from './config.js';
 import { ReactiveSignal } from './reactive.js';
 import { checkAndRunListeners, checkSignal } from './get.js';
 import { runListeners as runDerivedListeners } from './reactive.js';
-import { runListeners as runStateListeners } from './signal.js';
 import type { Tracer } from './trace.js';
 import { deactivateSignal } from './watch.js';
-import { StateSignal } from './signal.js';
 import { Effect, checkAndRunEffect } from './effect.js';
 
 type PullNode = ReactiveSignal<any, any> | Effect;
@@ -14,7 +12,7 @@ let PENDING_PULLS_HEAD: PullNode | undefined = undefined;
 let PENDING_PULLS_TAIL: PullNode | undefined = undefined;
 let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
 let PENDING_DEACTIVE = new Set<ReactiveSignal<any, any>>();
-let PENDING_LISTENERS: (ReactiveSignal<any, any> | StateSignal<any>)[] = [];
+let PENDING_LISTENERS: (ReactiveSignal<any, any>)[] = [];
 let PENDING_TRACERS: Tracer[] | undefined = IS_DEV ? [] : undefined;
 
 const microtask = () => Promise.resolve();
@@ -100,7 +98,7 @@ export const cancelDeactivate = (signal: ReactiveSignal<any, any>) => {
   PENDING_DEACTIVE.delete(signal);
 };
 
-export const scheduleListeners = (signal: ReactiveSignal<any, any> | StateSignal<any>) => {
+export const scheduleListeners = (signal: ReactiveSignal<any, any>) => {
   PENDING_LISTENERS.push(signal);
   if (inFlushSync) {
     return;
@@ -167,11 +165,7 @@ const flushWatchers = async () => {
     PENDING_DEACTIVE.clear();
 
     for (const signal of PENDING_LISTENERS) {
-      if (signal instanceof ReactiveSignal) {
-        runDerivedListeners(signal as any);
-      } else {
-        runStateListeners(signal as any);
-      }
+      runDerivedListeners(signal as any);
     }
 
     if (IS_DEV) {
@@ -287,11 +281,7 @@ export const flushSync = () => {
         PENDING_DEACTIVE.clear();
 
         for (const signal of PENDING_LISTENERS) {
-          if (signal instanceof ReactiveSignal) {
-            runDerivedListeners(signal as any);
-          } else {
-            runStateListeners(signal as any);
-          }
+          runDerivedListeners(signal as any);
         }
 
         if (IS_DEV) {

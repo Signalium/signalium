@@ -121,6 +121,8 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
   watchCount: number = 0;
 
+  stateDeps: WeakSet<object> | null = null;
+
   key: SignalId | undefined;
   args: Args;
   callbacks: Callback[] | undefined = undefined;

@@ -197,6 +197,7 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
 
   try {
     signal.depsTail = undefined;
+    signal.stateDeps = null;
     setCurrentConsumer(signal);
 
     const initialized = updatedCount !== 0;
