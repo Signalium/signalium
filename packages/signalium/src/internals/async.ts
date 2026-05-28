@@ -12,7 +12,7 @@ import { createReactiveSignal, ReactiveSignal, ReactiveDefinition, ReactiveFnSta
 import { disconnectSignal, getSignal } from './get.js';
 import { dirtyPromiseConsumers, dirtySignal } from './dirty.js';
 import { scheduleAsyncPull, trackPendingStart, trackPendingEnd } from './scheduling.js';
-import { clearSubLinks, createEdge, EdgeType, findDepEdge, findAndRemoveDirty, linkDep, linkSub, PromiseEdge } from './edge.js';
+import { clearSubLinks, createEdge, EdgeType, findAndRemoveDirty, linkSub, PromiseEdge } from './edge.js';
 import { SignalScope } from './contexts.js';
 import { signal } from './signal.js';
 import { DEFAULT_EQUALS, equalsFrom } from './utils/equals.js';
@@ -304,19 +304,7 @@ export class ReactivePromiseImpl<T> {
     // isPending/value). Skip self-subscription to avoid a dependency cycle.
     if (currentConsumer === signal) return;
 
-    if (currentConsumer?.watchCount === 0) {
-      const { ref, computedCount } = currentConsumer;
-      const prevEdge = findDepEdge(currentConsumer, signal);
-
-      if (prevEdge?.consumedAt !== computedCount) {
-        const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, signal.updatedCount, computedCount, ref, currentConsumer);
-
-        linkSub(signal, newEdge);
-        linkDep(currentConsumer, newEdge);
-      }
-    } else {
-      getSignal(signal);
-    }
+    getSignal(signal);
   }
 
   private _setFlags(setTrue: number, setFalse = 0, notify = 0) {

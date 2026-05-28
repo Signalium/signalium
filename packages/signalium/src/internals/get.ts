@@ -1,7 +1,7 @@
 import { ReactiveValue } from '../types.js';
 import { createPromise, isReactivePromise, ReactivePromiseImpl } from './async.js';
 import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
-import { createEdge, Edge, EdgeType, findDepEdge, linkDep, linkSub, prepareDeps, unlinkDep, unlinkSub } from './edge.js';
+import { nextOrd, EdgeBase, Edge, EdgeType, linkSub, unlinkSub } from './edge.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
 import { ReactiveFnState, isRelay, ReactiveSignal } from './reactive.js';
 import type { Effect } from './effect.js';
@@ -13,52 +13,97 @@ import { unwatchSignal, watchSignal } from './watch.js';
 export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, Args>): ReactiveValue<T> {
   const currentConsumer = getCurrentConsumer();
   if (currentConsumer !== undefined) {
-    const { ref, computedCount } = currentConsumer;
-    const prevEdge = findDepEdge(currentConsumer, signal);
+    const cursor = currentConsumer.depsTail;
+    const nextEdge = cursor !== undefined ? cursor.nextDep : currentConsumer.depsHead;
 
-    const prevConsumedAt = prevEdge?.consumedAt;
-
-    if (prevConsumedAt !== computedCount) {
-      if (prevEdge === undefined || prevEdge.sub === undefined) {
-        if (IS_DEV) {
-          getTracerProxy()?.emit({
-            type: TracerEventType.Connected,
-            id: currentConsumer.tracerMeta!.id,
-            childId: signal.tracerMeta!.id,
-            name: signal.tracerMeta!.desc,
-            params: signal.tracerMeta!.params,
-            nodeType: SignalType.Reactive,
-          });
-        }
-
-        if (currentConsumer.watchCount > 0) {
-          watchSignal(signal);
-        }
-      }
-
+    if (nextEdge !== undefined && nextEdge.dep === signal) {
+      currentConsumer.depsTail = nextEdge;
       const updatedAt = checkSignal(signal);
-
-      if (prevEdge === undefined) {
-        const newEdge = createEdge(undefined, EdgeType.Signal, signal, updatedAt, computedCount, ref, currentConsumer);
-        linkSub(signal, newEdge);
-        linkDep(currentConsumer, newEdge);
-      } else {
-        const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, updatedAt, computedCount, ref, currentConsumer);
-        linkSub(signal, newEdge);
-        linkDep(currentConsumer, newEdge);
-      }
+      nextEdge.updatedAt = updatedAt;
+      nextEdge.consumedAt = currentConsumer.computedCount;
+      nextEdge.ord = nextOrd();
+      linkSub(signal, nextEdge);
     } else {
-      const updatedAt = checkSignal(signal);
-
-      if (prevEdge !== undefined) {
-        prevEdge.updatedAt = updatedAt;
-      }
+      getSignalSlow(signal, currentConsumer, cursor, nextEdge);
     }
   } else {
     checkSignal(signal);
   }
 
   return signal._value as ReactiveValue<T>;
+}
+
+function getSignalSlow(
+  signal: ReactiveSignal<any, any>,
+  currentConsumer: ReactiveSignal<any, any> | Effect,
+  cursor: Edge | undefined,
+  nextEdge: Edge | undefined,
+): void {
+  const { ref, computedCount } = currentConsumer;
+
+  // Skip Promise edges that may sit between cursor and the next Signal edge
+  while (nextEdge !== undefined && nextEdge.type === EdgeType.Promise) {
+    cursor = nextEdge;
+    nextEdge = nextEdge.nextDep;
+  }
+
+  if (nextEdge !== undefined && nextEdge.dep === signal) {
+    currentConsumer.depsTail = nextEdge;
+    const updatedAt = checkSignal(signal);
+    nextEdge.updatedAt = updatedAt;
+    nextEdge.consumedAt = computedCount;
+    nextEdge.ord = nextOrd();
+    linkSub(signal, nextEdge);
+    return;
+  }
+
+  // Check if this dep was already consumed earlier in this computation
+  let subEdge = signal.subsHead;
+  while (subEdge !== undefined) {
+    if (subEdge.sub === currentConsumer && subEdge.consumedAt === computedCount) {
+      const updatedAt = checkSignal(signal);
+      subEdge.updatedAt = updatedAt;
+      return;
+    }
+    subEdge = subEdge.nextSub;
+  }
+
+  if (IS_DEV) {
+    getTracerProxy()?.emit({
+      type: TracerEventType.Connected,
+      id: currentConsumer.tracerMeta!.id,
+      childId: signal.tracerMeta!.id,
+      name: signal.tracerMeta!.desc,
+      params: signal.tracerMeta!.params,
+      nodeType: SignalType.Reactive,
+    });
+  }
+
+  if (currentConsumer.watchCount > 0) {
+    watchSignal(signal);
+  }
+
+  const updatedAt = checkSignal(signal);
+
+  const newEdge = new EdgeBase(
+    EdgeType.Signal, signal, updatedAt, computedCount, ref, currentConsumer,
+  ) as Edge;
+  linkSub(signal, newEdge);
+
+  newEdge.prevDep = cursor;
+  newEdge.nextDep = nextEdge;
+
+  if (cursor !== undefined) {
+    cursor.nextDep = newEdge;
+  } else {
+    currentConsumer.depsHead = newEdge;
+  }
+
+  if (nextEdge !== undefined) {
+    nextEdge.prevDep = newEdge;
+  }
+
+  currentConsumer.depsTail = newEdge;
 }
 
 export function checkSignal(signal: ReactiveSignal<any, any>): number {
@@ -75,23 +120,17 @@ export function checkSignal(signal: ReactiveSignal<any, any>): number {
       if (edge.type === EdgeType.Promise) {
         const dep = edge.dep;
 
-        // If the dependency is pending, then we need to propagate the pending state to the
-        // parent signal, and we halt the computation here.
         if (dep._getPending()) {
           const value = signal._value;
 
-          // Add the signal to the awaitSubs map to be notified when the promise is resolved
           dep['_awaitSubs'].set(ref, edge);
 
-          // Propagate the pending state to the parent signal
           (value as ReactivePromiseImpl<unknown>)._setPending();
           signal._state = ReactiveFnState.Pending;
           signal.dirtyHead = edge;
 
-          // Early return to prevent the signal from being computed and to preserve the dirty state
           return signal.updatedCount;
         } else if (edge.updatedAt === edge.dep._updatedCount) {
-          // Add the signal to the awaitSubs map as its still a dependency, just not dirty
           dep['_awaitSubs'].set(ref, edge);
         } else {
           signal.dirtyHead = edge.nextDirty;
@@ -120,9 +159,6 @@ export function checkSignal(signal: ReactiveSignal<any, any>): number {
 
   const newState = signal._state;
 
-  // If the signal is dirty, we need to run it. This should always be checked
-  // directly on the signal instance, because the state could have been changed
-  // mid computation and not just through direct dependencies.
   if (newState === ReactiveFnState.Dirty) {
     if (signal._isLazy) {
       signal.updatedCount++;
@@ -160,14 +196,11 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
   const computedCount = ++signal.computedCount;
 
   try {
-    prepareDeps(signal);
+    signal.depsTail = undefined;
     setCurrentConsumer(signal);
 
     const initialized = updatedCount !== 0;
     const prevValue = signal._value;
-    // Avoid the spread call when there are no args. For `reactiveSignal()` and
-    // `watcher()` (the common cases) args is `undefined`; the spread call has
-    // measurable overhead at scale.
     const args = signal.args;
     let nextValue: any =
       args === undefined || args.length === 0 ? (signal.def.compute as () => any)() : signal.def.compute(...args);
@@ -184,12 +217,6 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
 
     if (valueIsPromise) {
       if (prevValue !== null && typeof prevValue === 'object' && isReactivePromise(prevValue)) {
-        // Update the AsyncSignal with the new promise. Since the value
-        // returned from the function is the same AsyncSignal instance,
-        // we don't need to increment the updatedCount, because the returned
-        // value is the same. _setPromise will update the nested values on the
-        // AsyncSignal instance, and consumers of those values will be notified
-        // of the change through that.
         prevValue['_setPromise'](nextValue);
       } else {
         signal._value = createPromise(nextValue, signal);
@@ -198,13 +225,10 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
     } else {
       if (!initialized || !signal.def.equals(prevValue!, nextValue)) {
         signal._value = nextValue;
-        // If the signal is lazy, we don't want to increment the updatedCount, it
-        // has already been updated
         signal.updatedCount = signal._isLazy ? updatedCount : updatedCount + 1;
       }
 
-      // Disconnect the signal from all its previous dependencies synchronously
-      disconnectSignal(signal, computedCount);
+      disconnectSignal(signal);
     }
   } finally {
     setCurrentConsumer(prevConsumer);
@@ -219,36 +243,52 @@ export function runSignal(signal: ReactiveSignal<any, any[]>) {
   }
 }
 
-/**
- * Walks `consumer.depsHead` and unlinks/unwatches any edges that weren't
- * consumed at the given `computedCount`. Shared by `runSignal` and
- * `runEffect` — works for any consumer that carries the dep-graph linked
- * list (`ReactiveSignal` and `Effect`).
- */
 export function disconnectSignal(
   consumer: ReactiveSignal<any, any> | Effect,
-  computedCount: number = consumer.computedCount,
 ) {
-  let edge = consumer.depsHead;
+  const cursor = consumer.depsTail;
+  let edge = cursor !== undefined ? cursor.nextDep : consumer.depsHead;
+
+  if (edge === undefined) return;
+
+  if (cursor !== undefined) {
+    cursor.nextDep = undefined;
+  } else {
+    consumer.depsHead = undefined;
+  }
+
+  let lastKept = cursor;
 
   while (edge !== undefined) {
-    const next = edge.nextDep;
+    const next: Edge | undefined = edge.nextDep;
+
     if (edge.type === EdgeType.Promise) {
+      edge.prevDep = lastKept;
+      edge.nextDep = undefined;
+
+      if (lastKept !== undefined) {
+        lastKept.nextDep = edge;
+      } else {
+        consumer.depsHead = edge;
+      }
+
+      lastKept = edge;
       edge = next;
       continue;
     }
 
     const dep = edge.dep;
-    if (edge.consumedAt !== computedCount) {
-      unwatchSignal(dep);
-      unlinkSub(dep, edge);
-      unlinkDep(consumer as any, edge);
-      // Mark disconnected dep as Dirty so it revalidates when re-read.
-      // Its subscription chain is broken and it may miss notifications.
-      if (dep._state < ReactiveFnState.Dirty) {
-        dep._state = ReactiveFnState.Dirty;
-      }
+    unwatchSignal(dep);
+    unlinkSub(dep, edge);
+
+    edge.nextDep = undefined;
+    edge.prevDep = undefined;
+    edge.sub = undefined;
+
+    if (dep._state < ReactiveFnState.Dirty) {
+      dep._state = ReactiveFnState.Dirty;
     }
+
     edge = next;
   }
 }

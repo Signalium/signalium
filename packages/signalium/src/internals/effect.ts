@@ -1,5 +1,5 @@
 import { ReactiveFnState, ReactiveFnFlags, ReactiveSignal } from './reactive.js';
-import { Edge, EdgeType, linkSub, prepareDeps, unlinkDep, unlinkSub } from './edge.js';
+import { Edge, EdgeType, linkSub, unlinkDep, unlinkSub } from './edge.js';
 import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
 import { cancelPull } from './scheduling.js';
 import { checkSignal, disconnectSignal } from './get.js';
@@ -31,6 +31,7 @@ export class Effect {
   scope: SignalScope | undefined = undefined;
 
   depsHead: Edge | undefined = undefined;
+  depsTail: Edge | undefined = undefined;
 
   dirtyHead: Edge | undefined = undefined;
   dirtyEpoch: number = 0;
@@ -138,10 +139,10 @@ export function runEffect(e: Effect): void {
   const computedCount = ++e.computedCount;
 
   try {
-    prepareDeps(e as any);
+    e.depsTail = undefined;
     setCurrentConsumer(e as any);
     e.fn();
-    disconnectSignal(e, computedCount);
+    disconnectSignal(e);
   } finally {
     setCurrentConsumer(prevConsumer);
   }
@@ -242,6 +243,7 @@ export function disposeEffect(e: Effect): void {
   }
 
   e.depsHead = undefined;
+  e.depsTail = undefined;
   e.watchCount = 0;
   e._state = ReactiveFnState.Clean;
 }

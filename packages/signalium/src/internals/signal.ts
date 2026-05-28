@@ -25,20 +25,14 @@ class StateSub {
   }
 }
 
-// Lazily-allocated container holding subscriber-tracking state. Allocated only
-// on the first consume() of a StateSignal so unobserved signals stay narrow.
-class SubState {
-  head: StateSub | null = null;
-  lastSub: ReactiveConsumer | null = null;
-  lastNode: StateSub | null = null;
-}
-
 export class StateSignal<T> implements Signal<T> {
   // SIGNAL_BRAND is set on the prototype below the class definition rather than
   // as an instance field, so we don't pay a per-instance Symbol-keyed slot.
   private _value: T;
   private _equals: Equals<T>;
-  private _subs: SubState | null = null;
+  private _subsHead: StateSub | null = null;
+  private _lastSub: ReactiveConsumer | null = null;
+  private _lastNode: StateSub | null = null;
   private _listeners: Set<() => void> | null = null;
 
   constructor(value: T, equals: Equals<T> = DEFAULT_EQUALS as Equals<T>, desc: string = 'signal') {
@@ -88,27 +82,21 @@ export class StateSignal<T> implements Signal<T> {
         });
       }
 
-      let subs = this._subs;
-      if (subs === null) {
-        subs = this._subs = new SubState();
-      }
-
-      const lastNode = subs.lastNode;
-      if (subs.lastSub === currentConsumer && lastNode !== null) {
+      const lastNode = this._lastNode;
+      if (this._lastSub === currentConsumer && lastNode !== null) {
         lastNode.consumedAt = currentConsumer.computedCount;
       } else {
-        const node = new StateSub(currentConsumer, currentConsumer.computedCount, subs.head);
-        subs.head = node;
-        subs.lastSub = currentConsumer;
-        subs.lastNode = node;
+        const node = new StateSub(currentConsumer, currentConsumer.computedCount, this._subsHead);
+        this._subsHead = node;
+        this._lastSub = currentConsumer;
+        this._lastNode = node;
       }
     }
   }
 
   notify(): void {
-    const subs = this._subs;
-    if (subs !== null) {
-      let node = subs.head;
+    let node = this._subsHead;
+    if (node !== null) {
       while (node !== null) {
         const { sub, consumedAt } = node;
         if (consumedAt === sub.computedCount) {
@@ -118,9 +106,9 @@ export class StateSignal<T> implements Signal<T> {
         node = node.next;
       }
 
-      subs.head = null;
-      subs.lastSub = null;
-      subs.lastNode = null;
+      this._subsHead = null;
+      this._lastSub = null;
+      this._lastNode = null;
     }
 
     scheduleListeners(this);

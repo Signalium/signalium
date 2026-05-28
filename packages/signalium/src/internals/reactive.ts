@@ -107,7 +107,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
   subsHead: Edge | undefined = undefined;
   depsHead: Edge | undefined = undefined;
-  activeEdge: Edge | undefined = undefined;
+  depsTail: Edge | undefined = undefined;
 
   ref: WeakRef<ReactiveSignal<T, Args>> = new WeakRef(this);
 

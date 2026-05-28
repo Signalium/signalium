@@ -4,6 +4,10 @@ import type { ReactiveConsumer } from './consumer.js';
 
 let CURRENT_ORD = 0;
 
+export function nextOrd(): number {
+  return CURRENT_ORD++;
+}
+
 export const enum EdgeType {
   Signal = 0,
   Promise = 1,
@@ -127,6 +131,10 @@ export function unlinkDep(sub: ReactiveConsumer, edge: Edge): void {
     sub.depsHead = next;
   }
 
+  if (sub.depsTail === edge) {
+    sub.depsTail = prev;
+  }
+
   if (prev !== undefined) {
     prev.nextDep = next;
   }
@@ -140,34 +148,6 @@ export function unlinkDep(sub: ReactiveConsumer, edge: Edge): void {
   edge.sub = undefined;
 }
 
-export function prepareDeps(sub: ReactiveConsumer): void {
-  let edge = sub.depsHead;
-
-  while (edge !== undefined) {
-    if (edge.type === EdgeType.Signal) {
-      edge.dep.activeEdge = edge;
-    }
-    edge = edge.nextDep;
-  }
-}
-
-export function findDepEdge(sub: ReactiveConsumer, dep: ReactiveSignal<any, any>): Edge | undefined {
-  const active = dep.activeEdge;
-  if (active !== undefined && active.subRef === sub.ref) {
-    return active;
-  }
-
-  let edge = sub.depsHead;
-  while (edge !== undefined) {
-    if (edge.type === EdgeType.Signal && edge.dep === dep) {
-      dep.activeEdge = edge;
-      return edge;
-    }
-    edge = edge.nextDep;
-  }
-
-  return undefined;
-}
 
 export function unlinkSub(dep: ReactiveSignal<any, any>, edge: Edge): void {
   const next = edge.nextSub;
