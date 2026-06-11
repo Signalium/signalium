@@ -1,5 +1,6 @@
 export {
   type Context,
+  type DeactivateOptions,
   type Equals,
   type Notifier,
   type PendingReactivePromise,

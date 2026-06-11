@@ -1,4 +1,5 @@
 import { ReactiveSignal, isRelay } from './reactive.js';
+import type { DeactivateOptions } from '../types.js';
 import { checkSignal } from './get.js';
 import { cancelDeactivate, scheduleDeactivate } from './scheduling.js';
 
@@ -19,14 +20,14 @@ export function watchSignal(signal: ReactiveSignal<any, any>): void {
   activateSignal(signal);
 }
 
-export function unwatchSignal(signal: ReactiveSignal<any, any>) {
+export function unwatchSignal(signal: ReactiveSignal<any, any>, options: DeactivateOptions = {}) {
   const { watchCount } = signal;
   const newWatchCount = Math.max(watchCount - 1, 0);
 
   signal.watchCount = newWatchCount;
 
   if (newWatchCount === 0) {
-    scheduleDeactivate(signal);
+    scheduleDeactivate(signal, options);
   }
 }
 
@@ -40,7 +41,7 @@ export function activateSignal(signal: ReactiveSignal<any, any>): void {
   }
 }
 
-export function deactivateSignal(signal: ReactiveSignal<any, any>) {
+export function deactivateSignal(signal: ReactiveSignal<any, any>, options: DeactivateOptions = {}) {
   signal._isActive = false;
 
   for (const dep of signal.deps.keys()) {
@@ -48,11 +49,11 @@ export function deactivateSignal(signal: ReactiveSignal<any, any>) {
     dep.watchCount = newWatchCount;
 
     if (newWatchCount === 0) {
-      deactivateSignal(dep);
+      deactivateSignal(dep, options);
     }
   }
 
   if (isRelay(signal)) {
-    signal._value?.();
+    signal._value?.(options);
   }
 }
