@@ -1,5 +1,6 @@
 import { scheduleFlush as _scheduleFlush, runBatch } from './config.js';
 import { ReactiveSignal } from './reactive.js';
+import type { DeactivateOptions } from '../types.js';
 import { checkAndRunListeners, checkSignal } from './get.js';
 import { runListeners as runDerivedListeners } from './reactive.js';
 import { runListeners as runStateListeners } from './signal.js';
@@ -9,7 +10,9 @@ import { StateSignal } from './signal.js';
 
 let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
 let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
-let PENDING_DEACTIVE = new Set<ReactiveSignal<any, any>>();
+// Maps each pending signal to its deactivation context (pause vs cleanup).
+// Clean wins on conflict.
+let PENDING_DEACTIVE = new Map<ReactiveSignal<any, any>, DeactivateOptions>();
 let PENDING_LISTENERS: (ReactiveSignal<any, any> | StateSignal<any>)[] = [];
 let PENDING_TRACERS: Tracer[] | undefined = IS_DEV ? [] : undefined;
 
@@ -42,8 +45,14 @@ export const scheduleAsyncPull = (signal: ReactiveSignal<any, any>) => {
   scheduleFlush(flushWatchers);
 };
 
-export const scheduleDeactivate = (signal: ReactiveSignal<any, any>) => {
-  PENDING_DEACTIVE.add(signal);
+export const scheduleDeactivate = (signal: ReactiveSignal<any, any>, options: DeactivateOptions = {}) => {
+  const existing = PENDING_DEACTIVE.get(signal);
+  // A genuine cleanup must never be downgraded to a pause: if this signal was
+  // already scheduled as a clean, keep it a clean.
+  PENDING_DEACTIVE.set(
+    signal,
+    existing === undefined ? options : { isPausing: Boolean(existing.isPausing && options.isPausing) },
+  );
   scheduleFlush(flushWatchers);
 };
 
@@ -99,8 +108,8 @@ const flushWatchers = async () => {
   currentFlush = null;
 
   runBatch(() => {
-    for (const signal of PENDING_DEACTIVE) {
-      deactivateSignal(signal);
+    for (const [signal, options] of PENDING_DEACTIVE) {
+      deactivateSignal(signal, options);
     }
 
     PENDING_DEACTIVE.clear();

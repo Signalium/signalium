@@ -7,6 +7,7 @@ import {
   RelayActivate,
   RelayHooks,
   RelayState,
+  type DeactivateOptions,
 } from '../types.js';
 import { createReactiveSignal, ReactiveSignal, ReactiveDefinition, ReactiveFnState } from './reactive.js';
 import { disconnectSignal, getSignal } from './get.js';
@@ -733,11 +734,11 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
   let active = false;
   let currentSub: RelayHooks | (() => void) | undefined | void;
 
-  const unsubscribe = () => {
+  const unsubscribe = (options?: DeactivateOptions) => {
     if (typeof currentSub === 'function') {
       currentSub();
     } else if (currentSub !== undefined) {
-      currentSub.deactivate?.();
+      currentSub.deactivate?.(options);
     }
 
     const signal = p['_signal'] as ReactiveSignal<any, any>;
@@ -771,7 +772,7 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
     },
   };
 
-  const def: ReactiveDefinition<() => void, unknown[]> = {
+  const def: ReactiveDefinition<(options?: DeactivateOptions) => void, unknown[]> = {
     compute: () => {
       if (active === false) {
         currentSub = activate(state);

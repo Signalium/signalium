@@ -28,7 +28,7 @@ class PauseSignalsManager {
     this._paused = value;
     for (const signal of this.signals) {
       if (value) {
-        unwatchSignal(signal);
+        unwatchSignal(signal, { isPausing: true });
       } else {
         watchSignal(signal);
         schedulePull(signal);

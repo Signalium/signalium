@@ -21,9 +21,29 @@ export interface Notifier {
 
 export type Equals<T> = (prev: T, next: T) => boolean;
 
+/**
+ * Context passed to {@link RelayHooks.deactivate} (and threaded through
+ * signalium's internal deactivation path). An options object rather than a
+ * positional flag so more context can be added without a breaking change.
+ */
+export interface DeactivateOptions {
+  /**
+   * `true` when the relay is being torn down by a temporary pause (e.g. via
+   * `PauseSignalsProvider`) that will likely resume, and `false`/absent for a
+   * genuine cleanup (no remaining watchers). Relays should avoid scheduling
+   * destructive work like garbage collection while pausing, so that resuming
+   * can reuse the existing state.
+   */
+  isPausing?: boolean;
+}
+
 export type RelayHooks = {
   update?(): void;
-  deactivate?(): void;
+  /**
+   * Called when the relay is torn down. See {@link DeactivateOptions.isPausing}
+   * for distinguishing a temporary pause from a genuine cleanup.
+   */
+  deactivate?(options?: DeactivateOptions): void;
 };
 
 export interface RelayState<T> {
