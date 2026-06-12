@@ -1,5 +1,11 @@
 # signalium
 
+## 3.0.3
+
+### Patch Changes
+
+- bad3258: `RelayHooks.deactivate` now receives a `DeactivateOptions` object with an `isPausing` flag, distinguishing a temporary pause (e.g. `PauseSignalsProvider`) from a genuine cleanup. Relays can use it to skip destructive work like garbage collection while pausing. `DeactivateOptions` is exported.
+
 ## 3.0.2
 
 ### Patch Changes
