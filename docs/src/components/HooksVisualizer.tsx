@@ -438,6 +438,16 @@ const WatcherRunner = ({
       .replace(/export const (\w+) =/, 'return')
       .replace(/import .* from .*;?/, '');
 
+    // In the signal-watcher path the example "component" is executed inside a
+    // `watcher` (a reactive consumer), not a real React render. `useReactive`
+    // now throws when called inside a reactive function, so we provide a shim
+    // that simply reads the thunk within the surrounding reactive scope — which
+    // is exactly what `useReactive` resolves to at that boundary. The React
+    // hooks path still runs during render, so it keeps the real hook.
+    const useReactiveFn = reactHooks
+      ? useReactive
+      : <T,>(fn: () => T): T => fn();
+
     let output = new Function(
       '{ signal, relay, reactive, useReactive, hook, useRef, useState, useEffect, React, sleep, ReactivePromise }',
       compiled,
@@ -449,7 +459,7 @@ const WatcherRunner = ({
       useRef,
       useState,
       useEffect,
-      useReactive,
+      useReactive: useReactiveFn,
       React,
       sleep,
       ReactivePromise,
