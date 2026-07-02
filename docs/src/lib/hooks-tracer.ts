@@ -8,7 +8,7 @@ import {
 import { useRef, useState as _useState, useEffect } from 'react';
 
 let CURRENT_HOOK_ID: string | undefined;
-const tracer = getTracerProxy();
+
 interface HookOptions {
   desc?: string;
 }
@@ -19,6 +19,10 @@ export function hook<T, Args extends unknown[]>(
   { desc }: HookOptions = {},
 ): (...args: Args) => T {
   return (...args: Args) => {
+    // Resolve the tracer lazily: `setTracing(true)` runs when the visualizer
+    // module loads, which is after this module is first evaluated, so caching
+    // the proxy at module scope would capture `undefined`.
+    const tracer = getTracerProxy();
     const fnName = desc ?? fn.name;
     const stringifiedArgs = JSON.stringify(args).slice(1, -1);
     const hookId = `${fnName}(${stringifiedArgs})`;
@@ -65,6 +69,8 @@ export const useState: typeof _useState = <T>(
   ...args: Parameters<typeof _useState<T>>
 ) => {
   const [state, _setState] = _useState<T>(...args);
+
+  const tracer = getTracerProxy();
 
   tracer?.emit({
     type: TracerEventType.ConsumeState,
