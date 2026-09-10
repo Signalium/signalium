@@ -1,5 +1,11 @@
 export { hashValue, registerCustomHash } from './internals/utils/hash.js';
-export { snapshot, registerCustomSnapshot } from './internals/utils/snapshot.js';
+export {
+  snapshot,
+  registerCustomSnapshot,
+  snapshotArray,
+  snapshotPlainObject,
+  type SnapshotFn,
+} from './internals/utils/snapshot.js';
 
 import { watcher, reactive } from './internals/core-api.js';
 import { watchSignal, unwatchSignal } from './internals/watch.js';

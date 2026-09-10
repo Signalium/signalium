@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { snapshot, registerCustomSnapshot } from 'signalium/utils';
+import { snapshot, registerCustomSnapshot, snapshotArray, snapshotPlainObject, type SnapshotFn } from 'signalium/utils';
 
 describe('snapshot', () => {
   describe('primitives and pass-through', () => {
@@ -201,6 +201,42 @@ describe('snapshot', () => {
       const result = snapshot(obj, undefined) as typeof obj;
       expect(result).toEqual(obj);
       expect(result).not.toBe(obj);
+    });
+  });
+
+  describe('reusing the walkers with a custom recursion', () => {
+    // A handler whose leaves need different treatment can't delegate to
+    // `snapshot`, which always recurses through itself.
+    class Boxed {
+      constructor(readonly inner: unknown) {}
+    }
+
+    const unbox: SnapshotFn = (current, prev) => {
+      if (current instanceof Boxed) return unbox(current.inner, prev);
+      if (Array.isArray(current)) return snapshotArray(current, prev, unbox);
+      if (current !== null && typeof current === 'object' && Object.getPrototypeOf(current) === Object.prototype) {
+        return snapshotPlainObject(current as Record<string, unknown>, prev, unbox);
+      }
+      return current;
+    };
+
+    test('walks nested structures through the supplied function', () => {
+      const value = { a: new Boxed(1), items: [new Boxed('x'), { b: new Boxed(true) }] };
+      expect(unbox(value, undefined)).toEqual({ a: 1, items: ['x', { b: true }] });
+    });
+
+    test('keeps structural sharing for unchanged subtrees', () => {
+      const first = unbox({ keep: { a: new Boxed(1) }, change: new Boxed(1) }, undefined) as Record<string, unknown>;
+      const second = unbox({ keep: { a: new Boxed(1) }, change: new Boxed(2) }, first) as Record<string, unknown>;
+
+      expect(second).not.toBe(first);
+      expect(second.keep).toBe(first.keep);
+      expect(second.change).toBe(2);
+    });
+
+    test('returns the previous array when nothing changed', () => {
+      const first = unbox([new Boxed(1), new Boxed(2)], undefined);
+      expect(unbox([new Boxed(1), new Boxed(2)], first)).toBe(first);
     });
   });
 });
