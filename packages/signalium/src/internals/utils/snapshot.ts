@@ -7,12 +7,8 @@ type SnapshotHandler = (current: any, prev: any, snap: SnapshotFn) => any;
 const getProto = Object.getPrototypeOf;
 
 /**
- * Snapshot an array with structural sharing, recursing through `snap`.
- *
- * Exported so a custom handler can reuse the walk while supplying its own
- * recursion — a handler whose leaves need different treatment (unwrapping a
- * container type, say) can't delegate to `snapshot`, which always recurses
- * through itself.
+ * snapshotArray/PlainObject Exported so a custom handler can reuse the walk while supplying its own
+ * recursion
  */
 export function snapshotArray(current: unknown[], prev: unknown, snap: SnapshotFn): unknown[] {
   const prevArr = Array.isArray(prev) ? prev : undefined;
@@ -29,7 +25,6 @@ export function snapshotArray(current: unknown[], prev: unknown, snap: SnapshotF
   return changed ? result : prevArr!;
 }
 
-/** Snapshot a plain object with structural sharing. See `snapshotArray`. */
 export function snapshotPlainObject(
   current: Record<string, unknown>,
   prev: unknown,
