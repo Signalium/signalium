@@ -6,10 +6,6 @@ type SnapshotHandler = (current: any, prev: any, snap: SnapshotFn) => any;
 
 const getProto = Object.getPrototypeOf;
 
-/**
- * snapshotArray/PlainObject exported so a custom handler can reuse the same logic while supplying its own
- * snap fn
- */
 export function snapshotArray(current: unknown[], prev: unknown, snap: SnapshotFn): unknown[] {
   const prevArr = Array.isArray(prev) ? prev : undefined;
   let changed = !prevArr || prevArr.length !== current.length;
