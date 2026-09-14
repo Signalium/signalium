@@ -22,6 +22,8 @@ export default function component<Props extends object>(
 
 Create a reactive component from a pure function. Inside the function, read `Signal` values and other reactive sources directly. Re-renders are scheduled automatically when dependencies change.
 
+Between renders, `component()` reuses its previous output unless the props changed. Props are compared structurally, so a new-but-equivalent object or array (a freshly-mapped list, say) still reuses the render. React nodes are the exception: `children` and any other element-valued prop are compared by reference, because walking an element tree to compare it costs far more than the render it would save.
+
 You may pass an **`async`** function only when the **Signalium async transform** is enabled; it compiles `await` for Suspense. Wrap those components in `<Suspense>`. See [React integration — Async components with Suspense](/core/react#async-components-with-suspense) for the transition-like update model (eager for React state, lazy while async reactives are pending).
 
 ```tsx

@@ -6,7 +6,7 @@ import { usePauseSignalsManager } from './pause-signals-context.js';
 import { setRequestScopeGetter, SignalScope } from '../internals/contexts.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { runSignal } from '../internals/get.js';
-import { hashValue } from '../internals/utils/hash.js';
+import { hashProps } from './props-hash.js';
 import { createAsyncComponentWrapper } from './async-component.js';
 import {
   type ComponentRender,
@@ -119,7 +119,7 @@ export default function component<Props extends object>(
   };
 
   return (props: Props) => {
-    const hash = hashValue(props);
+    const hash = hashProps(props);
     // Renders Comp only when hash changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return useMemo(() => <Component {...props} />, [hash]);

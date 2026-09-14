@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive, relay } from 'signalium';
 import { useReactive, useSignal } from 'signalium/react';
@@ -7,6 +7,8 @@ import { userEvent } from '@vitest/browser/context';
 import { sleep } from '../../__tests__/utils/async.js';
 import { createRenderCounter } from './utils.js';
 import component from '../component.js';
+import { hashProps } from '../props-hash.js';
+import { registerCustomHash } from 'signalium/utils';
 
 describe('React > Components', () => {
   test('basic state usage works', async () => {
@@ -347,5 +349,144 @@ describe('React > Components', () => {
     await userEvent.click(getByText('Increment'));
 
     await expect.element(getByText('4')).toBeInTheDocument();
+  });
+
+  describe('props hashing', () => {
+    test('does not walk a children tree to hash props', async () => {
+      class Expensive {}
+      registerCustomHash(Expensive, () => {
+        throw new Error('a children tree must not be hashed structurally');
+      });
+      // Only reachable by recursing into the child element's props.
+      const marker = new Expensive();
+      const Inner = ({ m }: { m: Expensive }) => <span>{m ? 'INNERMARK' : ''}</span>;
+
+      const Shell = createRenderCounter(
+        ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+        component,
+      );
+
+      const Parent = component(() => {
+        const [count, setCount] = useState(0);
+
+        return (
+          <div>
+            <span>{count}</span>
+            <Shell>
+              <Inner m={marker} />
+            </Shell>
+            <button onClick={() => setCount(c => c + 1)}>BUMP</button>
+          </div>
+        );
+      });
+
+      const { getByText } = render(<Parent />);
+
+      await expect.element(getByText('INNERMARK')).toBeInTheDocument();
+      await userEvent.click(getByText('BUMP'));
+      await expect.element(getByText('1')).toBeInTheDocument();
+    });
+
+    test('still reuses the memo for a new-but-equal data prop', async () => {
+      const Shell = createRenderCounter(
+        ({ items }: { items: number[] }) => <div>items:{items.join('-')}</div>,
+        component,
+      );
+
+      const Parent = component(() => {
+        const [count, setCount] = useState(0);
+
+        return (
+          <div>
+            <span>count:{count}</span>
+            {/* A fresh array every render, structurally identical. */}
+            <Shell items={[1, 2, 3]} />
+            <button onClick={() => setCount(c => c + 1)}>BUMP</button>
+          </div>
+        );
+      });
+
+      const { getByText } = render(<Parent />);
+
+      await expect.element(getByText('items:1-2-3')).toBeInTheDocument();
+      const before = Shell.renderCount;
+
+      await userEvent.click(getByText('BUMP'));
+      await expect.element(getByText('count:1')).toBeInTheDocument();
+
+      expect(Shell.renderCount).toBe(before);
+    });
+
+    test('never reads a property off a non-plain prop value', async () => {
+      // A reactive proxy's `get` trap can subscribe its caller, so probing a
+      // prop for `$$typeof` must not touch anything but a plain object.
+      let reads = 0;
+      class Opaque {
+        get $$typeof() {
+          reads++;
+          return undefined;
+        }
+      }
+      const opaque = new Opaque();
+
+      const Child = createRenderCounter(({ o }: { o: Opaque }) => <div>{o ? 'OPAQUE' : ''}</div>, component);
+
+      const Parent = component(() => {
+        const [count, setCount] = useState(0);
+
+        return (
+          <div>
+            <span>count:{count}</span>
+            <Child o={opaque} />
+            <button onClick={() => setCount(c => c + 1)}>BUMP</button>
+          </div>
+        );
+      });
+
+      const { getByText } = render(<Parent />);
+
+      await expect.element(getByText('OPAQUE')).toBeInTheDocument();
+      await userEvent.click(getByText('BUMP'));
+      await expect.element(getByText('count:1')).toBeInTheDocument();
+
+      expect(reads).toBe(0);
+    });
+
+    test('terminates on a self-referencing array prop', () => {
+      const children: unknown[] = [];
+      children.push(children);
+
+      expect(typeof hashProps({ children })).toBe('number');
+    });
+
+    test('re-renders when children are reordered', async () => {
+      const Shell = createRenderCounter(
+        ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+        component,
+      );
+      // Hoisted, so the two orderings differ only in position.
+      const first = <span key="a">A</span>;
+      const second = <span key="b">B</span>;
+
+      const Parent = component(() => {
+        const [flipped, setFlipped] = useState(false);
+
+        return (
+          <div>
+            <Shell>{flipped ? [second, first] : [first, second]}</Shell>
+            <button onClick={() => setFlipped(f => !f)}>FLIP</button>
+          </div>
+        );
+      });
+
+      const { getByText } = render(<Parent />);
+
+      await expect.element(getByText('A')).toBeInTheDocument();
+      const before = Shell.renderCount;
+
+      await userEvent.click(getByText('FLIP'));
+
+      await vi.waitFor(() => expect(Shell.renderCount).toBeGreaterThan(before));
+    });
   });
 });

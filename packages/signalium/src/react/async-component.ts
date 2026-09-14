@@ -4,7 +4,7 @@ import { getCurrentConsumer, setCurrentConsumer } from '../internals/consumer.js
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { runSignal } from '../internals/get.js';
 import { isReactivePromise, ReactivePromiseImpl } from '../internals/async.js';
-import { hashValue } from '../internals/utils/hash.js';
+import { hashProps } from './props-hash.js';
 import { isPromise, isThennable } from '../internals/utils/type-utils.js';
 import { useScope } from './context.js';
 import { usePauseSignalsManager } from './pause-signals-context.js';
@@ -139,7 +139,7 @@ export function runSyncReplayAsyncComponent<P extends object>(
 
 /**
  * Async Signalium `component()`: one lazy reactive signal per **instance** (same as sync
- * `component()`), outer `useMemo` keyed by `hashValue(props)`. No definition-scoped props map.
+ * `component()`), outer `useMemo` keyed by `hashProps(props)`. No definition-scoped props map.
  */
 export function createAsyncComponentWrapper<P extends object>(
   fn: (props: P) => Generator<any, ReactTypes.ReactNode | ReactTypes.ReactNode[] | null, unknown>,
@@ -191,7 +191,7 @@ export function createAsyncComponentWrapper<P extends object>(
   };
 
   const Outer = (props: P) => {
-    const hash = hashValue(props);
+    const hash = hashProps(props);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return useMemo(() => React.createElement(Inner, props), [hash]);
   };
