@@ -6,7 +6,7 @@ type SnapshotHandler = (current: any, prev: any, snap: SnapshotFn) => any;
 
 const getProto = Object.getPrototypeOf;
 
-function snapshotArray(current: unknown[], prev: unknown, snap: SnapshotFn): unknown[] {
+export function snapshotArray(current: unknown[], prev: unknown, snap: SnapshotFn): unknown[] {
   const prevArr = Array.isArray(prev) ? prev : undefined;
   let changed = !prevArr || prevArr.length !== current.length;
 
@@ -21,7 +21,7 @@ function snapshotArray(current: unknown[], prev: unknown, snap: SnapshotFn): unk
   return changed ? result : prevArr!;
 }
 
-function snapshotPlainObject(
+export function snapshotPlainObject(
   current: Record<string, unknown>,
   prev: unknown,
   snap: SnapshotFn,
