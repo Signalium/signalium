@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useReducer, useRef } from 'react';
+import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import type { ReactiveSignal } from '../internals/reactive.js';
+import { checkSignal } from '../internals/get.js';
 import { getReactDelivery, runBatch, scheduleReactDelivery, type ReactDelivery } from '../internals/config.js';
 
 export type { ReactDelivery };
@@ -30,6 +31,12 @@ const useCommitEffect = typeof window === 'undefined' ? useEffect : useLayoutEff
 
 const increment = (n: number) => n + 1;
 
+const enum PullResult {
+  Current,
+  Changed,
+  Threw,
+}
+
 /**
  * State-delivery bookkeeping for one mounted reader. `committed` is the signal version (its
  * `updatedCount`) the last commit rendered; a notification only turns into a `setState` when the
@@ -43,8 +50,13 @@ class StateDelivery {
   queued = false;
   /** A `setState` was delivered and its render has not committed yet. */
   awaitingCommit = false;
-  /** Subscribed (between the subscription effect's setup and cleanup). */
+  /** Visible: between the subscription layout effect's setup and cleanup. Only visible readers get deliveries. */
   mounted = false;
+  /** The subscription layout effect has run before: the next run is a reveal, not a first mount. */
+  connected = false;
+  /** The subscription currently held, and the subscribe function it was made with. */
+  subscribedWith: ((listener: () => void) => () => void) | null = null;
+  unsubscribe: (() => void) | null = null;
   listener: () => void;
 
   constructor(signal: ReactiveSignal<any, any>, version: number, forceUpdate: () => void) {
@@ -60,6 +72,36 @@ class StateDelivery {
     if (this.signal.updatedCount !== this.committed) {
       enqueueDelivery(this);
     }
+  }
+
+  /**
+   * Brings the signal up to date the way a read would, and reports whether it moved past the
+   * committed version. A signal nobody watched (the reader was hidden, or its render lease expired
+   * before the commit) is not recomputed when its dependencies change, so its `updatedCount` alone
+   * can be stale.
+   */
+  pull(): PullResult {
+    try {
+      checkSignal(this.signal);
+    } catch {
+      return PullResult.Threw;
+    }
+
+    return this.signal.updatedCount !== this.committed ? PullResult.Changed : PullResult.Current;
+  }
+
+  subscribe(subscribe: (listener: () => void) => () => void) {
+    if (this.subscribedWith === subscribe) return;
+
+    this.unsubscribe?.();
+    this.unsubscribe = subscribe(this.listener);
+    this.subscribedWith = subscribe;
+  }
+
+  release() {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    this.subscribedWith = null;
   }
 }
 
@@ -101,11 +143,22 @@ function flushDeliveries() {
  *
  * The render reads the signal directly (so a render that happens for any other reason sees fresh
  * data) and passes the version it rendered. On commit the reader subscribes, claiming the render
- * lease that `subscribe` (the signal's `addListenerLazy` result) represents, and compares the
- * version it rendered with the signal's current one, so a change that landed between render and
- * subscribe is never lost. Notifications are coalesced per reader and flushed together, in one
- * `runBatch`, on `scheduleReactDelivery`. The `setState` runs outside any transition, at React's
- * default priority, which waits for an in-progress transition rather than restarting it.
+ * lease that `subscribe` (the signal's `addListenerLazy` result) represents, pulls the signal and
+ * compares the version it rendered with the signal's current one, so a change that landed between
+ * render and subscribe is never lost. Notifications are coalesced per reader and flushed together,
+ * in one `runBatch`, on `scheduleReactDelivery`. The `setState` runs outside any transition, at
+ * React's default priority, which waits for an in-progress transition rather than restarting it.
+ *
+ * Hiding. A Suspense boundary that hides already-revealed content (react-freeze) disconnects layout
+ * effects but not passive ones; `<Activity mode="hidden">` disconnects both. Deliveries follow the
+ * layout effect, so a hidden reader is not rendered; the subscription follows the passive effect,
+ * so it lives exactly as long as a `useSyncExternalStore` subscription would: a Suspense hide keeps
+ * the signal watched (relays stay active), `<Activity>` and unmount release it. When the layout
+ * effect reconnects, a reveal, the reader pulls the signal and, if it moved while hidden, updates
+ * with a `setState` from the layout effect. React renders that synchronously, before the revealing
+ * commit paints, so the revealed content never shows a stale value; the cost is one SyncLane render
+ * of that reader, only when something changed. A first mount keeps the default-priority delivery:
+ * its rendered value was current when it rendered.
  */
 export function useStateDelivery(
   signal: ReactiveSignal<any, any>,
@@ -113,8 +166,7 @@ export function useStateDelivery(
   version: number,
 ): void {
   const [, forceUpdate] = useReducer(increment, 0);
-  const ref = useRef<StateDelivery | null>(null);
-  const delivery = (ref.current ??= new StateDelivery(signal, version, forceUpdate));
+  const [delivery] = useState(() => new StateDelivery(signal, version, forceUpdate));
 
   // Every commit records what it rendered, then re-checks: a change that arrived while a delivered
   // update was rendering (and was therefore not queued again) is picked up here.
@@ -126,15 +178,32 @@ export function useStateDelivery(
   });
 
   useCommitEffect(() => {
-    delivery.mounted = true;
-    const unsubscribe = subscribe(delivery.listener);
+    // Any run after the first reconnects a reader that was already showing something: a reveal,
+    // StrictMode's effect replay, or a new signal (whose render may have happened while hidden).
+    const revealing = delivery.connected;
 
-    // Catch a change between this render and the subscription.
-    delivery.check();
+    delivery.connected = true;
+    delivery.mounted = true;
+    delivery.subscribe(subscribe);
+
+    const pulled = delivery.pull();
+
+    if (pulled === PullResult.Threw || (pulled === PullResult.Changed && revealing)) {
+      // Render now, before this commit paints; a computation that threw rethrows from the render
+      // to the nearest error boundary.
+      delivery.awaitingCommit = true;
+      forceUpdate();
+    } else if (pulled === PullResult.Changed) {
+      // Catch a change between this render and the subscription.
+      delivery.check();
+    }
 
     return () => {
       delivery.mounted = false;
-      unsubscribe();
     };
   }, [subscribe]);
+
+  // Releases the subscription on unmount and on `<Activity mode="hidden">`, but not on a Suspense
+  // hide, which leaves passive effects connected.
+  useEffect(() => () => delivery.release(), [delivery]);
 }
