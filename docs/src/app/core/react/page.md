@@ -361,6 +361,35 @@ There are some caveats with using Signalium in RSCs at the moment:
 1. While imports from `signalium` are fully supported on the server, the `signalium/react` subpackage is not currently as all of the helpers were designed specifically for clients. The plan moving forward is to implement alternative helpers for the server and use `module.exports` to specify which package to use in which environment, which is why we haven't just added `use client;` to the top of the files.
 2. Reactive Functions deduplicate results by default, which means that they will share state _across requests_ currently. This is dangerous behavior in general as you can leak state between requests, so for the moment they should only be used for values that are static across all requests. The plan here is to implement a mechanism based on `React.cache` to deduplicate results across requests allow Signalium contexts to be provided for each request.
 
+## Update delivery and transitions
+
+By default, Signalium hands signal changes to React through `useSyncExternalStore`. React renders those updates at its synchronous priority, which guarantees every component in a commit sees the same version of the data. It also means each update throws away any in-progress transition render: on a screen with live data ticking several times a second, a `startTransition` navigation or tab switch keeps restarting and only finishes when React's expiry (about 5 s) forces it through synchronously.
+
+The `'state'` delivery mode trades some of that consistency for transition-friendliness. A reader in `'state'` mode reads the signal directly during render, subscribes when it commits, and delivers changes with a regular `setState`. Notifications are coalesced per component and flushed together, so a burst of updates across many components becomes one React batch. Those updates run at React's default priority, which waits for an in-progress transition instead of restarting it.
+
+```tsx
+import { setConfig } from 'signalium/config';
+import { component, useReactive } from 'signalium/react';
+
+// Opt every reader in…
+setConfig({ reactDelivery: 'state' });
+
+// …or opt a single live-data leaf in (or out, with 'sync').
+const Price = component(
+  ({ id }: { id: string }) => <Text>{price(id).value}</Text>,
+  { delivery: 'state' },
+);
+
+function Change({ id }: { id: string }) {
+  const change = useReactive(() => dailyChange(id).value, {
+    delivery: 'state',
+  });
+  return <Text>{change}</Text>;
+}
+```
+
+The trade-off: updates are consistent within a delivery batch, but not across the whole tree at every instant. A component that mounts (or re-renders for another reason) while a delivery is pending reads the newest value, while an already-mounted sibling still shows the previous one until the pending delivery commits, usually in the next frame. Readers whose values must stay correlated with each other in every commit — a total next to the rows it sums, say — should keep `'sync'`. The mode is fixed when a component mounts.
+
 ## Contexts
 
 Signalium's Context system integrates with React's Context system through the `ContextProvider` component:

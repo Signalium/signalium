@@ -7,16 +7,32 @@ import { snapshot } from '../internals/utils/snapshot.js';
 import { useScope } from './context.js';
 import { usePauseSignalsManager } from './pause-signals-context.js';
 import { getGlobalScope } from '../internals/contexts.js';
+import { useDeliveryMode, useStateDelivery, type ReactReaderOptions } from './delivery.js';
 
-function useSignalWithSuspension(signal: ReactiveSignal<any, any>) {
+/** Options for `useReactive` / `useReactiveShallow`. */
+export type ReactiveHookOptions = ReactReaderOptions;
+
+function useSignalWithSuspension(signal: ReactiveSignal<any, any>, options: ReactiveHookOptions | undefined) {
   const manager = usePauseSignalsManager();
   const watch = !manager?.paused;
+  const delivery = useDeliveryMode(options?.delivery);
 
-  const value = useSyncExternalStore(
-    signal.addListenerLazy(watch),
-    () => signal.value,
-    () => signal.value,
-  );
+  const subscribe = signal.addListenerLazy(watch);
+  let value;
+
+  // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
+  if (delivery === 'state') {
+    value = signal.value;
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useStateDelivery(signal, subscribe, signal.updatedCount);
+  } else {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    value = useSyncExternalStore(
+      subscribe,
+      () => signal.value,
+      () => signal.value,
+    );
+  }
 
   // Register on commit, not during render: a render React discards must not leave the signal in
   // the manager, where un-pausing would watch it again with nothing left to release it. The commit
@@ -49,7 +65,7 @@ function useSignalWithSuspension(signal: ReactiveSignal<any, any>) {
  * isPending: p.isPending }; })`) or use {@link useReactive} for the
  * structurally-shared snapshot that handles this automatically.
  */
-export function useReactiveShallow<R>(fn: () => R): ReactiveValue<R> {
+export function useReactiveShallow<R>(fn: () => R, options?: ReactiveHookOptions): ReactiveValue<R> {
   if (IS_DEV && getCurrentConsumer()) {
     throw new Error(
       'signalium: `useReactiveShallow` cannot be called inside a reactive function. ' +
@@ -61,7 +77,7 @@ export function useReactiveShallow<R>(fn: () => R): ReactiveValue<R> {
   const scope = useScope() ?? getGlobalScope();
   const signal = scope.get(def, [] as []);
 
-  return useSignalWithSuspension(signal) as ReactiveValue<R>;
+  return useSignalWithSuspension(signal, options) as ReactiveValue<R>;
 }
 
 /**
@@ -75,7 +91,7 @@ export function useReactiveShallow<R>(fn: () => R): ReactiveValue<R> {
  * Use {@link useReactiveShallow} if you know you don't need structural
  * sharing.
  */
-export function useReactive<R>(fn: () => R): ReactiveValue<R> {
+export function useReactive<R>(fn: () => R, options?: ReactiveHookOptions): ReactiveValue<R> {
   if (IS_DEV && getCurrentConsumer()) {
     throw new Error(
       'signalium: `useReactive` cannot be called inside a reactive function. ' +
@@ -85,6 +101,7 @@ export function useReactive<R>(fn: () => R): ReactiveValue<R> {
 
   const manager = usePauseSignalsManager();
   const watch = !manager?.paused;
+  const delivery = useDeliveryMode(options?.delivery);
 
   const scope = useScope() ?? getGlobalScope();
   const innerSignalRef = useRef<ReactiveSignal<R, []> | undefined>(undefined);
@@ -108,11 +125,22 @@ export function useReactive<R>(fn: () => R): ReactiveValue<R> {
 
   const cloneSignal = cloneSignalRef.current!;
 
-  const value = useSyncExternalStore(
-    cloneSignal.addListenerLazy(watch),
-    () => cloneSignal.value as ReactiveValue<R>,
-    () => cloneSignal.value as ReactiveValue<R>,
-  );
+  const subscribe = cloneSignal.addListenerLazy(watch);
+  let value: ReactiveValue<R>;
+
+  // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
+  if (delivery === 'state') {
+    value = cloneSignal.value as ReactiveValue<R>;
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useStateDelivery(cloneSignal, subscribe, cloneSignal.updatedCount);
+  } else {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    value = useSyncExternalStore(
+      subscribe,
+      () => cloneSignal.value as ReactiveValue<R>,
+      () => cloneSignal.value as ReactiveValue<R>,
+    );
+  }
 
   // Like `component()`, register the clone signal with the pause manager on commit, after the store
   // subscription, reconciling its watch with the pause state it committed under.
@@ -130,11 +158,11 @@ export function useReactive<R>(fn: () => R): ReactiveValue<R> {
  * deep-by-default; `useReactiveDeep` is a thin alias kept for back-compat and
  * will be removed in a future major release.
  */
-export function useReactiveDeep<R>(fn: () => R): ReactiveValue<R> {
+export function useReactiveDeep<R>(fn: () => R, options?: ReactiveHookOptions): ReactiveValue<R> {
   if (IS_DEV) {
     warnUseReactiveDeepOnce();
   }
-  return useReactive(fn);
+  return useReactive(fn, options);
 }
 
 let _useReactiveDeepWarned = false;

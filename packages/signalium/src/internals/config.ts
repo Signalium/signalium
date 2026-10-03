@@ -48,6 +48,30 @@ function validateRenderLeaseTtl(ttl: number): number {
   return ttl;
 }
 
+/**
+ * How React readers (`component()`, `useReactive`, `useReactiveShallow`) learn that their signal
+ * changed.
+ *
+ * - `'sync'` (default): through `useSyncExternalStore`. Every update renders at SyncLane, so the
+ *   tree is never torn, but each update also throws away any in-progress transition render; under
+ *   a steady stream of updates a transition only finishes once React's expiry forces it through.
+ * - `'state'`: the reader subscribes on commit and delivers changes with a `setState` (DefaultLane),
+ *   coalesced per reader and batched across readers. Default-lane updates wait for an in-progress
+ *   transition instead of restarting it. The trade-off is consistency: updates are consistent
+ *   within a delivery batch, but a reader that mounts while a delivery is pending can show a newer
+ *   value than an already-mounted reader for one commit. Readers whose values must stay correlated
+ *   with each other in every commit should use `'sync'`.
+ */
+export type ReactDelivery = 'sync' | 'state';
+
+let _reactDelivery: ReactDelivery = 'sync';
+
+const resolvedPromise = Promise.resolve();
+
+let _scheduleReactDelivery: (fn: () => void) => void = fn => {
+  resolvedPromise.then(fn);
+};
+
 export function setConfig(
   cfg: Partial<{
     scheduleFlush: (fn: () => void) => void;
@@ -60,6 +84,18 @@ export function setConfig(
      * {@link MAX_TIMEOUT} (including `Infinity`) are clamped to it.
      */
     renderLeaseTtl: number;
+    /**
+     * Default delivery mode for React readers; see {@link ReactDelivery}. Read when a reader
+     * mounts, so changing it affects readers mounted afterwards. `component()`, `useReactive` and
+     * `useReactiveShallow` accept a per-call `{ delivery }` override. Defaults to `'sync'`.
+     */
+    reactDelivery: ReactDelivery;
+    /**
+     * Schedules a flush of pending `'state'` deliveries. All readers notified before the flush
+     * runs are updated together, inside `runBatch`. Defaults to a microtask. Must not run the
+     * flush inside `startTransition`, or deliveries would take the transition's lane.
+     */
+    scheduleReactDelivery: (fn: () => void) => void;
   }>,
 ) {
   _scheduleFlush = cfg.scheduleFlush ?? _scheduleFlush;
@@ -67,6 +103,8 @@ export function setConfig(
   if (cfg.renderLeaseTtl !== undefined) {
     _renderLeaseTtl = validateRenderLeaseTtl(cfg.renderLeaseTtl);
   }
+  _reactDelivery = cfg.reactDelivery ?? _reactDelivery;
+  _scheduleReactDelivery = cfg.scheduleReactDelivery ?? _scheduleReactDelivery;
 }
 
 export const scheduleFlush = (fn: () => void) => {
@@ -78,3 +116,9 @@ export const runBatch = (fn: () => void) => {
 };
 
 export const getRenderLeaseTtl = () => _renderLeaseTtl;
+
+export const getReactDelivery = () => _reactDelivery;
+
+export const scheduleReactDelivery = (fn: () => void) => {
+  _scheduleReactDelivery(fn);
+};

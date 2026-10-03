@@ -4,7 +4,8 @@ import { getCurrentConsumer, setCurrentConsumer } from '../internals/consumer.js
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { runSignal } from '../internals/get.js';
 import { isReactivePromise, ReactivePromiseImpl } from '../internals/async.js';
-import { hashProps } from './props-hash.js';
+import { usePropsHash } from './props-hash.js';
+import { useDeliveryMode, useStateDelivery, type ReactReaderOptions } from './delivery.js';
 import { isPromise, isThennable } from '../internals/utils/type-utils.js';
 import { useScope } from './context.js';
 import { usePauseSignalsManager } from './pause-signals-context.js';
@@ -237,10 +238,14 @@ export function runSyncReplayAsyncComponent<P extends object>(
  */
 export function createAsyncComponentWrapper<P extends object>(
   fn: (props: P) => Generator<any, ReactTypes.ReactNode | ReactTypes.ReactNode[] | null, unknown>,
+  options?: ReactReaderOptions,
 ): (props: P) => ReactTypes.ReactNode {
+  const deliveryOverride = options?.delivery;
+
   const Inner = (props: P) => {
     const scope = useScope();
     const manager = usePauseSignalsManager();
+    const delivery = useDeliveryMode(deliveryOverride);
 
     const fnSignalRef = useRef<ReactiveSignal<ReactTypes.ReactNode | ReactTypes.ReactNode[] | null, []> | undefined>(
       undefined,
@@ -273,8 +278,15 @@ export function createAsyncComponentWrapper<P extends object>(
 
     const value = readComponentSignal(sig, props);
 
-    const getSnapshot = () => sig!.updatedCount;
-    useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+    // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
+    if (delivery === 'state') {
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      useStateDelivery(sig, subscribe, sig.updatedCount);
+    } else {
+      const getSnapshot = () => sig!.updatedCount;
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+    }
 
     useEffect(() => {
       if (manager === null) return;
@@ -286,7 +298,7 @@ export function createAsyncComponentWrapper<P extends object>(
   };
 
   const Outer = (props: P) => {
-    const hash = hashProps(props);
+    const hash = usePropsHash(props);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return useMemo(() => createComponentElement(Inner, props), [hash]);
   };

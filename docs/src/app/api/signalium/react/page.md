@@ -13,16 +13,20 @@ nextjs:
 ```ts
 export default function component<Props extends object>(
   fn: (props: Props) => React.ReactNode | React.ReactNode[] | null,
+  options?: { delivery?: 'sync' | 'state' },
 ): (props: Props) => React.ReactElement;
 
 export default function component<Props extends object>(
   fn: (props: Props) => Promise<React.ReactNode | React.ReactNode[] | null>,
+  options?: { delivery?: 'sync' | 'state' },
 ): (props: Props) => React.ReactElement;
 ```
 
 Create a reactive component from a pure function. Inside the function, read `Signal` values and other reactive sources directly. Re-renders are scheduled automatically when dependencies change.
 
-Between renders, `component()` reuses its previous output unless the props changed. Props are compared structurally, so a new-but-equivalent object or array (a freshly-mapped list, say) still reuses the render. React nodes are the exception: `children` and any other element-valued prop are compared by reference, because walking an element tree to compare it costs far more than the render it would save.
+Between renders, `component()` reuses its previous output unless the props changed. Props are compared structurally, so a new-but-equivalent object or array (a freshly-mapped list, say) still reuses the render. React nodes are the exception: `children` and any other element-valued prop are compared by reference, because walking an element tree to compare it costs far more than the render it would save. When every prop is the same reference as in the previous render, the structural comparison is skipped entirely, so treat props as immutable (the same contract as `React.memo`): an object mutated in place and passed again does not re-render the component. Pass a new object, or read changing data from a signal inside the component.
+
+`options.delivery` overrides the global [`reactDelivery`](/api/signalium/config) mode for this component. See [Update delivery and transitions](/core/react#update-delivery-and-transitions).
 
 You may pass an **`async`** function only when the **Signalium async transform** is enabled; it compiles `await` for Suspense. Wrap those components in `<Suspense>`. See [React integration — Async components with Suspense](/core/react#async-components-with-suspense) for the transition-like update model (eager for React state, lazy while async reactives are pending).
 
@@ -217,6 +221,8 @@ const User = () => {
   );
 };
 ```
+
+`useReactive`, `useReactiveShallow` and `useReactiveDeep` take an optional last-position `{ delivery?: 'sync' | 'state' }` when called with a thunk (`useReactive(() => price(id).value, { delivery: 'state' })`), overriding the global [`reactDelivery`](/api/signalium/config) mode for that reader.
 
 | Overload        | Parameters                    | Returns                             |
 | --------------- | ----------------------------- | ----------------------------------- |

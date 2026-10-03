@@ -1,1 +1,1 @@
-export { setConfig } from './internals/config.js';
+export { setConfig, type ReactDelivery } from './internals/config.js';
