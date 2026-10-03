@@ -63,6 +63,55 @@ export function watchOnce<T>(fn: () => T): T {
   }
 }
 
+/**
+ * Keeps `fn`'s reactive dependencies (relays, queries) watched — active and kept up to date — for
+ * `ttl` milliseconds, or until the returned `release` function is called, whichever comes first.
+ * Without a `ttl` the retention lasts until `release` is called.
+ *
+ * This is an app-level lease, for surfaces that want data warm without rendering it: prefetching
+ * the data a likely next screen needs, or keeping a hidden surface's subscriptions alive for a
+ * while after it is hidden so returning to it doesn't restart them. `fn` runs immediately (in the
+ * current scope) and again whenever its dependencies change while retained.
+ *
+ * @example
+ * ```ts
+ * // Warm the token detail query for 30s after the user hovers a row.
+ * const release = retain(() => fetchTokenDetail(id), { ttl: 30_000 });
+ * ```
+ */
+export function retain(fn: () => unknown, opts?: { ttl?: number }): () => void {
+  const signal = watcher(fn) as ReactiveSignal<unknown, unknown[]>;
+  const unsubscribe = signal.addListener(noop);
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const release = () => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    unsubscribe();
+  };
+
+  try {
+    // Run now so relays start activating immediately rather than on the next flush.
+    getSignal(signal);
+  } catch (error) {
+    release();
+    throw error;
+  }
+
+  const ttl = opts?.ttl;
+
+  if (ttl !== undefined) {
+    timer = setTimeout(release, ttl);
+  }
+
+  return release;
+}
+
+const noop = () => {};
+
 export { setReactivePromise } from './internals/async.js';
 
 /**

@@ -42,4 +42,4 @@ export {
   setRequestScopeGetter,
 } from './internals/contexts.js';
 
-export { watchOnce, forwardRelay } from './utils.js';
+export { watchOnce, forwardRelay, retain } from './utils.js';

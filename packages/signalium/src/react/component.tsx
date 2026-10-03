@@ -5,9 +5,8 @@ import { useScope } from './context.js';
 import { usePauseSignalsManager } from './pause-signals-context.js';
 import { setRequestScopeGetter, SignalScope } from '../internals/contexts.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
-import { runSignal } from '../internals/get.js';
 import { hashProps } from './props-hash.js';
-import { createAsyncComponentWrapper } from './async-component.js';
+import { createAsyncComponentWrapper, readComponentSignal } from './async-component.js';
 import {
   type ComponentRender,
   isAsyncFunctionWithoutTransform,
@@ -109,8 +108,7 @@ export default function component<Props extends object>(
     // the case on mount). If the snapshot were read first, React would see it change after render
     // and re-render: synchronously after every mount, and as a sync redo of mounts inside a
     // transition.
-    runSignal(signal as ReactiveSignal<any, any[]>);
-    const value = signal.value;
+    const value = readComponentSignal(signal);
 
     const getSnapshot = () => signal.updatedCount;
     useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

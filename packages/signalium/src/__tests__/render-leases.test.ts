@@ -1,0 +1,315 @@
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { sleep } from './utils/async.js';
+import { reactive, relay, reactiveSignal, retain } from '../index.js';
+import { setConfig } from '../config.js';
+import { DEFAULT_RENDER_LEASE_TTL } from '../internals/config.js';
+import { getRenderLeaseCount, holdLeaseUntilSettled, releaseRenderLeases } from '../internals/lease.js';
+import type { ReactiveSignal } from '../internals/reactive.js';
+
+const TTL = 100;
+
+function createRelayHarness() {
+  const counts = { active: 0, activations: 0 };
+  const source = relay<number>(state => {
+    counts.active++;
+    counts.activations++;
+    state.value = 1;
+    return () => {
+      counts.active--;
+    };
+  });
+  const derived = reactiveSignal(() => source.value) as unknown as ReactiveSignal<number | undefined, []>;
+  return { counts, derived };
+}
+
+/** Lets the scheduler flush (pulls and deactivations). */
+const flush = () => sleep(5);
+
+/** Mimics a render: watch lazily, then read the value. */
+function renderRead(signal: ReactiveSignal<any, any>, watch = true) {
+  const subscribe = signal.addListenerLazy(watch);
+  void signal.value;
+  return subscribe;
+}
+
+describe('render leases', () => {
+  beforeEach(() => {
+    setConfig({ renderLeaseTtl: TTL });
+  });
+
+  afterEach(() => {
+    releaseRenderLeases();
+    setConfig({ renderLeaseTtl: DEFAULT_RENDER_LEASE_TTL });
+  });
+
+  test('an unclaimed render watch is released after the TTL', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    renderRead(derived);
+    await flush();
+
+    expect(counts.active).toBe(1);
+    expect(getRenderLeaseCount()).toBe(1);
+
+    // Still held just before the minimum lifetime.
+    await sleep(TTL - 40);
+    await flush();
+    expect(counts.active).toBe(1);
+
+    // Released by twice the TTL at the latest.
+    await sleep(TTL + 50);
+    await flush();
+    expect(counts.active).toBe(0);
+    expect(getRenderLeaseCount()).toBe(0);
+    expect(derived.watchCount).toBe(0);
+    expect(derived._isListener).toBe(false);
+  });
+
+  test('a claimed lease keeps the watch past the TTL without restarting relays', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    const subscribe = renderRead(derived);
+    await flush();
+
+    const unsubscribe = subscribe(() => {});
+    expect(getRenderLeaseCount()).toBe(0);
+    expect(derived.watchCount).toBe(1);
+
+    await sleep(TTL * 3);
+    await flush();
+
+    expect(counts.active).toBe(1);
+    expect(counts.activations).toBe(1);
+
+    unsubscribe();
+    await flush();
+    expect(counts.active).toBe(0);
+    expect(derived.watchCount).toBe(0);
+  });
+
+  test('repeated renders before the commit take a single lease', async () => {
+    const { derived } = createRelayHarness();
+
+    renderRead(derived);
+    renderRead(derived);
+    renderRead(derived);
+
+    expect(derived.watchCount).toBe(1);
+    expect(getRenderLeaseCount()).toBe(1);
+  });
+
+  test('a lease taken while paused holds no watch and releases none', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    // A committed watcher elsewhere keeps the relay active.
+    const other = reactiveSignal(() => derived.value) as unknown as ReactiveSignal<any, any>;
+    const unsubscribeOther = other.addListener(() => {});
+    await flush();
+    expect(counts.active).toBe(1);
+    const watchCount = derived.watchCount;
+
+    renderRead(derived, false);
+    expect(derived.watchCount).toBe(watchCount);
+
+    await sleep(TTL * 2);
+    await flush();
+
+    expect(derived.watchCount).toBe(watchCount);
+    expect(counts.active).toBe(1);
+
+    unsubscribeOther();
+    await flush();
+    expect(counts.active).toBe(0);
+  });
+
+  test('a claim after expiry watches again (late commit)', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    const subscribe = renderRead(derived);
+    await flush();
+
+    await sleep(TTL * 2);
+    await flush();
+    expect(counts.active).toBe(0);
+
+    const listener = vi.fn();
+    const unsubscribe = subscribe(listener);
+    await flush();
+
+    expect(derived.watchCount).toBe(1);
+    expect(counts.active).toBe(1);
+    expect(counts.activations).toBe(2);
+    expect(derived.value).toBe(1);
+
+    unsubscribe();
+    await flush();
+    expect(counts.active).toBe(0);
+  });
+
+  test('a signal can be leased again after its lease is claimed and released', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    const subscribe = renderRead(derived);
+    const unsubscribe = subscribe(() => {});
+    unsubscribe();
+    await flush();
+    expect(counts.active).toBe(0);
+
+    renderRead(derived);
+    await flush();
+    expect(counts.active).toBe(1);
+    expect(getRenderLeaseCount()).toBe(1);
+
+    await sleep(TTL * 2);
+    await flush();
+    expect(counts.active).toBe(0);
+  });
+
+  test('a lease taken shortly before a sweep still lives a full TTL', async () => {
+    const { derived: first } = createRelayHarness();
+    const { counts, derived: second } = createRelayHarness();
+
+    // Arms the wheel.
+    renderRead(first);
+    await sleep(TTL - 30);
+
+    renderRead(second);
+    await flush();
+
+    // The first tick ages `second` into the old generation; it must survive it.
+    await sleep(50);
+    await flush();
+    expect(counts.active).toBe(1);
+
+    await sleep(TTL);
+    await flush();
+    expect(counts.active).toBe(0);
+  });
+
+  test('releaseRenderLeases releases every outstanding lease immediately', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    renderRead(derived);
+    await flush();
+    expect(counts.active).toBe(1);
+
+    releaseRenderLeases();
+    await flush();
+
+    expect(getRenderLeaseCount()).toBe(0);
+    expect(counts.active).toBe(0);
+  });
+
+  test('a suspended render keeps its lease until the thenable settles, then for a fresh TTL', async () => {
+    const { counts, derived } = createRelayHarness();
+    let resolve!: () => void;
+    const pending = new Promise<void>(r => (resolve = r));
+
+    renderRead(derived);
+    holdLeaseUntilSettled(derived, pending);
+    expect(getRenderLeaseCount()).toBe(0);
+
+    await sleep(TTL * 3);
+    expect(counts.active).toBe(1);
+
+    resolve();
+    await pending;
+    expect(getRenderLeaseCount()).toBe(1);
+
+    await sleep(TTL - 40);
+    expect(counts.active).toBe(1);
+
+    await sleep(TTL + 50);
+    expect(counts.active).toBe(0);
+  });
+
+  test('a lease claimed while suspended is not renewed when the thenable settles', async () => {
+    const { counts, derived } = createRelayHarness();
+    let resolve!: () => void;
+    const pending = new Promise<void>(r => (resolve = r));
+
+    const subscribe = renderRead(derived);
+    holdLeaseUntilSettled(derived, pending);
+    const unsubscribe = subscribe(() => {});
+
+    resolve();
+    await pending;
+    expect(getRenderLeaseCount()).toBe(0);
+
+    await sleep(TTL * 2 + 20);
+    expect(counts.active).toBe(1);
+
+    unsubscribe();
+    await flush();
+    expect(counts.active).toBe(0);
+  });
+
+  test('keyed reactive signals shared by several renders are released once', async () => {
+    const counts = { active: 0 };
+    const source = reactive((id: number) =>
+      relay<number>(state => {
+        counts.active++;
+        state.value = id;
+        return () => {
+          counts.active--;
+        };
+      }),
+    );
+    const read = reactiveSignal(() => source(1).value) as unknown as ReactiveSignal<any, any>;
+
+    renderRead(read);
+    renderRead(read);
+    await flush();
+    expect(counts.active).toBe(1);
+
+    await sleep(TTL * 2);
+    await flush();
+    expect(counts.active).toBe(0);
+    expect(read.watchCount).toBe(0);
+  });
+});
+
+describe('retain()', () => {
+  test('keeps relays active for the TTL, then releases them', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    retain(() => derived.value, { ttl: 60 });
+    expect(counts.active).toBe(1);
+
+    await sleep(30);
+    expect(counts.active).toBe(1);
+
+    await sleep(60);
+    expect(counts.active).toBe(0);
+  });
+
+  test('release() ends the retention early and is idempotent', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    const release = retain(() => derived.value, { ttl: 10_000 });
+    expect(counts.active).toBe(1);
+
+    release();
+    release();
+    await sleep(5);
+    expect(counts.active).toBe(0);
+  });
+
+  test('a render that mounts while retained reuses the warm relay', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    const release = retain(() => derived.value);
+    await sleep(5);
+
+    const unsubscribe = derived.addListener(() => {});
+    release();
+    await sleep(5);
+
+    expect(counts.active).toBe(1);
+    expect(counts.activations).toBe(1);
+
+    unsubscribe();
+    await sleep(5);
+    expect(counts.active).toBe(0);
+  });
+});

@@ -12,3 +12,5 @@ export {
 } from './internals/trace.js';
 
 export { scheduleTracer } from './internals/scheduling.js';
+
+export { getRenderLeaseCount, releaseRenderLeases } from './internals/lease.js';

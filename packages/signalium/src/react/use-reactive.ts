@@ -12,17 +12,23 @@ function useSignalWithSuspension(signal: ReactiveSignal<any, any>) {
   const manager = usePauseSignalsManager();
   const watch = !manager?.paused;
 
-  manager?.register(signal);
-
-  useEffect(() => {
-    return () => manager?.unregister(signal);
-  }, [manager, signal]);
-
-  return useSyncExternalStore(
+  const value = useSyncExternalStore(
     signal.addListenerLazy(watch),
     () => signal.value,
     () => signal.value,
   );
+
+  // Register on commit, not during render: a render React discards must not leave the signal in
+  // the manager, where un-pausing would watch it again with nothing left to release it. The
+  // signal is scope-cached and may be shared with other components, so it is registered as-is
+  // rather than reconciled like an owned signal.
+  useEffect(() => {
+    if (manager === null) return;
+    manager.register(signal);
+    return () => manager.unregister(signal);
+  }, [manager, signal]);
+
+  return value;
 }
 
 /**
@@ -100,17 +106,22 @@ export function useReactive<R>(fn: () => R): ReactiveValue<R> {
 
   const cloneSignal = cloneSignalRef.current!;
 
-  manager?.register(cloneSignal);
-
-  useEffect(() => {
-    return () => manager?.unregister(cloneSignal);
-  }, [manager, cloneSignal]);
-
-  return useSyncExternalStore(
+  const value = useSyncExternalStore(
     cloneSignal.addListenerLazy(watch),
     () => cloneSignal.value as ReactiveValue<R>,
     () => cloneSignal.value as ReactiveValue<R>,
   );
+
+  // The clone signal belongs to this hook instance alone, so (like `component()`) it registers
+  // with the pause manager on commit, after the store subscription, and reconciles its watch
+  // state with the pause state it committed under.
+  useEffect(() => {
+    if (manager === null) return;
+    manager.registerOwned(cloneSignal);
+    return () => manager.unregister(cloneSignal);
+  }, [manager, cloneSignal]);
+
+  return value;
 }
 
 /**

@@ -8,6 +8,24 @@ import { hashProps } from './props-hash.js';
 import { isPromise, isThennable } from '../internals/utils/type-utils.js';
 import { useScope } from './context.js';
 import { usePauseSignalsManager } from './pause-signals-context.js';
+import { holdLeaseUntilSettled } from '../internals/lease.js';
+
+/**
+ * Computes and settles a `component()` signal during render and returns its value. If the render
+ * suspends (throws a thenable), the signal's render lease is pinned until the thenable settles, so
+ * the relays the suspended render reads stay active for however long React waits to retry it.
+ */
+export function readComponentSignal<T>(signal: ReactiveSignal<T, []>): T {
+  try {
+    runSignal(signal as ReactiveSignal<any, any[]>);
+    return signal.value as T;
+  } catch (error) {
+    if (error !== null && typeof error === 'object' && isThennable(error)) {
+      holdLeaseUntilSettled(signal, error);
+    }
+    throw error;
+  }
+}
 
 /**
  * Remembers settled outcomes for yielded thenables so synchronous replay can inject
@@ -177,8 +195,7 @@ export function createAsyncComponentWrapper<P extends object>(
     // mount render's snapshot is stable (no forced re-render / sync redo).
     const subscribe = sig.addListenerLazy(!manager?.paused);
 
-    runSignal(sig as ReactiveSignal<any, any[]>);
-    const value = sig.value;
+    const value = readComponentSignal(sig);
 
     const getSnapshot = () => sig!.updatedCount;
     useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
