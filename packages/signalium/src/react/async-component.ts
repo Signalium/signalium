@@ -172,22 +172,24 @@ export function createAsyncComponentWrapper<P extends object>(
       fnSignalRef.current = sig = owned;
     }
 
-    const watch = !manager?.paused;
-    manager?.register(sig);
-
-    useEffect(() => {
-      return () => manager?.unregister(sig!);
-    }, [manager, sig]);
-
-    useSyncExternalStore(
-      sig.addListenerLazy(watch),
-      () => sig!.updatedCount,
-      () => sig!.updatedCount,
-    );
+    // Same ordering as sync `component()`: watch before computing (so relays read during the
+    // computation activate), and compute + settle the signal before the snapshot is read so the
+    // mount render's snapshot is stable (no forced re-render / sync redo).
+    const subscribe = sig.addListenerLazy(!manager?.paused);
 
     runSignal(sig as ReactiveSignal<any, any[]>);
+    const value = sig.value;
 
-    return sig.value;
+    const getSnapshot = () => sig!.updatedCount;
+    useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+    useEffect(() => {
+      if (manager === null) return;
+      manager.registerOwned(sig!);
+      return () => manager.unregister(sig!);
+    }, [manager, sig]);
+
+    return value;
   };
 
   const Outer = (props: P) => {

@@ -311,15 +311,16 @@ describe('React > async', () => {
       await expect.element(getByTestId('parent')).toBeInTheDocument();
       await expect.element(getByTestId('child')).toBeInTheDocument();
 
-      expect(parentRenderCount).toBe(2);
-      expect(childRenderCount).toBe(3);
+      // One mount render each, plus one child render when the promise resolves.
+      expect(parentRenderCount).toBe(1);
+      expect(childRenderCount).toBe(2);
 
       // Update only value1, should re-render only the child
       value1.value = 'World';
       await sleep(200);
 
-      expect(parentRenderCount).toBe(2);
-      expect(childRenderCount).toBe(4);
+      expect(parentRenderCount).toBe(1);
+      expect(childRenderCount).toBe(3);
     });
 
     test('memoized children skip re-renders when their individual props are structurally equal', async () => {
@@ -646,15 +647,16 @@ describe('React > async', () => {
       await expect.element(getByTestId('parent')).toBeInTheDocument();
       await expect.element(getByTestId('child')).toBeInTheDocument();
 
-      expect(parentRenderCount).toBe(2);
-      expect(childRenderCount).toBe(3);
+      // One mount render each, plus one child render when the promise resolves.
+      expect(parentRenderCount).toBe(1);
+      expect(childRenderCount).toBe(2);
 
       // Update only value1, should re-render only the child
       value1.value = 'World';
       await sleep(200);
 
-      expect(parentRenderCount).toBe(2);
-      expect(childRenderCount).toBe(4);
+      expect(parentRenderCount).toBe(1);
+      expect(childRenderCount).toBe(3);
     });
 
     test('memoized children skip re-renders when their individual props are structurally equal', async () => {
