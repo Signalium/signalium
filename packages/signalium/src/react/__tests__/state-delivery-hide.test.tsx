@@ -233,6 +233,48 @@ describe('React > state delivery across hide/reveal', () => {
     }
   }
 
+  if (HAS_ACTIVITY) {
+    describe('content first rendered inside a hidden <Activity>', () => {
+      for (const delivery of ['sync', 'state'] as const) {
+        for (const kind of READER_KINDS) {
+          test(`${delivery} > ${kind}: the first visible commit shows the current value`, async () => {
+            const price = signal(1);
+            const derived = reactive(() => price.value * 2);
+            const Leaf = createLeaf(kind, () => derived(), delivery, { renders: 0 });
+            const leaf = <Leaf testId="leaf" />;
+            let setHidden: (hidden: boolean) => void = () => {};
+
+            // Hidden from the start: React prerenders the leaf but mounts none of its effects
+            // until the first reveal, so the reveal is the reader's first connect.
+            function Host() {
+              const [hidden, set] = useState(true);
+              setHidden = set;
+              return <Activity mode={hidden ? 'hidden' : 'visible'}>{leaf}</Activity>;
+            }
+
+            const result = render(<Host />);
+            const text = () => result.container.querySelector('[data-testid="leaf"]')?.textContent;
+            await settle();
+            const prerendered = text();
+
+            price.value = 5;
+            await settle();
+
+            flushSync(() => setHidden(false));
+            const firstVisible = text();
+            await settle();
+
+            expect({ prerendered, firstVisible, later: text() }).toEqual({
+              prerendered: '2',
+              firstVisible: '10',
+              later: '10',
+            });
+          });
+        }
+      }
+    });
+  }
+
   describe('relays across a hide', () => {
     for (const kind of READER_KINDS) {
       test(`${kind}: a Suspense hide keeps relays alive, like 'sync'`, async () => {
