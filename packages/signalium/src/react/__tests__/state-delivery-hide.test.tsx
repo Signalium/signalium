@@ -205,6 +205,70 @@ describe('React > state delivery across hide/reveal', () => {
           result.unmount();
         });
 
+        test('a reveal renders neither the reader nor its parent unless the value changed', async () => {
+          const price = signal(1);
+          // Re-validating on reveal recomputes this, but an equal result is not a change.
+          const derived = reactive(() => Math.abs(price.value) * 2);
+          const stats = { renders: 0 };
+          const parentStats = { renders: 0 };
+          const Leaf = createLeaf(kind, () => derived(), 'state', stats);
+          const Parent = component(
+            () => {
+              parentStats.renders++;
+              return <Leaf testId="leaf" />;
+            },
+            { delivery: 'state' },
+          );
+          const parent = <Parent />;
+          let setHidden: (hidden: boolean) => void = () => {};
+
+          function Host() {
+            const [hidden, set] = useState(false);
+            setHidden = set;
+            return (
+              <Hider kind={hide} hidden={hidden}>
+                {parent}
+              </Hider>
+            );
+          }
+
+          const result = render(<Host />);
+          const text = () => result.container.querySelector('[data-testid="leaf"]')?.textContent;
+          await expect.element(result.getByTestId('leaf')).toHaveTextContent('2');
+          await settle();
+
+          const flip = async (whileHidden?: () => void) => {
+            flushSync(() => setHidden(true));
+            await settle();
+            whileHidden?.();
+            await settle();
+            flushSync(() => setHidden(false));
+            const firstVisible = text();
+            await settle();
+            return firstVisible;
+          };
+
+          const before = { leaf: stats.renders, parent: parentStats.renders };
+          expect(await flip()).toBe('2');
+          expect(await flip()).toBe('2');
+          expect(await flip(() => (price.value = -1))).toBe('2');
+          expect({ leaf: stats.renders, parent: parentStats.renders }).toEqual(before);
+
+          // A real change while hidden: one render of the reader, before the revealing commit paints.
+          expect(await flip(() => (price.value = 3))).toBe('6');
+          expect({ leaf: stats.renders, parent: parentStats.renders }).toEqual({
+            leaf: before.leaf + 1,
+            parent: before.parent,
+          });
+
+          expect(await flip()).toBe('6');
+          expect({ leaf: stats.renders, parent: parentStats.renders }).toEqual({
+            leaf: before.leaf + 1,
+            parent: before.parent,
+          });
+          result.unmount();
+        });
+
         test('unmounting while hidden releases relays and leases', async () => {
           const { counts, leafRelay } = createRelayHarness();
           const live = signal(0);
@@ -274,6 +338,51 @@ describe('React > state delivery across hide/reveal', () => {
       }
     });
   }
+
+  describe('a first mount', () => {
+    for (const kind of READER_KINDS) {
+      test(`${kind}: a change between render and commit is delivered at default priority`, async () => {
+        const price = signal(1);
+        const derived = reactive(() => price.value * 2);
+        const stats = { renders: 0 };
+        const Leaf = createLeaf(kind, () => derived(), 'state', stats);
+
+        // Its layout effect runs before the leaf's, so the leaf connects to a value that moved
+        // after it rendered, as when data ticks while a screen mounts.
+        function Bump() {
+          useLayoutEffect(() => {
+            price.value = 2;
+          }, []);
+          return null;
+        }
+
+        let show: (visible: boolean) => void = () => {};
+        function Host() {
+          const [visible, setVisible] = useState(false);
+          show = setVisible;
+          return visible ? (
+            <>
+              <Bump />
+              <Leaf testId="leaf" />
+            </>
+          ) : null;
+        }
+
+        const result = render(<Host />);
+        const text = () => result.container.querySelector('[data-testid="leaf"]')?.textContent;
+        await settle();
+
+        flushSync(() => show(true));
+        // Not rendered again from the layout effect: the mount commit paints what it rendered.
+        expect({ text: text(), renders: stats.renders }).toEqual({ text: '2', renders: 1 });
+
+        await expect.element(result.getByTestId('leaf')).toHaveTextContent('4');
+        await settle();
+        expect(stats.renders).toBe(2);
+        result.unmount();
+      });
+    }
+  });
 
   describe('relays across a hide', () => {
     for (const kind of READER_KINDS) {
