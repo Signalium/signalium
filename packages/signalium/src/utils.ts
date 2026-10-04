@@ -13,6 +13,7 @@ import { getSignal } from './internals/get.js';
 import { isReactivePromise, ReactivePromiseImpl } from './internals/async.js';
 import type { ReactiveSignal } from './internals/reactive.js';
 import { isPromise } from './internals/utils/type-utils.js';
+import { MAX_TIMEOUT } from './internals/config.js';
 import { ReactiveValue, RelayState, ReactivePromise } from './types.js';
 
 /**
@@ -66,7 +67,9 @@ export function watchOnce<T>(fn: () => T): T {
 /**
  * Keeps `fn`'s reactive dependencies (relays, queries) watched — active and kept up to date — for
  * `ttl` milliseconds, or until the returned `release` function is called, whichever comes first.
- * Without a `ttl` the retention lasts until `release` is called.
+ * Without a `ttl` (or with `ttl: Infinity`) the retention lasts until `release` is called. A `ttl`
+ * above 2^31 - 1 ms (~24.8 days, the longest timer delay) is clamped to it; a negative or `NaN`
+ * `ttl` throws a `RangeError`.
  *
  * This is an app-level lease, for surfaces that want data warm without rendering it: prefetching
  * the data a likely next screen needs, or keeping a hidden surface's subscriptions alive for a
@@ -80,6 +83,12 @@ export function watchOnce<T>(fn: () => T): T {
  * ```
  */
 export function retain(fn: () => unknown, opts?: { ttl?: number }): () => void {
+  const ttl = opts?.ttl;
+
+  if (ttl !== undefined && (typeof ttl !== 'number' || Number.isNaN(ttl) || ttl < 0)) {
+    throw new RangeError(`signalium: retain() ttl must be a non-negative number of milliseconds, got ${String(ttl)}`);
+  }
+
   const signal = watcher(fn) as ReactiveSignal<unknown, unknown[]>;
   const unsubscribe = signal.addListener(noop);
 
@@ -101,10 +110,10 @@ export function retain(fn: () => unknown, opts?: { ttl?: number }): () => void {
     throw error;
   }
 
-  const ttl = opts?.ttl;
-
-  if (ttl !== undefined) {
-    timer = setTimeout(release, ttl);
+  // `Infinity` means "until released"; `setTimeout` would treat it (and any delay above
+  // MAX_TIMEOUT) as 0 and release immediately, so longer TTLs are clamped to the longest delay.
+  if (ttl !== undefined && ttl !== Infinity) {
+    timer = setTimeout(release, Math.min(ttl, MAX_TIMEOUT));
   }
 
   return release;

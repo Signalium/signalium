@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { sleep } from './utils/async.js';
 import { reactive, relay, reactiveSignal, retain } from '../index.js';
 import { setConfig } from '../config.js';
-import { DEFAULT_RENDER_LEASE_TTL } from '../internals/config.js';
+import { DEFAULT_RENDER_LEASE_TTL, getRenderLeaseTtl, MAX_TIMEOUT } from '../internals/config.js';
 import {
   getRenderLeaseCount,
   holdLeaseUntilSettled,
@@ -386,6 +386,51 @@ describe('render leases', () => {
   });
 });
 
+describe('renderLeaseTtl validation', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setConfig({ renderLeaseTtl: DEFAULT_RENDER_LEASE_TTL });
+  });
+
+  test('a TTL longer than the longest timer delay is clamped, with a warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    setConfig({ renderLeaseTtl: Infinity });
+    expect(getRenderLeaseTtl()).toBe(MAX_TIMEOUT);
+
+    setConfig({ renderLeaseTtl: 2 ** 40 });
+    expect(getRenderLeaseTtl()).toBe(MAX_TIMEOUT);
+
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  test('a TTL that is not a positive number is ignored, with a warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setConfig({ renderLeaseTtl: 500 });
+
+    for (const ttl of [0, -1, NaN]) {
+      setConfig({ renderLeaseTtl: ttl });
+      expect(getRenderLeaseTtl()).toBe(500);
+    }
+
+    expect(warn).toHaveBeenCalledTimes(3);
+  });
+
+  test('a clamped TTL does not release leases immediately', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setConfig({ renderLeaseTtl: Infinity });
+    const { counts, derived } = createRelayHarness();
+
+    renderRead(derived);
+    await sleep(20);
+    expect(counts.active).toBe(1);
+
+    releaseRenderLeases();
+    await flush();
+    expect(counts.active).toBe(0);
+  });
+});
+
 describe('retain()', () => {
   test('keeps relays active for the TTL, then releases them', async () => {
     const { counts, derived } = createRelayHarness();
@@ -409,6 +454,38 @@ describe('retain()', () => {
     release();
     release();
     await sleep(5);
+    expect(counts.active).toBe(0);
+  });
+
+  test('ttl: Infinity retains until released', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    const release = retain(() => derived.value, { ttl: Infinity });
+    await sleep(30);
+    expect(counts.active).toBe(1);
+
+    release();
+    await sleep(5);
+    expect(counts.active).toBe(0);
+  });
+
+  test('a ttl longer than the longest timer delay is clamped instead of releasing at once', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    const release = retain(() => derived.value, { ttl: 2 ** 40 });
+    await sleep(30);
+    expect(counts.active).toBe(1);
+
+    release();
+    await sleep(5);
+    expect(counts.active).toBe(0);
+  });
+
+  test('a negative or NaN ttl throws', () => {
+    const { counts, derived } = createRelayHarness();
+
+    expect(() => retain(() => derived.value, { ttl: -1 })).toThrow(RangeError);
+    expect(() => retain(() => derived.value, { ttl: NaN })).toThrow(RangeError);
     expect(counts.active).toBe(0);
   });
 
