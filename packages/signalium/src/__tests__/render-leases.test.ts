@@ -223,6 +223,26 @@ describe('render leases', () => {
     expect(counts.active).toBe(0);
   });
 
+  test('an un-paused render takes the watch for a lease an earlier render took while paused', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    renderRead(derived, false);
+    await flush();
+    expect(counts.active).toBe(0);
+
+    const subscribe = renderRead(derived, true);
+    await flush();
+    expect(counts.active).toBe(1);
+    expect(derived.watchCount).toBe(1);
+
+    // The claim keeps that watch, and the last unsubscribe drops it.
+    const unsubscribe = subscribe(() => {});
+    unsubscribe();
+    await flush();
+    expect(counts.active).toBe(0);
+    expect(derived.watchCount).toBe(0);
+  });
+
   test('a lease claimed while suspended is not renewed when the thenable settles', async () => {
     const { counts, derived } = createRelayHarness();
     let resolve!: () => void;

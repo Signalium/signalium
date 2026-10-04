@@ -117,7 +117,7 @@ export default function component<Props extends object>(
     // discards never register, and StrictMode's effect replay re-registers.
     useEffect(() => {
       if (manager === null) return;
-      manager.registerOwned(signal);
+      manager.register(signal);
       return () => manager.unregister(signal);
     }, [manager, signal]);
 

@@ -1,10 +1,13 @@
 import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { ReactiveSignal } from '../internals/reactive.js';
-import { watchSignal, unwatchSignal } from '../internals/watch.js';
-import { schedulePull } from '../internals/scheduling.js';
 
 class PauseSignalsManager {
-  private signals = new Set<ReactiveSignal<any, any>>();
+  /**
+   * Registered signals, with the number of mounted readers that registered each one. Hooks such as
+   * `useReactiveShallow` read scope-cached signals that several components share, so one reader
+   * unmounting must not stop the manager from pausing the signal for the others.
+   */
+  private signals = new Map<ReactiveSignal<any, any>, number>();
   private _paused: boolean;
 
   constructor(initialPaused: boolean) {
@@ -15,45 +18,44 @@ class PauseSignalsManager {
     return this._paused;
   }
 
-  register(signal: ReactiveSignal<any, any>) {
-    this.signals.add(signal);
-  }
-
   /**
-   * Registers a signal whose only watcher is a single mounted component's store subscription
-   * (`component()` signals), and reconciles its watch state with the current pause state. Call
-   * from a commit-phase effect that runs after the subscription is established: the component may
-   * have rendered under a different pause state than the one it commits under, and StrictMode's
-   * effect replay re-subscribes (re-watching) the signal regardless of the pause state.
+   * Registers a mounted reader's signal and reconciles the watch its subscriptions hold with the
+   * current pause state. Call from a commit-phase effect that runs after the store subscription
+   * is established, once per reader, and pair it with one `unregister`: the reader may have
+   * rendered (and taken its render lease) under a different pause state than the one it commits
+   * under, and StrictMode's effect replay re-subscribes (re-watching) the signal regardless of the
+   * pause state.
    */
-  registerOwned(signal: ReactiveSignal<any, any>) {
-    this.signals.add(signal);
-
-    const watched = signal.watchCount > 0;
+  register(signal: ReactiveSignal<any, any>) {
+    this.signals.set(signal, (this.signals.get(signal) ?? 0) + 1);
 
     if (this._paused) {
-      if (watched) {
-        unwatchSignal(signal, { isPausing: true });
-      }
-    } else if (!watched) {
-      watchSignal(signal);
-      schedulePull(signal);
+      signal._pauseWatch();
+    } else {
+      signal._resumeWatch();
     }
   }
 
   unregister(signal: ReactiveSignal<any, any>) {
-    this.signals.delete(signal);
+    const count = this.signals.get(signal);
+
+    if (count === undefined) return;
+
+    if (count > 1) {
+      this.signals.set(signal, count - 1);
+    } else {
+      this.signals.delete(signal);
+    }
   }
 
   setPaused(value: boolean) {
     if (value === this._paused) return;
     this._paused = value;
-    for (const signal of this.signals) {
+    for (const signal of this.signals.keys()) {
       if (value) {
-        unwatchSignal(signal, { isPausing: true });
+        signal._pauseWatch();
       } else {
-        watchSignal(signal);
-        schedulePull(signal);
+        signal._resumeWatch();
       }
     }
   }

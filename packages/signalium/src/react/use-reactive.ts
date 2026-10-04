@@ -19,9 +19,11 @@ function useSignalWithSuspension(signal: ReactiveSignal<any, any>) {
   );
 
   // Register on commit, not during render: a render React discards must not leave the signal in
-  // the manager, where un-pausing would watch it again with nothing left to release it. The
-  // signal is scope-cached and may be shared with other components, so it is registered as-is
-  // rather than reconciled like an owned signal.
+  // the manager, where un-pausing would watch it again with nothing left to release it. The commit
+  // may happen under a different pause state than the render took its lease under, so registering
+  // reconciles the watch the subscriptions hold. The signal is scope-cached and may be shared with
+  // other readers, so the manager counts registrations: it keeps pausing the signal until the
+  // last of them unmounts.
   useEffect(() => {
     if (manager === null) return;
     manager.register(signal);
@@ -112,12 +114,11 @@ export function useReactive<R>(fn: () => R): ReactiveValue<R> {
     () => cloneSignal.value as ReactiveValue<R>,
   );
 
-  // The clone signal belongs to this hook instance alone, so (like `component()`) it registers
-  // with the pause manager on commit, after the store subscription, and reconciles its watch
-  // state with the pause state it committed under.
+  // Like `component()`, register the clone signal with the pause manager on commit, after the store
+  // subscription, reconciling its watch with the pause state it committed under.
   useEffect(() => {
     if (manager === null) return;
-    manager.registerOwned(cloneSignal);
+    manager.register(cloneSignal);
     return () => manager.unregister(cloneSignal);
   }, [manager, cloneSignal]);
 

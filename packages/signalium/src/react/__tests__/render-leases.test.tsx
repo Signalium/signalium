@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
-import React, { startTransition, StrictMode, Suspense, useState, useSyncExternalStore } from 'react';
-import { reactive, relay } from 'signalium';
+import React, { startTransition, StrictMode, Suspense, use, useState, useSyncExternalStore } from 'react';
+import { reactive, relay, signal } from 'signalium';
 import { setConfig } from 'signalium/config';
 import { component, PauseSignalsProvider, useReactive, useReactiveShallow } from 'signalium/react';
 import { sleep } from '../../__tests__/utils/async.js';
@@ -464,6 +464,188 @@ describe('React > render leases', () => {
       await expireLeases();
       await settle();
       console.log(`[leases] suspended mount useReactive: leaked ${leakedBeforeTtl} -> ${counts.activeRelays}`);
+      expect(counts.activeRelays).toBe(0);
+    });
+  });
+
+  describe('PauseSignalsProvider: pause state changes between render and commit', () => {
+    type Kind = 'useReactive' | 'useReactiveShallow' | 'component()';
+    const kinds: Kind[] = ['useReactive', 'useReactiveShallow', 'component()'];
+
+    function makeReader(kind: Kind, read: () => unknown) {
+      if (kind === 'component()') {
+        return component(() => <span data-testid="reader">{String(read())}</span>);
+      }
+
+      const useRead = kind === 'useReactive' ? useReactive : useReactiveShallow;
+
+      return function Reader() {
+        const value = useRead(read);
+        return <span data-testid="reader">{String(value)}</span>;
+      };
+    }
+
+    /**
+     * Renders `Reader` under a pause provider next to a sibling that suspends on mount, so the
+     * reader's render (and its lease) happens long before its commit, when `release()` is called.
+     */
+    function mountSuspendedUnderPause(Reader: () => React.ReactNode, initiallyPaused: boolean) {
+      let release!: () => void;
+      const gate = new Promise<void>(r => (release = r));
+      let setPaused: (value: boolean) => void = () => {};
+      let setShown: (value: boolean) => void = () => {};
+
+      function Gate() {
+        use(gate);
+        return null;
+      }
+
+      function Host() {
+        const [paused, _setPaused] = useState(initiallyPaused);
+        const [shown, _setShown] = useState(true);
+        setPaused = _setPaused;
+        setShown = _setShown;
+        return (
+          <PauseSignalsProvider value={paused}>
+            <span data-testid="paused">{String(paused)}</span>
+            {shown ? (
+              <Suspense fallback={<span data-testid="fallback">loading</span>}>
+                <Reader />
+                <Gate />
+              </Suspense>
+            ) : (
+              <span data-testid="hidden">hidden</span>
+            )}
+          </PauseSignalsProvider>
+        );
+      }
+
+      const result = render(<Host />);
+
+      return {
+        result,
+        release,
+        setPaused: (value: boolean) => setPaused(value),
+        unmountReader: () => setShown(false),
+      };
+    }
+
+    for (const kind of kinds) {
+      test(`${kind}: rendered paused and committed un-paused, it receives updates`, async () => {
+        const source = signal(1);
+        const derived = reactive(() => source.value * 10);
+        const { result, release, setPaused } = mountSuspendedUnderPause(
+          makeReader(kind, () => derived()),
+          true,
+        );
+
+        await expect.element(result.getByTestId('fallback')).toBeInTheDocument();
+        await settle();
+
+        setPaused(false);
+        await expect.element(result.getByTestId('paused')).toHaveTextContent('false');
+        await settle();
+
+        release();
+        await expect.element(result.getByTestId('reader')).toHaveTextContent('10');
+        await settle();
+
+        source.value = 2;
+        await expect.element(result.getByTestId('reader')).toHaveTextContent('20');
+      });
+
+      test(`${kind}: rendered un-paused and committed paused, it holds no watch while paused or after unmount`, async () => {
+        const { counts, leafRelay } = createHarness();
+        const { result, release, setPaused, unmountReader } = mountSuspendedUnderPause(
+          makeReader(kind, () => leafRelay(1).value),
+          false,
+        );
+
+        await expect.element(result.getByTestId('fallback')).toBeInTheDocument();
+        await settle();
+        expect(counts.activeRelays).toBe(1);
+
+        setPaused(true);
+        await expect.element(result.getByTestId('paused')).toHaveTextContent('true');
+        await settle();
+
+        release();
+        await expect.element(result.getByTestId('reader')).toHaveTextContent('1');
+        await settle();
+        await expireLeases();
+        await settle();
+        const activeWhilePaused = counts.activeRelays;
+
+        setPaused(false);
+        await expect.element(result.getByTestId('paused')).toHaveTextContent('false');
+        await settle();
+        const activeAfterUnpause = counts.activeRelays;
+
+        unmountReader();
+        await expect.element(result.getByTestId('hidden')).toBeInTheDocument();
+        await settle();
+        await expireLeases();
+        await settle();
+
+        expect({ activeWhilePaused, activeAfterUnpause, activeAfterUnmount: counts.activeRelays }).toEqual({
+          activeWhilePaused: 0,
+          activeAfterUnpause: 1,
+          activeAfterUnmount: 0,
+        });
+      });
+    }
+  });
+
+  describe('PauseSignalsProvider: a useReactiveShallow signal shared by several readers', () => {
+    test('pausing still pauses the remaining reader after another unmounts', async () => {
+      const { counts, leafRelay } = createHarness();
+      const read = () => leafRelay(1).value;
+      let setPaused: (value: boolean) => void = () => {};
+      let setShowFirst: (value: boolean) => void = () => {};
+      let setShowSecond: (value: boolean) => void = () => {};
+
+      function Reader({ id }: { id: string }) {
+        const value = useReactiveShallow(read);
+        return <span data-testid={id}>{value}</span>;
+      }
+
+      function Host() {
+        const [paused, _setPaused] = useState(false);
+        const [showFirst, _setShowFirst] = useState(true);
+        const [showSecond, _setShowSecond] = useState(true);
+        setPaused = _setPaused;
+        setShowFirst = _setShowFirst;
+        setShowSecond = _setShowSecond;
+        return (
+          <PauseSignalsProvider value={paused}>
+            {showFirst ? <Reader id="first" /> : null}
+            {showSecond ? <Reader id="second" /> : null}
+          </PauseSignalsProvider>
+        );
+      }
+
+      const { getByTestId } = render(<Host />);
+      await expect.element(getByTestId('second')).toHaveTextContent('1');
+      await settle();
+      expect(counts.activeRelays).toBe(1);
+
+      React.act(() => setShowFirst(false));
+      await settle();
+      expect(counts.activeRelays).toBe(1);
+
+      React.act(() => setPaused(true));
+      await settle();
+      expect(counts.activeRelays).toBe(0);
+
+      React.act(() => setPaused(false));
+      await settle();
+      expect(counts.activeRelays).toBe(1);
+      expect(counts.activations).toBe(2);
+
+      React.act(() => setShowSecond(false));
+      await settle();
+      await expireLeases();
+      await settle();
       expect(counts.activeRelays).toBe(0);
     });
   });

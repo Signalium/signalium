@@ -202,7 +202,7 @@ export function createAsyncComponentWrapper<P extends object>(
 
     useEffect(() => {
       if (manager === null) return;
-      manager.registerOwned(sig!);
+      manager.register(sig!);
       return () => manager.unregister(sig!);
     }, [manager, sig]);
 
