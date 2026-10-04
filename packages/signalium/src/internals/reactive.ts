@@ -278,9 +278,10 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   //
   // Renders are not commitments, so the eager watch is a lease (see `lease.ts`): the
   // store subscription React makes on commit claims it via `addListener`, and a lease
-  // that is never claimed (the render was discarded) is released when it expires. A render
-  // that is not paused takes the watch for a lease an earlier render took while paused. A
-  // signal that already has listeners is unaffected.
+  // that is never claimed (the render was discarded) is released when it expires. Every
+  // render that reads a still-leased signal extends the lease, and takes the watch if an
+  // earlier render took the lease while paused. A signal that already has listeners is
+  // unaffected.
   addListenerLazy(watch = true) {
     const flags = this.flags;
 
@@ -294,12 +295,13 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       }
 
       addLease(this);
-    } else if (
-      watch &&
-      (flags & (ReactiveFnFlags.isLeased | ReactiveFnFlags.isListenerWatched)) === ReactiveFnFlags.isLeased
-    ) {
-      watchSignal(this);
-      this.flags |= ReactiveFnFlags.isListenerWatched;
+    } else if ((flags & ReactiveFnFlags.isLeased) !== 0) {
+      if (watch && (flags & ReactiveFnFlags.isListenerWatched) === 0) {
+        watchSignal(this);
+        this.flags |= ReactiveFnFlags.isListenerWatched;
+      }
+
+      addLease(this);
     }
 
     return this.listeners.cachedBoundAdd;

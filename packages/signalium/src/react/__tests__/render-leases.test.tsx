@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
 import React, { startTransition, StrictMode, Suspense, use, useState, useSyncExternalStore } from 'react';
+import { createRoot } from 'react-dom/client';
 import { reactive, relay, signal } from 'signalium';
 import { setConfig } from 'signalium/config';
 import { component, PauseSignalsProvider, useReactive, useReactiveShallow } from 'signalium/react';
@@ -647,6 +648,64 @@ describe('React > render leases', () => {
       await expireLeases();
       await settle();
       expect(counts.activeRelays).toBe(0);
+    });
+  });
+
+  describe("suspended by React's use()", () => {
+    test('component() keeps its relays active until data that needs them arrives, then releases them', async () => {
+      const { counts, leafRelay } = createHarness();
+      let resolveReady!: (value: number) => void;
+      const ready = new Promise<number>(r => (resolveReady = r));
+      let arrival: ReturnType<typeof setTimeout> | undefined;
+
+      // A subscription whose first payload only arrives while it is active, several TTLs after
+      // the render that started it; nothing re-renders the suspended mount in between.
+      const source = reactive(() =>
+        relay<number>(state => {
+          state.value = leafRelay(1).value;
+          arrival = setTimeout(() => resolveReady(42), LEASE_TTL * 5);
+          return () => clearTimeout(arrival);
+        }),
+      );
+
+      const Leaf = component(() => {
+        counts.bodyRuns++;
+        void source().value;
+        const value = use(ready);
+        return <span data-testid="leaf">{value}</span>;
+      });
+
+      // React's act() environment would flush the suspended retry synchronously; use a plain
+      // root so the mount suspends the way it does in an app.
+      const previousActEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      const root = createRoot(container);
+
+      try {
+        root.render(
+          <Suspense fallback={<span>loading</span>}>
+            <Leaf />
+          </Suspense>,
+        );
+
+        await expect.poll(() => container.textContent, { timeout: LEASE_TTL * 20 }).toBe('42');
+        await settle();
+        expect(counts.activeRelays).toBe(1);
+        expect(counts.activations).toBe(1);
+
+        root.unmount();
+        await settle();
+        await expireLeases();
+        await settle();
+        // The retry releases the suspended attempt's pin, so nothing waits for the hold to end.
+        expect(counts.activeRelays).toBe(0);
+      } finally {
+        root.unmount();
+        container.remove();
+        (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+      }
     });
   });
 

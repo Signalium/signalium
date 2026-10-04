@@ -6,7 +6,7 @@ import { usePauseSignalsManager } from './pause-signals-context.js';
 import { setRequestScopeGetter, SignalScope } from '../internals/contexts.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { hashProps } from './props-hash.js';
-import { createAsyncComponentWrapper, readComponentSignal } from './async-component.js';
+import { createAsyncComponentWrapper, createComponentElement, readComponentSignal } from './async-component.js';
 import {
   type ComponentRender,
   isAsyncFunctionWithoutTransform,
@@ -108,7 +108,7 @@ export default function component<Props extends object>(
     // the case on mount). If the snapshot were read first, React would see it change after render
     // and re-render: synchronously after every mount, and as a sync redo of mounts inside a
     // transition.
-    const value = readComponentSignal(signal);
+    const value = readComponentSignal(signal, props);
 
     const getSnapshot = () => signal.updatedCount;
     useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -128,6 +128,6 @@ export default function component<Props extends object>(
     const hash = hashProps(props);
     // Renders Comp only when hash changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    return useMemo(() => <Component {...props} />, [hash]);
+    return useMemo(() => createComponentElement(Component, props), [hash]);
   };
 }

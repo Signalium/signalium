@@ -8,22 +8,98 @@ import { hashProps } from './props-hash.js';
 import { isPromise, isThennable } from '../internals/utils/type-utils.js';
 import { useScope } from './context.js';
 import { usePauseSignalsManager } from './pause-signals-context.js';
-import { holdLeaseUntilSettled } from '../internals/lease.js';
+import { holdLeaseUntilSettled, holdSuspendedLease, releaseAbandonedAttempt } from '../internals/lease.js';
+
+/**
+ * The props of the element a `component()` wrapper rendered, by the props of the inner element it
+ * created for them. Lets an inner render find the user's element, which (unlike any render state)
+ * survives React retrying a mount that suspended.
+ */
+const elementPropsByInnerProps = new WeakMap<object, object>();
+
+/**
+ * Per user element: the signals of mount attempts that suspended rendering it and still hold a
+ * pinned lease. React keeps no render state for a mount that suspends, so its retry creates new
+ * signals; the retry releases these once it has leased what it reads.
+ */
+const suspendedAttemptsByElement = new WeakMap<object, Set<ReactiveSignal<any, any>>>();
+
+/**
+ * Creates the inner element a `component()` wrapper renders for the user's element `props`,
+ * recording which user element it belongs to (see {@link readComponentSignal}).
+ */
+export function createComponentElement<P extends object>(
+  Inner: (props: P) => ReactTypes.ReactNode,
+  props: P,
+): ReactTypes.ReactElement {
+  const element = React.createElement(Inner, props);
+  elementPropsByInnerProps.set(element.props as object, props);
+  return element;
+}
+
+/**
+ * React 19's `use()` (and `useActionState`) suspend by throwing an opaque `SuspenseException`
+ * rather than the thenable. It is a plain `Error`; its message is the only stable mark, in
+ * development builds and as the error code in minified production builds.
+ */
+function isReactSuspenseException(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const { message } = error;
+
+  return message.startsWith('Suspense Exception') || /^Minified React error #(460|542)\b/.test(message);
+}
 
 /**
  * Computes and settles a `component()` signal during render and returns its value. If the render
- * suspends (throws a thenable), the signal's render lease is pinned until the thenable settles, so
- * the relays the suspended render reads stay active for however long React waits to retry it.
+ * suspends, the signal's render lease is pinned, so the relays the suspended render reads stay
+ * active for however long React waits to retry it: until the thrown thenable settles, or, for
+ * React's `use()`, whose thenable is hidden, until React retries or commits the element (see
+ * `holdSuspendedLease`). A render that throws an error keeps an ordinary lease; React does not
+ * wait on it.
+ *
+ * `props` are the props the inner component received. A render of the same user element that
+ * starts after earlier mount attempts suspended releases their pins, once it has leased its own.
  */
-export function readComponentSignal<T>(signal: ReactiveSignal<T, []>): T {
+export function readComponentSignal<T>(signal: ReactiveSignal<T, []>, props: object): T {
+  const element = elementPropsByInnerProps.get(props);
+  let attempts = element === undefined ? undefined : suspendedAttemptsByElement.get(element);
+
   try {
     runSignal(signal as ReactiveSignal<any, any[]>);
-    return signal.value as T;
+    const value = signal.value as T;
+    attempts?.delete(signal);
+    return value;
   } catch (error) {
+    let pinned = true;
+
     if (error !== null && typeof error === 'object' && isThennable(error)) {
       holdLeaseUntilSettled(signal, error);
+    } else if (isReactSuspenseException(error)) {
+      holdSuspendedLease(signal);
+    } else {
+      pinned = false;
     }
+
+    if (pinned && element !== undefined && signal._isLeased) {
+      if (attempts === undefined) {
+        attempts = new Set();
+        suspendedAttemptsByElement.set(element, attempts);
+      }
+
+      attempts.add(signal);
+    }
+
     throw error;
+  } finally {
+    if (attempts !== undefined) {
+      for (const attempt of attempts) {
+        if (attempt !== signal) {
+          releaseAbandonedAttempt(attempt);
+          attempts.delete(attempt);
+        }
+      }
+    }
   }
 }
 
@@ -195,7 +271,7 @@ export function createAsyncComponentWrapper<P extends object>(
     // mount render's snapshot is stable (no forced re-render / sync redo).
     const subscribe = sig.addListenerLazy(!manager?.paused);
 
-    const value = readComponentSignal(sig);
+    const value = readComponentSignal(sig, props);
 
     const getSnapshot = () => sig!.updatedCount;
     useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -212,7 +288,7 @@ export function createAsyncComponentWrapper<P extends object>(
   const Outer = (props: P) => {
     const hash = hashProps(props);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    return useMemo(() => React.createElement(Inner, props), [hash]);
+    return useMemo(() => createComponentElement(Inner, props), [hash]);
   };
 
   Object.defineProperty(Outer, SIGNALIUM_ASYNC_COMPONENT, { value: true, enumerable: false });

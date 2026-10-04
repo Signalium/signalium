@@ -3,7 +3,14 @@ import { sleep } from './utils/async.js';
 import { reactive, relay, reactiveSignal, retain } from '../index.js';
 import { setConfig } from '../config.js';
 import { DEFAULT_RENDER_LEASE_TTL } from '../internals/config.js';
-import { getRenderLeaseCount, holdLeaseUntilSettled, releaseRenderLeases } from '../internals/lease.js';
+import {
+  getRenderLeaseCount,
+  holdLeaseUntilSettled,
+  holdSuspendedLease,
+  releaseAbandonedAttempt,
+  releaseRenderLeases,
+  SUSPENDED_LEASE_HOLD_TTLS,
+} from '../internals/lease.js';
 import type { ReactiveSignal } from '../internals/reactive.js';
 
 const TTL = 100;
@@ -207,7 +214,8 @@ describe('render leases', () => {
 
     renderRead(derived);
     holdLeaseUntilSettled(derived, pending);
-    expect(getRenderLeaseCount()).toBe(0);
+    // Pinned leases still count as outstanding.
+    expect(getRenderLeaseCount()).toBe(1);
 
     await sleep(TTL * 3);
     expect(counts.active).toBe(1);
@@ -220,6 +228,46 @@ describe('render leases', () => {
     expect(counts.active).toBe(1);
 
     await sleep(TTL + 50);
+    expect(counts.active).toBe(0);
+  });
+
+  test('releaseRenderLeases releases pinned leases too', async () => {
+    const { counts, derived } = createRelayHarness();
+    const { counts: suspendedCounts, derived: suspended } = createRelayHarness();
+
+    renderRead(derived);
+    holdLeaseUntilSettled(derived, new Promise<void>(() => {}));
+    renderRead(suspended);
+    holdSuspendedLease(suspended);
+    await flush();
+    expect(getRenderLeaseCount()).toBe(2);
+
+    releaseRenderLeases();
+    await flush();
+
+    expect(getRenderLeaseCount()).toBe(0);
+    expect(counts.active).toBe(0);
+    expect(suspendedCounts.active).toBe(0);
+  });
+
+  test('a render that reads a leased signal again extends its lease', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    renderRead(derived);
+    await flush();
+
+    // Keep re-rendering, each time within the TTL, for well past two TTLs.
+    for (let i = 0; i < 6; i++) {
+      await sleep(TTL / 2);
+      renderRead(derived);
+    }
+
+    await flush();
+    expect(counts.active).toBe(1);
+    expect(counts.activations).toBe(1);
+
+    await sleep(TTL * 2 + 50);
+    await flush();
     expect(counts.active).toBe(0);
   });
 
@@ -241,6 +289,55 @@ describe('render leases', () => {
     await flush();
     expect(counts.active).toBe(0);
     expect(derived.watchCount).toBe(0);
+  });
+
+  test('a lease pinned for an opaque suspension holds until a render reads it again', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    renderRead(derived);
+    holdSuspendedLease(derived);
+
+    await sleep(TTL * 3);
+    await flush();
+    expect(counts.active).toBe(1);
+
+    // React's retry re-reads the signal: the pin ends and the lease runs a normal TTL.
+    renderRead(derived);
+    await sleep(TTL * 2 + 50);
+    await flush();
+    expect(counts.active).toBe(0);
+    expect(getRenderLeaseCount()).toBe(0);
+  });
+
+  test('a lease pinned for an opaque suspension is released by a new attempt at the same mount', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    renderRead(derived);
+    holdSuspendedLease(derived);
+
+    await sleep(TTL * 3);
+    expect(counts.active).toBe(1);
+
+    releaseAbandonedAttempt(derived);
+    await sleep(TTL * 2 + 50);
+    await flush();
+    expect(counts.active).toBe(0);
+  });
+
+  test('a lease pinned for an opaque suspension React abandons is released after the hold', async () => {
+    const shortTtl = 10;
+    setConfig({ renderLeaseTtl: shortTtl });
+    const { counts, derived } = createRelayHarness();
+
+    renderRead(derived);
+    holdSuspendedLease(derived);
+
+    await sleep(shortTtl * 3);
+    expect(counts.active).toBe(1);
+
+    await sleep(shortTtl * (SUSPENDED_LEASE_HOLD_TTLS + 2) + 50);
+    await flush();
+    expect(counts.active).toBe(0);
   });
 
   test('a lease claimed while suspended is not renewed when the thenable settles', async () => {

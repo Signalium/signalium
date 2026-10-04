@@ -15,6 +15,9 @@ export const DEFAULT_RENDER_LEASE_TTL = 10_000;
 
 let _renderLeaseTtl = DEFAULT_RENDER_LEASE_TTL;
 
+/** The longest delay `setTimeout` honours (2^31 - 1 ms, ~24.8 days); longer delays fire at once. */
+export const MAX_TIMEOUT = 2 ** 31 - 1;
+
 export function setConfig(
   cfg: Partial<{
     scheduleFlush: (fn: () => void) => void;
