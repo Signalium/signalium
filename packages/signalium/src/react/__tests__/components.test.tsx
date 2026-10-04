@@ -452,6 +452,28 @@ describe('React > Components', () => {
       expect(reads).toBe(0);
     });
 
+    test('hashes an Array subclass prop with its registered custom hash', () => {
+      class Point extends Array<number> {}
+      registerCustomHash(Point, point => point[0]! * 1000 + point[1]!);
+
+      const at = (x: number, y: number) => Point.from([x, y]) as Point;
+
+      expect(hashProps({ p: at(1, 2) })).toBe(hashProps({ p: at(1, 2) }));
+      expect(hashProps({ p: at(1, 2) })).not.toBe(hashProps({ p: at(2, 1) }));
+      // The custom hash decides, not the elements: 1 * 1000 + 1001 === 2 * 1000 + 1.
+      expect(hashProps({ p: at(1, 1001) })).toBe(hashProps({ p: at(2, 1) }));
+    });
+
+    test('hashes an Array subclass prop without a custom hash by identity', () => {
+      class Row extends Array<number> {}
+      const row = Row.from([1, 2, 3]) as Row;
+
+      expect(hashProps({ r: row })).toBe(hashProps({ r: row }));
+      expect(hashProps({ r: row })).not.toBe(hashProps({ r: Row.from([1, 2, 3]) as Row }));
+      // A plain array is still hashed structurally.
+      expect(hashProps({ r: [1, 2, 3] })).toBe(hashProps({ r: [1, 2, 3] }));
+    });
+
     test('terminates on a self-referencing array prop', () => {
       const children: unknown[] = [];
       children.push(children);

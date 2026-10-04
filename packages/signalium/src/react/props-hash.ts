@@ -24,14 +24,17 @@ function isElement(value: object): boolean {
 
 function hashPropValue(value: unknown, seen: unknown[]): number {
   if (typeof value === 'object' && value !== null) {
-    if (Array.isArray(value)) {
+    // Plain arrays only: an `Array` subclass hashes like any other class instance
+    // in `hashValue`, by its `registerCustomHash` function or else by identity.
+    if (getPrototypeOf(value) === Array.prototype) {
       // `children` is commonly an array, and elements inside it need the same
       // treatment. Order-sensitive, so a reorder still changes the hash.
       if (seen.includes(value)) return 0;
       seen.push(value);
-      let h = (0x9e3779b9 ^ value.length) >>> 0;
-      for (let i = 0; i < value.length; i++) {
-        h = (imul(h, 31) + hashPropValue(value[i], seen)) >>> 0;
+      let h = (0x9e3779b9 ^ (value as unknown[]).length) >>> 0;
+      const array = value as unknown[];
+      for (let i = 0; i < array.length; i++) {
+        h = (imul(h, 31) + hashPropValue(array[i], seen)) >>> 0;
       }
       seen.pop();
       return h;
