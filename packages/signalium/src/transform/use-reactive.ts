@@ -8,11 +8,11 @@ export interface SignaliumUseReactiveTransformOptions {
 }
 
 /**
- * Wraps the thunk argument of `useReactive` / `useReactiveDeep` in
- * `React.useCallback(fn, [deps])`. The captured identifiers are collected from
- * the thunk body the same way the `callback` transform does for `reactive()`
- * callbacks, giving the hook a stable identity across renders when captures are
- * equal. This lets the runtime reuse the underlying `ReactiveSignal`.
+ * Wraps the thunk argument of `useReactive` / `useReactiveShallow` / `useReactiveDeep` in
+ * `React.useCallback(fn, [deps])`, leaving any later arguments (the options object) untouched.
+ * The captured identifiers are collected from the thunk body the same way the `callback`
+ * transform does for `reactive()` callbacks, giving the hook a stable identity across renders
+ * when captures are equal. This lets the runtime reuse the underlying `ReactiveSignal`.
  *
  * Runs after the async and callback transforms so the inner function has
  * already been rewritten (e.g. `async` → `function*`).
@@ -176,8 +176,9 @@ function createSignaliumUseReactiveTransform(api: any, opts?: SignaliumUseReacti
         if (!isTargetCall(callPath)) return;
 
         const args = callPath.get('arguments');
-        // Only the thunk form: exactly one argument and it is a function.
-        if (args.length !== 1) return;
+        // The thunk is the first argument. Any further arguments (the `{ delivery }` options
+        // object) are left as they are: they are read once per render, not used as a cache key.
+        if (args.length === 0) return;
 
         let fnPath: NodePath = args[0];
         // Unwrap TS expression wrappers (`as`, `satisfies`, `!`, etc.) so the

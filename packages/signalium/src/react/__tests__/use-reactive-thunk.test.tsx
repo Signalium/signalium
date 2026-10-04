@@ -182,4 +182,71 @@ describe('React > useReactive thunk form', () => {
       expect(() => derived()).toThrow(/cannot be called inside a reactive function/);
     });
   });
+
+  describe('with an options argument (Babel preset)', () => {
+    for (const hook of ['useReactive', 'useReactiveShallow'] as const) {
+      test(`${hook}: the thunk keeps its signal across unrelated re-renders`, async () => {
+        const price = signal(1);
+        // Counted through an object: a captured `let` would be a thunk dependency that changes.
+        const stats = { computes: 0 };
+
+        // The options object is a fresh literal every render; only the thunk is memoized.
+        const Reader =
+          hook === 'useReactive'
+            ? function Reader({ n }: { n: number }): React.ReactNode {
+                const value = useReactive(
+                  () => {
+                    stats.computes++;
+                    return price.value;
+                  },
+                  { delivery: 'sync' },
+                );
+                return (
+                  <span data-testid="value">
+                    {value}:{n}
+                  </span>
+                );
+              }
+            : function Reader({ n }: { n: number }): React.ReactNode {
+                const value = useReactiveShallow(
+                  () => {
+                    stats.computes++;
+                    return price.value;
+                  },
+                  { delivery: 'sync' },
+                );
+                return (
+                  <span data-testid="value">
+                    {value}:{n}
+                  </span>
+                );
+              };
+
+        function Host(): React.ReactNode {
+          const [n, setN] = useState(0);
+          return (
+            <>
+              <Reader n={n} />
+              <button onClick={() => setN(x => x + 1)}>BUMP</button>
+            </>
+          );
+        }
+
+        const { getByTestId, getByText } = render(<Host />);
+        await expect.element(getByTestId('value')).toHaveTextContent('1:0');
+        const initialComputes = stats.computes;
+
+        for (let i = 1; i <= 5; i++) {
+          await userEvent.click(getByText('BUMP'));
+          await expect.element(getByTestId('value')).toHaveTextContent(`1:${i}`);
+        }
+
+        expect(stats.computes).toBe(initialComputes);
+
+        price.value = 2;
+        await expect.element(getByTestId('value')).toHaveTextContent('2:5');
+        expect(stats.computes).toBe(initialComputes + 1);
+      });
+    }
+  });
 });
