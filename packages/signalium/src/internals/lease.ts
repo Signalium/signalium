@@ -4,40 +4,28 @@ import { getRenderLeaseTtl, MAX_TIMEOUT } from './config.js';
 /**
  * Render leases.
  *
- * React hooks watch their signal while rendering (so relays read during the render activate),
- * but a render is not a commitment: React can discard it (an interrupted transition, a mount that
- * suspends, StrictMode's double render) and never call the store subscription or any effect that
- * would release the watch. A render-time watch is therefore taken as a *lease*: it holds the
- * signal exactly like a normal watch, and the commit claims it by subscribing (see
- * `ReactiveSignal.addListener`). Leases nobody claims are released here once they expire.
+ * Hooks watch their signal during render so the relays it reads activate. React can discard a
+ * render (an interrupted transition, a suspended mount, StrictMode) without ever subscribing, so
+ * that watch is a lease: the commit's subscription claims it (`ReactiveSignal.addListener`), and
+ * unclaimed leases are released when they expire.
  *
- * Expiry uses a two-generation wheel instead of a timer per lease, so taking and claiming a lease
- * is a `Set` insert/delete and the whole wheel costs a single timer, armed only while leases are
- * outstanding. Every tick releases the old generation and ages the young one, so a lease lives
- * between one and two TTLs, counted from the last render that read the signal.
+ * Expiry is a two-generation wheel on one timer, so a lease lives one to two TTLs after the last
+ * render that read the signal.
  *
- * A render that suspends is waiting on something, and that something may only arrive while the
- * render's own relays are active (a socket whose first payload resolves the promise). Its lease is
- * *pinned* instead: taken off the wheel until the suspension ends. See `holdLeaseUntilSettled` and
- * `holdSuspendedLease`.
+ * A suspended render may be waiting on data only its own relays produce, so its lease is pinned
+ * until the suspension ends (`holdLeaseUntilSettled`, `holdSuspendedLease`).
  */
 
 let young = new Set<ReactiveSignal<any, any>>();
 let old = new Set<ReactiveSignal<any, any>>();
 let timer: ReturnType<typeof setTimeout> | undefined;
 
-/**
- * Pinned leases, by the token of the suspension that pinned them. A later pin, a re-render, a
- * claim or a release replaces or removes the entry, so a stale suspension settling (or timing
- * out) can't unpin a lease that a newer suspension holds.
- */
+/** Pinned leases, by suspension token, so a stale suspension can't unpin a newer one's lease. */
 const pinned = new Map<ReactiveSignal<any, any>, object>();
 
 /**
- * How long a lease stays pinned for a suspension whose thenable signalium cannot see (React's
- * `use()`), as a multiple of the lease TTL. Such a pin normally ends when React retries or commits
- * the render; this bound only applies when React abandons the suspended render (its Suspense
- * boundary unmounts first), which nothing reports.
+ * How long, in TTLs, a `use()` suspension pins a lease. The retry or commit normally ends the pin;
+ * this bounds it when React abandons the render, which nothing reports.
  */
 export const SUSPENDED_LEASE_HOLD_TTLS = 30;
 
@@ -67,11 +55,7 @@ function sweepLeases() {
   }
 }
 
-/**
- * Starts a lease's TTL, or restarts it: a render that reads a still-leased signal again (a retry,
- * a restarted transition) extends the lease, and ends a pin (the suspension it was held for is
- * over; a render that suspends again pins it again).
- */
+/** Starts or restarts a lease's TTL. A new render also ends a pin: the suspension is over. */
 export function addLease(signal: ReactiveSignal<any, any>) {
   if (!pinned.delete(signal)) {
     old.delete(signal);
@@ -112,11 +96,8 @@ function unpinLease(signal: ReactiveSignal<any, any>, token: object) {
 }
 
 /**
- * Pins a render lease while the render that took it is suspended on `thenable`, then gives it a
- * fresh TTL once the thenable settles. A render that suspends keeps waiting on data its own watch
- * keeps alive (a relay that only resolves while active would otherwise never resolve), and React
- * retries it only after the thenable settles, which can be later than the TTL. A thenable that
- * never settles pins the lease for good, like the watch it replaces.
+ * Pins a render lease until `thenable` settles. React retries a suspended render only then, which
+ * can be later than the TTL.
  */
 export function holdLeaseUntilSettled(signal: ReactiveSignal<any, any>, thenable: PromiseLike<unknown>) {
   const token = pinLease(signal);
@@ -131,13 +112,8 @@ export function holdLeaseUntilSettled(signal: ReactiveSignal<any, any>, thenable
 }
 
 /**
- * Pins a render lease while the render that took it is suspended on a thenable signalium cannot
- * see: React 19's `use()` throws an opaque `SuspenseException` and keeps the thenable to itself.
- * React re-renders the suspended content once the thenable settles; that render re-reads the
- * signal (refreshing the lease) or, for a mount, starts a new attempt that ends this pin through
- * {@link releaseAbandonedAttempt}, so the pin normally ends there or at the commit. If React
- * abandons the render instead, the pin ends after {@link SUSPENDED_LEASE_HOLD_TTLS} TTLs and the
- * lease then expires normally.
+ * Pins a render lease for a `use()` suspension, whose thenable React keeps to itself. The retry or
+ * commit normally ends the pin; otherwise it ends after {@link SUSPENDED_LEASE_HOLD_TTLS} TTLs.
  */
 export function holdSuspendedLease(signal: ReactiveSignal<any, any>) {
   const token = pinLease(signal);
@@ -155,10 +131,9 @@ export function holdSuspendedLease(signal: ReactiveSignal<any, any>) {
 }
 
 /**
- * Gives a lease pinned by an earlier, suspended attempt at mounting the same element a fresh TTL.
- * React keeps no render state for a mount that suspends, so its retry is a new attempt with new
- * signals; once the retry has read (and leased) what it needs, the old attempt's lease only has
- * to bridge the gap until the retry commits.
+ * Unpins a lease held by an earlier, suspended attempt at mounting the same element. The retry
+ * starts over with new signals, so once it has leased its own, the old lease only needs to last
+ * until the commit.
  */
 export function releaseAbandonedAttempt(signal: ReactiveSignal<any, any>) {
   const token = pinned.get(signal);
@@ -168,11 +143,7 @@ export function releaseAbandonedAttempt(signal: ReactiveSignal<any, any>) {
   }
 }
 
-/**
- * Releases every outstanding lease immediately, pinned ones included. Intended for tests and for
- * app-level teardown (e.g. when the app is backgrounded and nothing rendered so far is going to
- * commit).
- */
+/** Releases every outstanding lease, pinned ones included. For tests and app teardown. */
 export function releaseRenderLeases() {
   if (timer !== undefined) {
     clearTimeout(timer);
@@ -190,10 +161,7 @@ export function releaseRenderLeases() {
   }
 }
 
-/**
- * Number of render leases that have not been claimed or released yet, including leases pinned
- * for a suspended render. For tests and debugging.
- */
+/** Outstanding render leases, pinned ones included. For tests and debugging. */
 export function getRenderLeaseCount() {
   return young.size + old.size + pinned.size;
 }

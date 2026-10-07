@@ -65,20 +65,15 @@ export function watchOnce<T>(fn: () => T): T {
 }
 
 /**
- * Keeps `fn`'s reactive dependencies (relays, queries) watched — active and kept up to date — for
- * `ttl` milliseconds, or until the returned `release` function is called, whichever comes first.
- * Without a `ttl` (or with `ttl: Infinity`) the retention lasts until `release` is called. A `ttl`
- * above 2^31 - 1 ms (~24.8 days, the longest timer delay) is clamped to it; a negative or `NaN`
- * `ttl` throws a `RangeError`.
+ * Keeps `fn`'s dependencies (relays, queries) watched until `ttl` ms pass or the returned
+ * `release` is called. Without a `ttl`, or with `Infinity`, it lasts until released. A `ttl` above
+ * 2^31 - 1 ms is clamped; a negative or `NaN` one throws a `RangeError`.
  *
- * This is an app-level lease, for surfaces that want data warm without rendering it: prefetching
- * the data a likely next screen needs, or keeping a hidden surface's subscriptions alive for a
- * while after it is hidden so returning to it doesn't restart them. `fn` runs immediately (in the
- * current scope) and again whenever its dependencies change while retained.
+ * Use it to keep data warm without rendering it, e.g. prefetching a likely next screen. `fn` runs
+ * now, in the current scope, and again when its dependencies change.
  *
  * @example
  * ```ts
- * // Warm the token detail query for 30s after the user hovers a row.
  * const release = retain(() => fetchTokenDetail(id), { ttl: 30_000 });
  * ```
  */
@@ -103,15 +98,14 @@ export function retain(fn: () => unknown, opts?: { ttl?: number }): () => void {
   };
 
   try {
-    // Run now so relays start activating immediately rather than on the next flush.
+    // Run now so relays activate immediately, not on the next flush.
     getSignal(signal);
   } catch (error) {
     release();
     throw error;
   }
 
-  // `Infinity` means "until released"; `setTimeout` would treat it (and any delay above
-  // MAX_TIMEOUT) as 0 and release immediately, so longer TTLs are clamped to the longest delay.
+  // `setTimeout` fires immediately for delays above MAX_TIMEOUT.
   if (ttl !== undefined && ttl !== Infinity) {
     timer = setTimeout(release, Math.min(ttl, MAX_TIMEOUT));
   }

@@ -3,15 +3,11 @@ import { ReactiveSignal } from '../internals/reactive.js';
 
 class PauseSignalsManager {
   /**
-   * Registered signals, with the number of mounted readers that registered each one. Hooks such as
-   * `useReactiveShallow` read scope-cached signals that several components share, possibly across
-   * providers, so each signal counts its paused readers rather than being paused outright.
+   * Readers per registered signal. Scope-cached signals can be shared across providers, so pausing
+   * counts readers on the signal instead of pausing it outright.
    */
   private signals = new Map<ReactiveSignal<any, any>, number>();
-  /**
-   * Render leases taken under this provider that no commit has claimed yet, such as a mount that
-   * suspended. Pausing drops their watch too. Ended leases are pruned lazily.
-   */
+  /** Unclaimed render leases taken under this provider (e.g. a suspended mount). Pruned lazily. */
   private leases = new Set<ReactiveSignal<any, any>>();
   private pruneLeasesAt = 64;
   private _paused: boolean;
@@ -38,10 +34,7 @@ class PauseSignalsManager {
     }
   }
 
-  /**
-   * Counts a mounted reader of `signal`. Call before the reader subscribes, so a paused reader
-   * never takes the watch, even briefly, and pair it with one `unregister`.
-   */
+  /** Call before the reader subscribes, so a paused reader never takes the watch. */
   register(signal: ReactiveSignal<any, any>) {
     this.signals.set(signal, (this.signals.get(signal) ?? 0) + 1);
     this.leases.delete(signal);
@@ -63,8 +56,7 @@ class PauseSignalsManager {
     }
 
     if (this._paused) {
-      // The reader may not have unsubscribed yet; reconciling now could briefly re-watch a signal
-      // whose only subscriber is this paused reader.
+      // The reader may still be subscribed; reconciling now could briefly re-watch.
       signal._addPausedReaders(-1, true);
     }
   }
@@ -110,10 +102,7 @@ export function usePauseSignalsManager(): PauseSignalsManager | null {
   return useContext(PauseSignalsManagerContext);
 }
 
-/**
- * `signal.addListenerLazy` for a render under `manager`: watches the signal unless paused, and
- * lets pausing reach the lease if the render never commits.
- */
+/** `addListenerLazy`, tracking the lease so pausing reaches it if the render never commits. */
 export function addRenderListener(signal: ReactiveSignal<any, any>, manager: PauseSignalsManager | null) {
   const subscribe = signal.addListenerLazy(!manager?.paused);
 
@@ -124,7 +113,7 @@ export function addRenderListener(signal: ReactiveSignal<any, any>, manager: Pau
   return subscribe;
 }
 
-/** `useSyncExternalStore` for a reader under `manager`, registered before it subscribes. */
+/** `useSyncExternalStore`, registering the reader with `manager` before it subscribes. */
 export function usePausableStore<T>(
   manager: PauseSignalsManager | null,
   signal: ReactiveSignal<any, any>,

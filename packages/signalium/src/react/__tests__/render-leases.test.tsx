@@ -8,10 +8,8 @@ import { component, PauseSignalsProvider, useReactive, useReactiveShallow } from
 import { sleep } from '../../__tests__/utils/async.js';
 
 /**
- * Render-time watches are provisional leases: a render React never commits (an interrupted
- * transition, a mount that suspends, StrictMode's discarded double render) must stop holding its
- * relays once the lease expires, while a render that commits claims its lease without restarting
- * anything.
+ * Render-time watches are leases: a render React never commits releases its relays when the lease
+ * expires, and a committed one claims its lease without restarting anything.
  */
 
 const LEASE_TTL = 150;
@@ -74,9 +72,8 @@ function createTicker() {
 type LeafComponent = (props: { id: number }) => React.ReactNode;
 
 /**
- * Mounts `Leaf`s inside a transition and ticks a `useSyncExternalStore` store from a timer while
- * the time-sliced render is yielded, so React throws the in-progress transition away (every leaf
- * mounted so far is discarded) and restarts it. Leaves must call `onLeafBody()` in their body.
+ * Mounts `Leaf`s in a transition and ticks a SyncLane store while the render yields, so React
+ * discards the transition and restarts it. Leaves must call `onLeafBody()`.
  */
 function createInterruptedTransition() {
   const ticker = createTicker();
@@ -132,9 +129,8 @@ function createInterruptedTransition() {
 }
 
 /**
- * Shared assertions: the committed leaves hold exactly one activation each (no restart across the
- * render → commit gap), unmounting them releases everything once the discarded renders' leases
- * expire, and nothing stays active.
+ * Committed leaves hold one activation each, and unmounting releases everything once the discarded
+ * renders' leases expire.
  */
 async function expectNoLeakAfterUnmount(
   counts: Counts,
@@ -487,8 +483,8 @@ describe('React > render leases', () => {
     }
 
     /**
-     * Renders `Reader` under a pause provider next to a sibling that suspends on mount, so the
-     * reader's render (and its lease) happens long before its commit, when `release()` is called.
+     * Renders `Reader` beside a sibling that suspends on mount, so its render (and lease) happens
+     * long before its commit, when `release()` is called.
      */
     function mountSuspendedUnderPause(Reader: () => React.ReactNode, initiallyPaused: boolean) {
       let release!: () => void;
@@ -658,8 +654,8 @@ describe('React > render leases', () => {
       const ready = new Promise<number>(r => (resolveReady = r));
       let arrival: ReturnType<typeof setTimeout> | undefined;
 
-      // A subscription whose first payload only arrives while it is active, several TTLs after
-      // the render that started it; nothing re-renders the suspended mount in between.
+      // Its first payload arrives only while active, several TTLs after the render; nothing
+      // re-renders the suspended mount meanwhile.
       const source = reactive(() =>
         relay<number>(state => {
           state.value = leafRelay(1).value;
@@ -675,8 +671,7 @@ describe('React > render leases', () => {
         return <span data-testid="leaf">{value}</span>;
       });
 
-      // React's act() environment would flush the suspended retry synchronously; use a plain
-      // root so the mount suspends the way it does in an app.
+      // act() would flush the suspended retry synchronously; use a plain root, as in an app.
       const previousActEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
       (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
       const container = document.createElement('div');
