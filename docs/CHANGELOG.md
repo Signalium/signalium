@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.0.48
+
+### Patch Changes
+
+- Updated dependencies [d96ce16]
+- Updated dependencies [c4449de]
+- Updated dependencies [1b46c55]
+- Updated dependencies [c4449de]
+- Updated dependencies [c4449de]
+- Updated dependencies [98ef30c]
+  - signalium@4.0.0
+
 ## 0.0.47
 
 ### Patch Changes
