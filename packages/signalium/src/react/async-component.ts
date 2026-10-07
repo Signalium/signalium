@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useMemo, useRef } from 'react';
 import type * as ReactTypes from 'react';
 import { getCurrentConsumer, setCurrentConsumer } from '../internals/consumer.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
@@ -7,7 +7,7 @@ import { isReactivePromise, ReactivePromiseImpl } from '../internals/async.js';
 import { hashProps } from './props-hash.js';
 import { isPromise, isThennable } from '../internals/utils/type-utils.js';
 import { useScope } from './context.js';
-import { usePauseSignalsManager } from './pause-signals-context.js';
+import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
 import { holdLeaseUntilSettled, holdSuspendedLease, releaseAbandonedAttempt } from '../internals/lease.js';
 
 /**
@@ -269,19 +269,12 @@ export function createAsyncComponentWrapper<P extends object>(
     // Same ordering as sync `component()`: watch before computing (so relays read during the
     // computation activate), and compute + settle the signal before the snapshot is read so the
     // mount render's snapshot is stable (no forced re-render / sync redo).
-    manager?.register(sig);
-    const subscribe = sig.addListenerLazy(!manager?.paused);
+    const subscribe = addRenderListener(sig, manager);
 
     const value = readComponentSignal(sig, props);
 
     const getSnapshot = () => sig!.updatedCount;
-    useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-
-    useEffect(() => {
-      if (manager === null) return;
-      manager.register(sig!);
-      return () => manager.unregister(sig!);
-    }, [manager, sig]);
+    usePausableStore(manager, sig, subscribe, getSnapshot);
 
     return value;
   };

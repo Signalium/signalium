@@ -1,36 +1,18 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useRef } from 'react';
 import { ReactiveValue } from '../types.js';
 import { getReactiveFnAndDefinition, reactiveSignal } from '../internals/core-api.js';
 import { getCurrentConsumer } from '../internals/consumer.js';
 import { ReactiveSignal } from '../internals/reactive.js';
 import { snapshot } from '../internals/utils/snapshot.js';
 import { useScope } from './context.js';
-import { usePauseSignalsManager } from './pause-signals-context.js';
+import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
 import { getGlobalScope } from '../internals/contexts.js';
 
 function useSignalWithSuspension(signal: ReactiveSignal<any, any>) {
   const manager = usePauseSignalsManager();
-  const watch = !manager?.paused;
+  const getSnapshot = () => signal.value;
 
-  const value = useSyncExternalStore(
-    signal.addListenerLazy(watch),
-    () => signal.value,
-    () => signal.value,
-  );
-
-  // Register on commit, not during render: a render React discards must not leave the signal in
-  // the manager, where un-pausing would watch it again with nothing left to release it. The commit
-  // may happen under a different pause state than the render took its lease under, so registering
-  // reconciles the watch the subscriptions hold. The signal is scope-cached and may be shared with
-  // other readers, so the manager counts registrations: it keeps pausing the signal until the
-  // last of them unmounts.
-  useEffect(() => {
-    if (manager === null) return;
-    manager.register(signal);
-    return () => manager.unregister(signal);
-  }, [manager, signal]);
-
-  return value;
+  return usePausableStore(manager, signal, addRenderListener(signal, manager), getSnapshot);
 }
 
 /**
@@ -84,7 +66,6 @@ export function useReactive<R>(fn: () => R): ReactiveValue<R> {
   }
 
   const manager = usePauseSignalsManager();
-  const watch = !manager?.paused;
 
   const scope = useScope() ?? getGlobalScope();
   const innerSignalRef = useRef<ReactiveSignal<R, []> | undefined>(undefined);
@@ -108,21 +89,9 @@ export function useReactive<R>(fn: () => R): ReactiveValue<R> {
 
   const cloneSignal = cloneSignalRef.current!;
 
-  const value = useSyncExternalStore(
-    cloneSignal.addListenerLazy(watch),
-    () => cloneSignal.value as ReactiveValue<R>,
-    () => cloneSignal.value as ReactiveValue<R>,
-  );
+  const getSnapshot = () => cloneSignal.value as ReactiveValue<R>;
 
-  // Like `component()`, register the clone signal with the pause manager on commit, after the store
-  // subscription, reconciling its watch with the pause state it committed under.
-  useEffect(() => {
-    if (manager === null) return;
-    manager.register(cloneSignal);
-    return () => manager.unregister(cloneSignal);
-  }, [manager, cloneSignal]);
-
-  return value;
+  return usePausableStore(manager, cloneSignal, addRenderListener(cloneSignal, manager), getSnapshot);
 }
 
 /**
