@@ -5,7 +5,7 @@ import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { runSignal } from '../internals/get.js';
 import { isReactivePromise, ReactivePromiseImpl } from '../internals/async.js';
 import { usePropsHash } from './props-hash.js';
-import { useDeliveryMode, useStateDelivery, type ReactReaderOptions } from './delivery.js';
+import { useDeliveryMode, useStateDelivery, useStateDeliveryState, type ReactReaderOptions } from './delivery.js';
 import { isPromise, isThennable } from '../internals/utils/type-utils.js';
 import { useScope } from './context.js';
 import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
@@ -276,12 +276,15 @@ export function createAsyncComponentWrapper<P extends object>(
     // mount render's snapshot is stable (no forced re-render / sync redo).
     const subscribe = addRenderListener(sig, manager);
 
+    // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const stateDelivery = delivery === 'state' ? useStateDeliveryState(sig) : null;
+
     const value = readComponentSignal(sig, props);
 
-    // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
-    if (delivery === 'state') {
+    if (stateDelivery !== null) {
       // eslint-disable-next-line react-hooks/rules-of-hooks
-      useStateDelivery(sig, subscribe, sig.updatedCount, manager);
+      useStateDelivery(stateDelivery, sig, subscribe, sig.updatedCount, manager);
     } else {
       const getSnapshot = () => sig!.updatedCount;
       // eslint-disable-next-line react-hooks/rules-of-hooks

@@ -6,7 +6,7 @@ import { addRenderListener, usePausableStore, usePauseSignalsManager } from './p
 import { setRequestScopeGetter, SignalScope } from '../internals/contexts.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { usePropsHash } from './props-hash.js';
-import { useDeliveryMode, useStateDelivery, type ReactReaderOptions } from './delivery.js';
+import { useDeliveryMode, useStateDelivery, useStateDeliveryState, type ReactReaderOptions } from './delivery.js';
 import { createAsyncComponentWrapper, createComponentElement, readComponentSignal } from './async-component.js';
 import {
   type ComponentRender,
@@ -112,6 +112,10 @@ export default function component<Props extends object>(
     // during the computation are activated.
     const subscribe = addRenderListener(signal, manager);
 
+    // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const stateDelivery = delivery === 'state' ? useStateDeliveryState(signal) : null;
+
     // Compute and settle the signal BEFORE `useSyncExternalStore` reads the snapshot. Reading
     // `value` runs `checkSignal`, which bumps `updatedCount` when the lazy signal was dirty (always
     // the case on mount). If the snapshot were read first, React would see it change after render
@@ -119,10 +123,9 @@ export default function component<Props extends object>(
     // transition.
     const value = readComponentSignal(signal, props);
 
-    // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
-    if (delivery === 'state') {
+    if (stateDelivery !== null) {
       // eslint-disable-next-line react-hooks/rules-of-hooks
-      useStateDelivery(signal, subscribe, signal.updatedCount, manager);
+      useStateDelivery(stateDelivery, signal, subscribe, signal.updatedCount, manager);
     } else {
       const getSnapshot = () => signal.updatedCount;
       // eslint-disable-next-line react-hooks/rules-of-hooks

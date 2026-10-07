@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
-import React, { Activity, Suspense, startTransition, useLayoutEffect, useRef, useState } from 'react';
+import React, { Activity, Suspense, startTransition, use, useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { reactive, relay, signal } from 'signalium';
 import { setConfig } from 'signalium/config';
@@ -338,6 +338,38 @@ describe('React > state delivery across hide/reveal', () => {
       }
     });
   }
+
+  describe('a reader whose own render suspends', () => {
+    for (const kind of READER_KINDS) {
+      test(`${kind}: recovers when a change no longer needs what it suspended on`, async () => {
+        const step = signal(0);
+        const read = () => step.value;
+        const pending = new Promise<never>(() => {});
+        const options = { delivery: 'state' as const };
+        // eslint-disable-next-line react-hooks/rules-of-hooks
+        const show = (value: number) => <span data-testid="leaf">{value === 1 ? use(pending) : value}</span>;
+        const Leaf =
+          kind === 'component'
+            ? component(() => show(read()), options)
+            : kind === 'useReactive'
+              ? () => show(useReactive(read, options))
+              : () => show(useReactiveShallow(read, options));
+
+        const { getByTestId, getByText } = render(
+          <Suspense fallback={<span>loading</span>}>
+            <Leaf />
+          </Suspense>,
+        );
+        await expect.element(getByTestId('leaf')).toHaveTextContent('0');
+
+        step.value = 1;
+        await expect.element(getByText('loading')).toBeInTheDocument();
+
+        step.value = 2;
+        await expect.element(getByTestId('leaf')).toHaveTextContent('2');
+      });
+    }
+  });
 
   describe('a first mount', () => {
     for (const kind of READER_KINDS) {

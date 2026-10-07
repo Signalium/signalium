@@ -43,7 +43,7 @@ const enum PullResult {
  * `updatedCount`) the last commit rendered; a notification only turns into a `setState` when the
  * signal has moved past it.
  */
-class StateDelivery {
+export class StateDelivery {
   signal: ReactiveSignal<any, any>;
   committed: number;
   forceUpdate: () => void;
@@ -53,6 +53,12 @@ class StateDelivery {
   awaitingCommit = false;
   /** Visible: between the subscription layout effect's setup and cleanup. Only visible readers get deliveries. */
   mounted = false;
+  /**
+   * Set by every render, cleared by its commit. Still set when Suspense hides the reader, it means
+   * the reader's own render suspended, so it stays live: a change may no longer need what it
+   * suspended on.
+   */
+  rendering = false;
   /** The subscription layout effect has run before: its next run is a reveal, not a first mount. */
   connected = false;
   /**
@@ -157,6 +163,19 @@ function flushDeliveries() {
 }
 
 /**
+ * A `'state'` reader's bookkeeping, for {@link useStateDelivery}. Call before the render reads
+ * `signal`, which may suspend.
+ */
+export function useStateDeliveryState(signal: ReactiveSignal<any, any>): StateDelivery {
+  const [, forceUpdate] = useReducer(increment, 0);
+  const [delivery] = useState(() => new StateDelivery(signal, signal.updatedCount, forceUpdate));
+
+  delivery.rendering = true;
+
+  return delivery;
+}
+
+/**
  * Drives a reader with `setState` instead of `useSyncExternalStore` (`delivery: 'state'`).
  *
  * The render reads the signal directly (so a render that happens for any other reason sees fresh
@@ -180,27 +199,26 @@ function flushDeliveries() {
  *
  * Hiding. A Suspense boundary that hides already-revealed content (react-freeze) disconnects layout
  * effects but not passive ones; `<Activity mode="hidden">` disconnects both. Deliveries follow the
- * layout effect, so a hidden reader is not rendered; the subscription follows the passive effect,
- * so it lives exactly as long as a `useSyncExternalStore` subscription would: a Suspense hide keeps
- * the signal watched (relays stay active), `<Activity>` and unmount release it. When the layout
- * effect reconnects, the reader catches up as above, so revealed content never shows a value that
- * changed while it was hidden.
+ * layout effect, so a hidden reader is not rendered, unless its own render is what suspended; the
+ * subscription follows the passive effect, so it lives exactly as long as a `useSyncExternalStore`
+ * subscription would: a Suspense hide keeps the signal watched (relays stay active), `<Activity>`
+ * and unmount release it. When the layout effect reconnects, the reader catches up as above, so
+ * revealed content never shows a value that changed while it was hidden.
  */
 export function useStateDelivery(
+  delivery: StateDelivery,
   signal: ReactiveSignal<any, any>,
   subscribe: (listener: () => void) => () => void,
   version: number,
   manager: PauseSignalsManager | null,
 ): void {
-  const [, forceUpdate] = useReducer(increment, 0);
-  const [delivery] = useState(() => new StateDelivery(signal, version, forceUpdate));
-
   // Every commit records what it rendered, then re-checks: a change that arrived while a delivered
   // update was rendering (and was therefore not queued again) is picked up here.
   useCommitEffect(() => {
     delivery.signal = signal;
     delivery.committed = version;
     delivery.awaitingCommit = false;
+    delivery.rendering = false;
     delivery.check();
   });
 
@@ -231,14 +249,20 @@ export function useStateDelivery(
       // Render now, before this commit paints; a computation that threw rethrows from the render
       // to the nearest error boundary.
       delivery.awaitingCommit = true;
-      forceUpdate();
+      delivery.forceUpdate();
     } else if (pulled === PullResult.Changed) {
       // A first mount: deliver a change between its render and this commit at default priority.
       delivery.check();
     }
 
     return () => {
-      delivery.mounted = false;
+      if (delivery.rendering) {
+        // Hidden because its own render suspended: that render won't commit, so let the next
+        // change through.
+        delivery.awaitingCommit = false;
+      } else {
+        delivery.mounted = false;
+      }
     };
   }, [subscribe, manager]);
 

@@ -7,7 +7,7 @@ import { snapshot } from '../internals/utils/snapshot.js';
 import { useScope } from './context.js';
 import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
 import { getGlobalScope } from '../internals/contexts.js';
-import { useDeliveryMode, useStateDelivery, type ReactReaderOptions } from './delivery.js';
+import { useDeliveryMode, useStateDelivery, useStateDeliveryState, type ReactReaderOptions } from './delivery.js';
 
 /** Options for `useReactive` / `useReactiveShallow`. */
 export type ReactiveHookOptions = ReactReaderOptions;
@@ -19,9 +19,11 @@ function useSignalWithSuspension(signal: ReactiveSignal<any, any>, options: Reac
 
   // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
   if (delivery === 'state') {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const stateDelivery = useStateDeliveryState(signal);
     const value = signal.value;
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    useStateDelivery(signal, subscribe, signal.updatedCount, manager);
+    useStateDelivery(stateDelivery, signal, subscribe, signal.updatedCount, manager);
     return value;
   }
 
@@ -109,9 +111,11 @@ export function useReactive<R>(fn: () => R, options?: ReactiveHookOptions): Reac
 
   // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
   if (delivery === 'state') {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const stateDelivery = useStateDeliveryState(cloneSignal);
     const value = cloneSignal.value as ReactiveValue<R>;
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    useStateDelivery(cloneSignal, subscribe, cloneSignal.updatedCount, manager);
+    useStateDelivery(stateDelivery, cloneSignal, subscribe, cloneSignal.updatedCount, manager);
     return value;
   }
 
