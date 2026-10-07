@@ -77,26 +77,20 @@ function hashNumber(num: number, seed = 0) {
   return h >>> 0; // Convert to unsigned 32-bit integer
 }
 
-function hashArray(arr: unknown[], seen: unknown[]) {
-  let h = ARRAY;
-  const c1 = 0xcc9e2d51;
-  const c2 = 0x1b873593;
+/** One MurmurHash3 block round: mixes the 32-bit block `k` into `h`. */
+export function mixHash(h: number, k: number) {
+  k = imul(k, 0xcc9e2d51);
+  k = (k << 15) | (k >>> 17);
+  k = imul(k, 0x1b873593);
 
-  // Process 4 bytes at a time
-  for (const item of arr) {
-    // Extract the lowest 32 bits
-    let k = hashValue(item, seen);
+  h ^= k;
+  h = (h << 13) | (h >>> 19);
+  return imul(h, 5) + 0xe6546b64;
+}
 
-    k = imul(k, c1);
-    k = (k << 15) | (k >>> 17);
-    k = imul(k, c2);
-
-    h ^= k;
-    h = (h << 13) | (h >>> 19);
-    h = imul(h, 5) + 0xe6546b64;
-  }
-
-  h ^= arr.length;
+/** MurmurHash3 finalization over `length` blocks. */
+export function finalizeHash(h: number, length: number) {
+  h ^= length;
   h ^= h >>> 16;
   h = imul(h, 0x85ebca6b);
   h ^= h >>> 13;
@@ -104,6 +98,16 @@ function hashArray(arr: unknown[], seen: unknown[]) {
   h ^= h >>> 16;
 
   return h >>> 0; // Convert to unsigned 32-bit integer
+}
+
+function hashArray(arr: unknown[], seen: unknown[]) {
+  let h = ARRAY_SEED;
+
+  for (const item of arr) {
+    h = mixHash(h, hashValue(item, seen));
+  }
+
+  return finalizeHash(h, arr.length);
 }
 
 function hashObject(obj: object, seen: unknown[]) {
@@ -167,7 +171,7 @@ const UNDEFINED = hashStr('undefined', HashType.UNDEFINED);
 const NULL = hashStr('null', HashType.NULL);
 const TRUE = hashStr('true', HashType.TRUE);
 const FALSE = hashStr('false', HashType.FALSE);
-const ARRAY = hashStr('array', HashType.ARRAY);
+export const ARRAY_SEED = hashStr('array', HashType.ARRAY);
 const OBJECT = hashStr('object', HashType.OBJECT);
 const SET = hashStr('set', HashType.SET);
 const MAP = hashStr('map', HashType.MAP);

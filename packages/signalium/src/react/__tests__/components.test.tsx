@@ -452,6 +452,35 @@ describe('React > Components', () => {
       expect(reads).toBe(0);
     });
 
+    test('never reads $$typeof through a proxy that lacks it as an own key', () => {
+      const proxy = new Proxy(
+        { label: 'x' },
+        {
+          get(target, key) {
+            if (key === '$$typeof') throw new Error('read $$typeof');
+            return Reflect.get(target, key);
+          },
+        },
+      );
+
+      expect(() => hashProps({ p: proxy })).not.toThrow();
+    });
+
+    test('mixes array items so custom hashes cannot cancel out', () => {
+      class Item {
+        id: number;
+        constructor(id: number) {
+          this.id = id;
+        }
+      }
+      registerCustomHash(Item, item => item.id);
+
+      // 31 * 1 + 32 === 31 * 2 + 1
+      expect(hashProps({ items: [new Item(1), new Item(32)] })).not.toBe(
+        hashProps({ items: [new Item(2), new Item(1)] }),
+      );
+    });
+
     test('hashes an Array subclass prop with its registered custom hash', () => {
       class Point extends Array<number> {}
       registerCustomHash(Point, point => point[0]! * 1000 + point[1]!);
