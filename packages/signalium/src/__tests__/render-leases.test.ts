@@ -74,6 +74,25 @@ describe('render leases', () => {
     expect(derived._isListener).toBe(false);
   });
 
+  test('an unclaimed lease over paused subscribers returns the signal to paused', async () => {
+    const { counts, derived } = createRelayHarness();
+    derived._addPausedReaders(1);
+    const unsubscribe = derived.addListener(() => {});
+    expect(counts.active).toBe(0);
+
+    // An unpaused render that is discarded.
+    renderRead(derived);
+    await flush();
+    expect(counts.active).toBe(1);
+
+    await sleep(TTL * 2 + 50);
+    await flush();
+    expect(counts.active).toBe(0);
+    expect(derived._isListener).toBe(true);
+
+    unsubscribe();
+  });
+
   test('a claimed lease keeps the watch past the TTL without restarting relays', async () => {
     const { counts, derived } = createRelayHarness();
 

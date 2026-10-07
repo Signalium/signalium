@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive, relay } from 'signalium';
 import { useReactive, useReactiveShallow, PauseSignalsProvider } from 'signalium/react';
-import React, { useState } from 'react';
+import React, { Suspense, use, useState } from 'react';
 import { userEvent } from '@vitest/browser/context';
 import { sleep } from '../../__tests__/utils/async.js';
 import { createRenderCounter } from './utils.js';
@@ -487,6 +487,48 @@ describe('React > Pause Signals', () => {
 
         text.value = 'b';
         await expect.element(getByTestId('outside')).toHaveTextContent('b:r');
+      });
+
+      test('an unpaused reader that suspends on the relay starts it', async () => {
+        let loaded!: () => void;
+        const ready = new Promise<void>(resolve => (loaded = resolve));
+        const source = reactive(() =>
+          relay<string>(state => {
+            const timer = setTimeout(() => {
+              state.value = 'r';
+              loaded();
+            }, 10);
+            return () => clearTimeout(timer);
+          }),
+        );
+        const read = () => source().value;
+
+        const PausedReader = () => <span>{String(useReactiveShallow(read, { delivery }))}</span>;
+        const OutsideReader = () => {
+          const value = useReactiveShallow(read, { delivery });
+          if (value === undefined) use(ready);
+          return <span data-testid="outside">{value}</span>;
+        };
+
+        let showOutside: (show: boolean) => void = () => {};
+        function Host() {
+          const [outside, setOutside] = useState(false);
+          showOutside = setOutside;
+          return (
+            <>
+              <PauseSignalsProvider value={true}>
+                <PausedReader />
+              </PauseSignalsProvider>
+              <Suspense fallback={null}>{outside && <OutsideReader />}</Suspense>
+            </>
+          );
+        }
+
+        const { getByTestId } = render(<Host />);
+        await sleep(50);
+
+        React.act(() => showOutside(true));
+        await expect.element(getByTestId('outside')).toHaveTextContent('r');
       });
     },
   );
