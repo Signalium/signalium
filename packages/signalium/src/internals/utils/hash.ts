@@ -125,10 +125,11 @@ function hashObject(obj: object, seen: unknown[]) {
 
 /** `hashObject` over keys the caller already has; `obj` must be on `seen`. */
 export function hashObjectKeys(obj: object, keys: string[], seen: unknown[]) {
+  const keyMultiplier = 0x9e3779b9; // 2^32 / golden ratio
   let sum = OBJECT;
 
   for (const key of keys) {
-    sum += imul(hashValue(key, seen), 0x9e3779b9) ^ hashValue((obj as any)[key], seen);
+    sum += imul(hashValue(key, seen), keyMultiplier) ^ hashValue((obj as any)[key], seen);
   }
 
   return sum >>> 0;
@@ -143,10 +144,11 @@ function hashSet(set: Set<unknown>, seen: unknown[]) {
 }
 
 function hashMap(map: Map<unknown, unknown>, seen: unknown[]) {
+  const keyMultiplier = 0x9e3779b9; // 2^32 / golden ratio
   let sum = MAP;
 
   for (const [key, value] of map) {
-    sum += imul(hashValue(key, seen), 0x9e3779b9) ^ hashValue(value, seen);
+    sum += imul(hashValue(key, seen), keyMultiplier) ^ hashValue(value, seen);
   }
 
   return sum >>> 0;
