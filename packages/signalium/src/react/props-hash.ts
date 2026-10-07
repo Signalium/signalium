@@ -1,4 +1,11 @@
-import { ARRAY_SEED, finalizeHash, getObjectHash, hashValue, mixHash } from '../internals/utils/hash.js';
+import {
+  ARRAY_SEED,
+  finalizeHash,
+  getObjectHash,
+  hashObjectKeys,
+  hashValue,
+  mixHash,
+} from '../internals/utils/hash.js';
 
 const { imul } = Math;
 const { getPrototypeOf, keys: objectKeys } = Object;
@@ -18,21 +25,26 @@ const EMPTY_PROPS_HASH = hashValue({});
  *
  * The value may be a proxy, whose traps can throw or subscribe the renderer to
  * whatever they touch. So `$$typeof` is only read when it is an own enumerable
- * key, which the structural hash would read anyway.
+ * key, which the structural hash reads anyway, and the keys are reused for it.
  */
-function isElement(value: object): boolean {
-  return (
-    getPrototypeOf(value) === Object.prototype &&
-    objectKeys(value).includes('$$typeof') &&
-    typeof (value as { $$typeof?: unknown }).$$typeof === 'symbol'
-  );
-}
-
 function hashPropValue(value: unknown, seen: unknown[]): number {
   if (typeof value === 'object' && value !== null) {
+    const proto = getPrototypeOf(value);
+
+    if (proto === Object.prototype) {
+      const keys = objectKeys(value);
+      if (keys.includes('$$typeof') && typeof (value as { $$typeof?: unknown }).$$typeof === 'symbol') {
+        return getObjectHash(value);
+      }
+      seen.push(value);
+      const h = hashObjectKeys(value, keys, seen);
+      seen.pop();
+      return h;
+    }
+
     // Plain arrays only: an `Array` subclass hashes like any other class instance
     // in `hashValue`, by its `registerCustomHash` function or else by identity.
-    if (getPrototypeOf(value) === Array.prototype) {
+    if (proto === Array.prototype) {
       // `children` is commonly an array, and elements inside it need the same
       // treatment. Order-sensitive, so a reorder still changes the hash.
       if (seen.includes(value)) return 0;
@@ -45,10 +57,9 @@ function hashPropValue(value: unknown, seen: unknown[]): number {
       seen.pop();
       return finalizeHash(h, array.length);
     }
-    if (isElement(value)) return getObjectHash(value);
   }
 
-  return hashValue(value);
+  return hashValue(value, seen);
 }
 
 /** `hashValue(props)`, except React elements are hashed by identity. */

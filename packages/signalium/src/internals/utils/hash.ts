@@ -85,7 +85,9 @@ export function mixHash(h: number, k: number) {
 
   h ^= k;
   h = (h << 13) | (h >>> 19);
-  return imul(h, 5) + 0xe6546b64;
+  // Every use of the result truncates it to int32 anyway; doing it here keeps `h` off the
+  // double path.
+  return (imul(h, 5) + 0xe6546b64) | 0;
 }
 
 /** MurmurHash3 finalization over `length` blocks. */
@@ -111,8 +113,12 @@ function hashArray(arr: unknown[], seen: unknown[]) {
 }
 
 function hashObject(obj: object, seen: unknown[]) {
+  return hashObjectKeys(obj, Object.keys(obj), seen);
+}
+
+/** `hashObject` over keys the caller already has; `obj` must be on `seen`. */
+export function hashObjectKeys(obj: object, keys: string[], seen: unknown[]) {
   let sum = OBJECT;
-  const keys = Object.keys(obj);
 
   for (const key of keys) {
     sum += imul(hashValue(key, seen), 0x9e3779b9) ^ hashValue((obj as any)[key], seen);
