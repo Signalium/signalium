@@ -19,6 +19,28 @@ class PauseSignalsManager {
     this.signals.add(signal);
   }
 
+  /**
+   * Registers a signal whose only watcher is a single mounted component's store subscription
+   * (`component()` signals), and reconciles its watch state with the current pause state. Call
+   * from a commit-phase effect that runs after the subscription is established: the component may
+   * have rendered under a different pause state than the one it commits under, and StrictMode's
+   * effect replay re-subscribes (re-watching) the signal regardless of the pause state.
+   */
+  registerOwned(signal: ReactiveSignal<any, any>) {
+    this.signals.add(signal);
+
+    const watched = signal.watchCount > 0;
+
+    if (this._paused) {
+      if (watched) {
+        unwatchSignal(signal, { isPausing: true });
+      }
+    } else if (!watched) {
+      watchSignal(signal);
+      schedulePull(signal);
+    }
+  }
+
   unregister(signal: ReactiveSignal<any, any>) {
     this.signals.delete(signal);
   }

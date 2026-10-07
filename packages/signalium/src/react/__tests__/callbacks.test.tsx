@@ -147,17 +147,17 @@ describe('React > callbacks inside component()', () => {
     const { getByText, getByTestId } = render(<Parent />);
     await expect.element(getByText('11')).toBeInTheDocument();
     expect(getByTestId(String(Child.testId))).toBeDefined();
-    expect(Child.renderCount).toBe(2);
+    expect(Child.renderCount).toBe(1);
 
     // Change unrelated: makeCb recomputes but callback deps unchanged -> same identity -> Child should NOT re-render
     unrelated.value = 1;
     await expect.element(getByText('11')).toBeInTheDocument();
-    expect(Child.renderCount).toBe(2);
+    expect(Child.renderCount).toBe(1);
 
     // Change toggle: deps change -> new callback identity -> Child re-renders and value updates
     toggle.value = false;
     await expect.element(getByText('12')).toBeInTheDocument();
-    expect(Child.renderCount).toBe(3);
+    expect(Child.renderCount).toBe(2);
   });
 
   test('async callback maintains captured scope after await in component', async () => {

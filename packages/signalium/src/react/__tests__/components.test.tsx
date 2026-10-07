@@ -102,17 +102,18 @@ describe('React > Components', () => {
 
     await expect.element(getByText('even')).toBeInTheDocument();
     expect(getByTestId(String(Child.testId))).toBeDefined();
-    expect(Child.renderCount).toBe(2);
+    // Mount renders once (no forced re-render from the lazy first computation).
+    expect(Child.renderCount).toBe(1);
 
     // Update by +2 keeps parity the same; should not re-render Child
     count.value = 2;
     await expect.element(getByText('even')).toBeInTheDocument();
-    expect(Child.renderCount).toBe(2);
+    expect(Child.renderCount).toBe(1);
 
     // Update by +1 changes parity; should re-render Child
     count.value = 3;
     await expect.element(getByText('odd')).toBeInTheDocument();
-    expect(Child.renderCount).toBe(3);
+    expect(Child.renderCount).toBe(2);
   });
 
   test('semi-deep-diffs parameters', async () => {
@@ -138,16 +139,16 @@ describe('React > Components', () => {
 
     await expect.element(getByText('Hello, World')).toBeInTheDocument();
     expect(getByTestId(String(Child.testId))).toBeDefined();
-    expect(Child.renderCount).toBe(2);
+    expect(Child.renderCount).toBe(1);
 
     await userEvent.click(getByText('Same'));
     await expect.element(getByText('Hello, World')).toBeInTheDocument();
     // No re-render because params are structurally equal (semi-deep-equal)
-    expect(Child.renderCount).toBe(2);
+    expect(Child.renderCount).toBe(1);
 
     await userEvent.click(getByText('Change'));
     await expect.element(getByText('Hello, Universe')).toBeInTheDocument();
-    expect(Child.renderCount).toBe(3);
+    expect(Child.renderCount).toBe(2);
   });
 
   test('works with conditional signal access', async () => {

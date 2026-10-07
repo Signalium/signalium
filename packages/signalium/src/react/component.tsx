@@ -100,22 +100,33 @@ export default function component<Props extends object>(
       fnSignalRef.current = signal = created;
     }
 
-    const watch = !manager?.paused;
+    // Mark the signal as a listener (and watch it unless paused) before computing, so relays read
+    // during the computation are activated. Register now too, so pausing still releases that watch
+    // if the mount suspends and never commits.
     manager?.register(signal);
+    const subscribe = signal.addListenerLazy(!manager?.paused);
 
+    // Compute and settle the signal BEFORE `useSyncExternalStore` reads the snapshot. Reading
+    // `value` runs `checkSignal`, which bumps `updatedCount` when the lazy signal was dirty (always
+    // the case on mount). If the snapshot were read first, React would see it change after render
+    // and re-render: synchronously after every mount, and as a sync redo of mounts inside a
+    // transition.
+    runSignal(signal as ReactiveSignal<any, any[]>);
+    const value = signal.value;
+
+    const getSnapshot = () => signal.updatedCount;
+    useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+    // Reconcile with the pause manager on commit (after the store subscription): the commit may
+    // happen under a different pause state than the render, and StrictMode's effect replay
+    // re-registers.
     useEffect(() => {
-      return () => manager?.unregister(signal!);
+      if (manager === null) return;
+      manager.registerOwned(signal);
+      return () => manager.unregister(signal);
     }, [manager, signal]);
 
-    useSyncExternalStore(
-      signal.addListenerLazy(watch),
-      () => signal.updatedCount,
-      () => signal.updatedCount,
-    );
-
-    runSignal(signal as ReactiveSignal<any, any[]>);
-
-    return signal.value;
+    return value;
   };
 
   return (props: Props) => {

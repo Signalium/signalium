@@ -397,6 +397,9 @@ describe('React > async component()', () => {
   });
 
   test('keyed remount runs generator again (new instance / hash)', async () => {
+    // Settle `flush` first so the run counts don't depend on whether an earlier test already did.
+    await flush();
+
     let runs = 0;
     const Leaf = component(async (props: { id: number }) => {
       void props.id;
@@ -413,11 +416,11 @@ describe('React > async component()', () => {
 
     const { getByTestId, rerender } = render(<Root k={0} />);
     await expect.element(getByTestId('rk')).toBeInTheDocument();
-    expect(runs).toBe(2);
+    expect(runs).toBe(1);
 
     rerender(<Root k={1} />);
     await expect.element(getByTestId('rk')).toBeInTheDocument();
-    expect(runs).toBe(4);
+    expect(runs).toBe(2);
   });
 
   test('conditional async branch does not leak pending state', async () => {
