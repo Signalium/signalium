@@ -1,7 +1,17 @@
-import { getObjectHash, hashValue } from '../internals/utils/hash.js';
+import {
+  ARRAY_SEED,
+  finalizeHash,
+  getObjectHash,
+  hashObjectKeys,
+  hashValue,
+  mixHash,
+} from '../internals/utils/hash.js';
 
 const { imul } = Math;
-const { getPrototypeOf } = Object;
+const { getPrototypeOf, keys: objectKeys } = Object;
+
+// 2^32 / golden ratio, the same key multiplier `hashValue` uses for objects.
+const KEY_MULTIPLIER = 0x9e3779b9;
 
 const EMPTY_PROPS_HASH = hashValue({});
 
@@ -13,44 +23,51 @@ const EMPTY_PROPS_HASH = hashValue({});
  * other prop keeps its structural hash, so a new-but-equivalent object or array
  * still reuses the memo.
  *
- * The plain-object guard is load-bearing, not a fast path: reading `$$typeof`
- * off an arbitrary value can run a proxy trap with side effects, and a reactive
- * one would subscribe the renderer to whatever it touched. Elements are always
- * plain objects, so nothing else is ever read.
+ * The value may be a proxy, whose traps can throw or subscribe the renderer to
+ * whatever they touch. So `$$typeof` is only read when it is an own enumerable
+ * key, which the structural hash reads anyway, and the keys are reused for it.
  */
-function isElement(value: object): boolean {
-  return getPrototypeOf(value) === Object.prototype && typeof (value as { $$typeof?: unknown }).$$typeof === 'symbol';
-}
-
 function hashPropValue(value: unknown, seen: unknown[]): number {
   if (typeof value === 'object' && value !== null) {
+    const proto = getPrototypeOf(value);
+
+    if (proto === Object.prototype) {
+      const keys = objectKeys(value);
+      if (keys.includes('$$typeof') && typeof (value as { $$typeof?: unknown }).$$typeof === 'symbol') {
+        return getObjectHash(value);
+      }
+      seen.push(value);
+      const h = hashObjectKeys(value, keys, seen);
+      seen.pop();
+      return h;
+    }
+
     // Plain arrays only: an `Array` subclass hashes like any other class instance
     // in `hashValue`, by its `registerCustomHash` function or else by identity.
-    if (getPrototypeOf(value) === Array.prototype) {
+    if (proto === Array.prototype) {
       // `children` is commonly an array, and elements inside it need the same
       // treatment. Order-sensitive, so a reorder still changes the hash.
       if (seen.includes(value)) return 0;
       seen.push(value);
-      let h = (0x9e3779b9 ^ (value as unknown[]).length) >>> 0;
       const array = value as unknown[];
+      let h = ARRAY_SEED;
       for (let i = 0; i < array.length; i++) {
-        h = (imul(h, 31) + hashPropValue(array[i], seen)) >>> 0;
+        h = mixHash(h, hashPropValue(array[i], seen));
       }
       seen.pop();
-      return h;
+      return finalizeHash(h, array.length);
     }
-    if (isElement(value)) return getObjectHash(value);
   }
 
-  return hashValue(value);
+  return hashValue(value, seen);
 }
 
 /** `hashValue(props)`, except React elements are hashed by identity. */
 export function hashProps(props: object): number {
   const seen: unknown[] = [];
   let sum = EMPTY_PROPS_HASH;
-  for (const key of Object.keys(props)) {
-    sum += imul(hashValue(key), 0x9e3779b9) ^ hashPropValue((props as Record<string, unknown>)[key], seen);
+  for (const key of objectKeys(props)) {
+    sum += imul(hashValue(key), KEY_MULTIPLIER) ^ hashPropValue((props as Record<string, unknown>)[key], seen);
   }
   return sum >>> 0;
 }

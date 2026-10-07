@@ -100,7 +100,9 @@ export default function component<Props extends object>(
     }
 
     // Mark the signal as a listener (and watch it unless paused) before computing, so relays read
-    // during the computation are activated.
+    // during the computation are activated. Register now too, so pausing still releases that watch
+    // if the mount suspends and never commits.
+    manager?.register(signal);
     const subscribe = signal.addListenerLazy(!manager?.paused);
 
     // Compute and settle the signal BEFORE `useSyncExternalStore` reads the snapshot. Reading
@@ -113,8 +115,9 @@ export default function component<Props extends object>(
     const getSnapshot = () => signal.updatedCount;
     useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-    // Register with the pause manager on commit (after the store subscription), so renders React
-    // discards never register, and StrictMode's effect replay re-registers.
+    // Reconcile with the pause manager on commit (after the store subscription): the commit may
+    // happen under a different pause state than the render, and StrictMode's effect replay
+    // re-registers.
     useEffect(() => {
       if (manager === null) return;
       manager.register(signal);
