@@ -13,7 +13,10 @@ permissions:
 
 jobs:
   release:
-    permissions: write-all
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
     name: Release
     runs-on: ubuntu-latest
     environment: production
@@ -34,6 +37,8 @@ jobs:
         uses: changesets/action@v1
         with:
           publish: npm run release
+          # `main` requires signed commits; github-api mode signs with GitHub's key
+          commitMode: github-api
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
