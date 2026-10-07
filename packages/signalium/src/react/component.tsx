@@ -5,7 +5,8 @@ import { useScope } from './context.js';
 import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
 import { setRequestScopeGetter, SignalScope } from '../internals/contexts.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
-import { hashProps } from './props-hash.js';
+import { usePropsHash } from './props-hash.js';
+import { useDeliveryMode, useStateDelivery, useStateDeliveryState, type ReactReaderOptions } from './delivery.js';
 import { createAsyncComponentWrapper, createComponentElement, readComponentSignal } from './async-component.js';
 import {
   type ComponentRender,
@@ -42,14 +43,20 @@ function ensureSsrScope(): void {
   }
 }
 
+/** Options for `component()`. */
+export type ComponentOptions = ReactReaderOptions;
+
 export default function component<Props extends object>(
   fn: (props: Props) => Promise<ComponentRender>,
+  options?: ComponentOptions,
 ): (props: Props) => ReactNode;
 export default function component<Props extends object>(
   fn: (props: Props) => ComponentRender,
+  options?: ComponentOptions,
 ): (props: Props) => ReactNode;
 export default function component<Props extends object>(
   fn: (props: Props) => ComponentRender | Promise<ComponentRender>,
+  options?: ComponentOptions,
 ): (props: Props) => ReactNode {
   ensureSsrScope();
 
@@ -65,16 +72,18 @@ export default function component<Props extends object>(
         fn as (props: Props) => Generator<any, ComponentRender, unknown>,
       ) as unknown as (props: Props) => ReactNode;
     }
-    return createAsyncComponentWrapper(fn as (props: Props) => Generator<any, ComponentRender, unknown>);
+    return createAsyncComponentWrapper(fn as (props: Props) => Generator<any, ComponentRender, unknown>, options);
   }
 
   // Async `component(async () => { await ... })` is rewritten to a generator by the Babel preset.
   // Remaining callers are synchronous render functions only (see Promise overload for TS authoring).
   const syncFn = fn as (props: Props) => ComponentRender;
+  const deliveryOverride = options?.delivery;
 
   const Component = (props: Props) => {
     const scope = useScope();
     const manager = usePauseSignalsManager();
+    const delivery = useDeliveryMode(deliveryOverride);
 
     const fnSignalRef = useRef<ReactiveSignal<ComponentRender, []> | undefined>(undefined);
     const propsRef = useRef<Props>(props);
@@ -103,6 +112,10 @@ export default function component<Props extends object>(
     // during the computation are activated.
     const subscribe = addRenderListener(signal, manager);
 
+    // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const stateDelivery = delivery === 'state' ? useStateDeliveryState(signal) : null;
+
     // Compute and settle the signal BEFORE `useSyncExternalStore` reads the snapshot. Reading
     // `value` runs `checkSignal`, which bumps `updatedCount` when the lazy signal was dirty (always
     // the case on mount). If the snapshot were read first, React would see it change after render
@@ -110,14 +123,20 @@ export default function component<Props extends object>(
     // transition.
     const value = readComponentSignal(signal, props);
 
-    const getSnapshot = () => signal.updatedCount;
-    usePausableStore(manager, signal, subscribe, getSnapshot);
+    if (stateDelivery !== null) {
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      useStateDelivery(stateDelivery, signal, subscribe, signal.updatedCount, manager);
+    } else {
+      const getSnapshot = () => signal.updatedCount;
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      usePausableStore(manager, signal, subscribe, getSnapshot);
+    }
 
     return value;
   };
 
   return (props: Props) => {
-    const hash = hashProps(props);
+    const hash = usePropsHash(props);
     // Renders Comp only when hash changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return useMemo(() => createComponentElement(Component, props), [hash]);

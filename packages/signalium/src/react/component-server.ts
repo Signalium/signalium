@@ -16,14 +16,22 @@ import {
   createServerSyncComponentWrapper,
 } from './component-shared.js';
 
+/** Options for `component()`. Client-only (delivery modes); accepted and ignored on the server. */
+export interface ComponentOptions {
+  delivery?: 'sync' | 'state';
+}
+
 export default function component<Props extends object>(
   fn: (props: Props) => Promise<ComponentRender>,
+  options?: ComponentOptions,
 ): (props: Props) => Promise<ComponentRender>;
 export default function component<Props extends object>(
   fn: (props: Props) => ComponentRender,
+  options?: ComponentOptions,
 ): (props: Props) => ComponentRender;
 export default function component<Props extends object>(
   fn: ((props: Props) => ComponentRender) | ((props: Props) => Promise<ComponentRender>),
+  _options?: ComponentOptions,
 ): ((props: Props) => ComponentRender) | ((props: Props) => Promise<ComponentRender>) {
   if (isAsyncFunctionWithoutTransform(fn)) {
     throw new Error(

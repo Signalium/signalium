@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   ARRAY_SEED,
   finalizeHash,
@@ -68,4 +69,70 @@ export function hashProps(props: object): number {
     sum += imul(hashValue(key), keyMultiplier) ^ hashPropValue((props as Record<string, unknown>)[key], seen);
   }
   return sum >>> 0;
+}
+
+/**
+ * True when `next` has exactly the same keys as `prev` and every value is the same by `Object.is`.
+ * Iterates with `for...in` (props are plain objects with no enumerable inherited keys) so the check
+ * allocates nothing.
+ */
+function shallowIdentical(prev: Record<string, unknown>, next: Record<string, unknown>): boolean {
+  let count = 0;
+
+  for (const key in next) {
+    if (!Object.is(prev[key], next[key]) || !(key in prev)) return false;
+    count++;
+  }
+
+  for (const _key in prev) {
+    count--;
+  }
+
+  return count === 0;
+}
+
+class PropsHashCache {
+  constructor(
+    public props: object,
+    public hash: number,
+  ) {}
+}
+
+/**
+ * `hashProps(props)` for a component wrapper, skipping the hash when every prop is identical (by
+ * `Object.is`) to the previous render's. A parent that re-renders without changing any prop —
+ * by far the common case — then costs one shallow comparison instead of a structural hash.
+ *
+ * Props are treated as immutable, the same contract as `React.memo` and the React Compiler: a
+ * plain object, array, `Map`, `Set` or `Date` prop mutated in place and passed again under the
+ * same identity keeps its previous hash, so the memoized element is reused and the component
+ * does not re-render for it. (Structural hashing used to notice such mutations, because those
+ * values are hashed by content; reference-hashed values — class instances, functions, elements —
+ * never could.) Pass a new object, or read the changing data from a signal inside the
+ * component, instead of mutating a prop in place.
+ *
+ * The cache holds only the props a render already hashed, so a render React discards can at most
+ * leave a correct (props → hash) pair behind.
+ */
+export function usePropsHash(props: object): number {
+  const ref = useRef<PropsHashCache | null>(null);
+  const cache = ref.current;
+
+  if (cache !== null) {
+    if (
+      cache.props === props ||
+      shallowIdentical(cache.props as Record<string, unknown>, props as Record<string, unknown>)
+    ) {
+      return cache.hash;
+    }
+
+    const hash = hashProps(props);
+    cache.props = props;
+    cache.hash = hash;
+    return hash;
+  }
+
+  const hash = hashProps(props);
+  ref.current = new PropsHashCache(props, hash);
+  return hash;
 }

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useSyncExternalStore } from 'react';
 import { ReactiveSignal } from '../internals/reactive.js';
 
-class PauseSignalsManager {
+export class PauseSignalsManager {
   /**
    * Readers per registered signal. Scope-cached signals can be shared across providers, so pausing
    * counts readers on the signal instead of pausing it outright.
