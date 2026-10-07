@@ -79,24 +79,31 @@ function hashNumber(num: number, seed = 0) {
 
 /** One MurmurHash3 block round: mixes the 32-bit block `k` into `h`. */
 export function mixHash(h: number, k: number) {
-  k = imul(k, 0xcc9e2d51);
+  const c1 = 0xcc9e2d51;
+  const c2 = 0x1b873593;
+  const n = 0xe6546b64;
+
+  k = imul(k, c1);
   k = (k << 15) | (k >>> 17);
-  k = imul(k, 0x1b873593);
+  k = imul(k, c2);
 
   h ^= k;
   h = (h << 13) | (h >>> 19);
   // Every use of the result truncates it to int32 anyway; doing it here keeps `h` off the
   // double path.
-  return (imul(h, 5) + 0xe6546b64) | 0;
+  return (imul(h, 5) + n) | 0;
 }
 
 /** MurmurHash3 finalization over `length` blocks. */
 export function finalizeHash(h: number, length: number) {
+  const fmix1 = 0x85ebca6b;
+  const fmix2 = 0xc2b2ae35;
+
   h ^= length;
   h ^= h >>> 16;
-  h = imul(h, 0x85ebca6b);
+  h = imul(h, fmix1);
   h ^= h >>> 13;
-  h = imul(h, 0xc2b2ae35);
+  h = imul(h, fmix2);
   h ^= h >>> 16;
 
   return h >>> 0; // Convert to unsigned 32-bit integer

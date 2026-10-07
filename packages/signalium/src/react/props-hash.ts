@@ -11,9 +11,6 @@ import {
 const { imul } = Math;
 const { getPrototypeOf, keys: objectKeys } = Object;
 
-// 2^32 / golden ratio, the same key multiplier `hashValue` uses for objects.
-const KEY_MULTIPLIER = 0x9e3779b9;
-
 const EMPTY_PROPS_HASH = hashValue({});
 
 /**
@@ -65,10 +62,12 @@ function hashPropValue(value: unknown, seen: unknown[]): number {
 
 /** `hashValue(props)`, except React elements are hashed by identity. */
 export function hashProps(props: object): number {
+  // 2^32 / golden ratio, the same key multiplier `hashValue` uses for objects.
+  const keyMultiplier = 0x9e3779b9;
   const seen: unknown[] = [];
   let sum = EMPTY_PROPS_HASH;
   for (const key of objectKeys(props)) {
-    sum += imul(hashValue(key), KEY_MULTIPLIER) ^ hashPropValue((props as Record<string, unknown>)[key], seen);
+    sum += imul(hashValue(key), keyMultiplier) ^ hashPropValue((props as Record<string, unknown>)[key], seen);
   }
   return sum >>> 0;
 }
