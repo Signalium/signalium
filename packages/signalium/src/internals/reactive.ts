@@ -231,20 +231,26 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
       const flags = this.flags;
 
+      current.set(listener, effective);
+
+      const unpaused = meta.pausedReaders < current.size;
+
       if ((flags & ReactiveFnFlags.isListener) === 0) {
         this.flags = flags | ReactiveFnFlags.isListener;
-      } else if ((flags & ReactiveFnFlags.isLeased) !== 0) {
-        // Claim the render lease; its watch now belongs to the listeners.
+      } else if (
+        (flags & ReactiveFnFlags.isLeased) !== 0 &&
+        (unpaused || (flags & ReactiveFnFlags.isListenerWatched) === 0)
+      ) {
+        // Claim the render lease; its watch now belongs to the listeners. A paused subscriber
+        // leaves a watched lease alone: the unpaused render that took it still needs it.
         this.flags = flags & ~ReactiveFnFlags.isLeased;
         removeLease(this);
       }
 
-      current.set(listener, effective);
-
-      if (meta.pausedReaders < current.size) {
+      if (unpaused) {
         this._takeListenerWatch();
       } else {
-        this._pauseWatch();
+        this._pauseListenerWatch();
       }
 
       if (this.watchCount > 0) {
@@ -257,9 +263,12 @@ export class ReactiveSignal<T, Args extends unknown[]> {
         current.delete(listener);
 
         if (current.size === 0) {
-          cancelPull(this);
-
           const flags = this.flags;
+
+          // An unclaimed render lease keeps the listener status, as it does before any subscriber.
+          if ((flags & ReactiveFnFlags.isLeased) !== 0) return;
+
+          cancelPull(this);
           this.flags = flags & ~(ReactiveFnFlags.isListener | ReactiveFnFlags.isListenerWatched);
 
           if ((flags & ReactiveFnFlags.isListenerWatched) !== 0) {
@@ -268,7 +277,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
           meta.updatedAt = 0;
         } else if (meta.pausedReaders >= current.size) {
-          this._pauseWatch();
+          this._pauseListenerWatch();
         }
       }
     };
@@ -358,6 +367,13 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     if (pausedReaders < current.size) {
       this._resumeWatch();
     } else {
+      this._pauseListenerWatch();
+    }
+  }
+
+  /** Pauses for the listeners' sake; an unclaimed render lease's watch belongs to its render. */
+  private _pauseListenerWatch() {
+    if ((this.flags & ReactiveFnFlags.isLeased) === 0) {
       this._pauseWatch();
     }
   }

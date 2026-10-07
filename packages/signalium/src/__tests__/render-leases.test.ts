@@ -93,6 +93,37 @@ describe('render leases', () => {
     unsubscribe();
   });
 
+  test('a paused reader subscribing does not drop an unpaused render lease', async () => {
+    const { counts, derived } = createRelayHarness();
+    derived._addPausedReaders(1);
+    const unsubscribeFirst = derived.addListener(() => {});
+
+    // An unpaused render that suspends, so it doesn't subscribe yet.
+    const subscribe = renderRead(derived);
+    await flush();
+    expect(counts.active).toBe(1);
+
+    derived._addPausedReaders(1);
+    const unsubscribeSecond = derived.addListener(() => {});
+    await flush();
+    expect(counts.active).toBe(1);
+
+    // Both paused readers unmount.
+    unsubscribeFirst();
+    unsubscribeSecond();
+    derived._addPausedReaders(-2);
+    await flush();
+    expect(counts.active).toBe(1);
+
+    // The render commits and claims its lease.
+    const unsubscribeRender = subscribe(() => {});
+    expect(getRenderLeaseCount()).toBe(0);
+
+    unsubscribeRender();
+    await flush();
+    expect(counts.active).toBe(0);
+  });
+
   test('a claimed lease keeps the watch past the TTL without restarting relays', async () => {
     const { counts, derived } = createRelayHarness();
 
