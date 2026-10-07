@@ -77,41 +77,59 @@ function hashNumber(num: number, seed = 0) {
   return h >>> 0; // Convert to unsigned 32-bit integer
 }
 
-function hashArray(arr: unknown[], seen: unknown[]) {
-  let h = ARRAY;
+/** One MurmurHash3 block round: mixes the 32-bit block `k` into `h`. */
+export function mixHash(h: number, k: number) {
   const c1 = 0xcc9e2d51;
   const c2 = 0x1b873593;
+  const n = 0xe6546b64;
 
-  // Process 4 bytes at a time
-  for (const item of arr) {
-    // Extract the lowest 32 bits
-    let k = hashValue(item, seen);
+  k = imul(k, c1);
+  k = (k << 15) | (k >>> 17);
+  k = imul(k, c2);
 
-    k = imul(k, c1);
-    k = (k << 15) | (k >>> 17);
-    k = imul(k, c2);
+  h ^= k;
+  h = (h << 13) | (h >>> 19);
+  // Every use of the result truncates it to int32 anyway; doing it here keeps `h` off the
+  // double path.
+  return (imul(h, 5) + n) | 0;
+}
 
-    h ^= k;
-    h = (h << 13) | (h >>> 19);
-    h = imul(h, 5) + 0xe6546b64;
-  }
+/** MurmurHash3 finalization over `length` blocks. */
+export function finalizeHash(h: number, length: number) {
+  const fmix1 = 0x85ebca6b;
+  const fmix2 = 0xc2b2ae35;
 
-  h ^= arr.length;
+  h ^= length;
   h ^= h >>> 16;
-  h = imul(h, 0x85ebca6b);
+  h = imul(h, fmix1);
   h ^= h >>> 13;
-  h = imul(h, 0xc2b2ae35);
+  h = imul(h, fmix2);
   h ^= h >>> 16;
 
   return h >>> 0; // Convert to unsigned 32-bit integer
 }
 
+function hashArray(arr: unknown[], seen: unknown[]) {
+  let h = ARRAY_SEED;
+
+  for (const item of arr) {
+    h = mixHash(h, hashValue(item, seen));
+  }
+
+  return finalizeHash(h, arr.length);
+}
+
 function hashObject(obj: object, seen: unknown[]) {
+  return hashObjectKeys(obj, Object.keys(obj), seen);
+}
+
+/** `hashObject` over keys the caller already has; `obj` must be on `seen`. */
+export function hashObjectKeys(obj: object, keys: string[], seen: unknown[]) {
+  const keyMultiplier = 0x9e3779b9; // 2^32 / golden ratio
   let sum = OBJECT;
-  const keys = Object.keys(obj);
 
   for (const key of keys) {
-    sum += imul(hashValue(key, seen), 0x9e3779b9) ^ hashValue((obj as any)[key], seen);
+    sum += imul(hashValue(key, seen), keyMultiplier) ^ hashValue((obj as any)[key], seen);
   }
 
   return sum >>> 0;
@@ -126,10 +144,11 @@ function hashSet(set: Set<unknown>, seen: unknown[]) {
 }
 
 function hashMap(map: Map<unknown, unknown>, seen: unknown[]) {
+  const keyMultiplier = 0x9e3779b9; // 2^32 / golden ratio
   let sum = MAP;
 
   for (const [key, value] of map) {
-    sum += imul(hashValue(key, seen), 0x9e3779b9) ^ hashValue(value, seen);
+    sum += imul(hashValue(key, seen), keyMultiplier) ^ hashValue(value, seen);
   }
 
   return sum >>> 0;
@@ -167,7 +186,7 @@ const UNDEFINED = hashStr('undefined', HashType.UNDEFINED);
 const NULL = hashStr('null', HashType.NULL);
 const TRUE = hashStr('true', HashType.TRUE);
 const FALSE = hashStr('false', HashType.FALSE);
-const ARRAY = hashStr('array', HashType.ARRAY);
+export const ARRAY_SEED = hashStr('array', HashType.ARRAY);
 const OBJECT = hashStr('object', HashType.OBJECT);
 const SET = hashStr('set', HashType.SET);
 const MAP = hashStr('map', HashType.MAP);
