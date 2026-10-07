@@ -13,6 +13,7 @@ import { getSignal } from './internals/get.js';
 import { isReactivePromise, ReactivePromiseImpl } from './internals/async.js';
 import type { ReactiveSignal } from './internals/reactive.js';
 import { isPromise } from './internals/utils/type-utils.js';
+import { MAX_TIMEOUT } from './internals/config.js';
 import { ReactiveValue, RelayState, ReactivePromise } from './types.js';
 
 /**
@@ -62,6 +63,57 @@ export function watchOnce<T>(fn: () => T): T {
     throw error;
   }
 }
+
+/**
+ * Keeps `fn`'s dependencies (relays, queries) watched until `ttl` ms pass or the returned
+ * `release` is called. Without a `ttl`, or with `Infinity`, it lasts until released. A `ttl` above
+ * 2^31 - 1 ms is clamped; a negative or `NaN` one throws a `RangeError`.
+ *
+ * Use it to keep data warm without rendering it, e.g. prefetching a likely next screen. `fn` runs
+ * now, in the current scope, and again when its dependencies change.
+ *
+ * @example
+ * ```ts
+ * const release = retain(() => fetchTokenDetail(id), { ttl: 30_000 });
+ * ```
+ */
+export function retain(fn: () => unknown, opts?: { ttl?: number }): () => void {
+  const ttl = opts?.ttl;
+
+  if (ttl !== undefined && (typeof ttl !== 'number' || Number.isNaN(ttl) || ttl < 0)) {
+    throw new RangeError(`signalium: retain() ttl must be a non-negative number of milliseconds, got ${String(ttl)}`);
+  }
+
+  const signal = watcher(fn) as ReactiveSignal<unknown, unknown[]>;
+  const unsubscribe = signal.addListener(noop);
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const release = () => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    unsubscribe();
+  };
+
+  try {
+    // Run now so relays activate immediately, not on the next flush.
+    getSignal(signal);
+  } catch (error) {
+    release();
+    throw error;
+  }
+
+  // `setTimeout` fires immediately for delays above MAX_TIMEOUT.
+  if (ttl !== undefined && ttl !== Infinity) {
+    timer = setTimeout(release, Math.min(ttl, MAX_TIMEOUT));
+  }
+
+  return release;
+}
+
+const noop = () => {};
 
 export { setReactivePromise } from './internals/async.js';
 

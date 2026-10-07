@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useMemo, useRef } from 'react';
 import type * as ReactTypes from 'react';
 import { getCurrentConsumer, setCurrentConsumer } from '../internals/consumer.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
@@ -7,7 +7,82 @@ import { isReactivePromise, ReactivePromiseImpl } from '../internals/async.js';
 import { hashProps } from './props-hash.js';
 import { isPromise, isThennable } from '../internals/utils/type-utils.js';
 import { useScope } from './context.js';
-import { usePauseSignalsManager } from './pause-signals-context.js';
+import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
+import { holdLeaseUntilSettled, holdSuspendedLease, releaseAbandonedAttempt } from '../internals/lease.js';
+
+/** Inner element props to the user's element props, which survive React retrying a suspended mount. */
+const elementPropsByInnerProps = new WeakMap<object, object>();
+
+/** Per user element, suspended mount attempts still holding a pinned lease. */
+const suspendedAttemptsByElement = new WeakMap<object, Set<ReactiveSignal<any, any>>>();
+
+export function createComponentElement<P extends object>(
+  Inner: (props: P) => ReactTypes.ReactNode,
+  props: P,
+): ReactTypes.ReactElement {
+  const element = React.createElement(Inner, props);
+  elementPropsByInnerProps.set(element.props as object, props);
+  return element;
+}
+
+/**
+ * React 19's `use()` throws an opaque `SuspenseException`, recognisable only by its message (or
+ * error code when minified).
+ */
+function isReactSuspenseException(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const { message } = error;
+
+  return message.startsWith('Suspense Exception') || /^Minified React error #(460|542)\b/.test(message);
+}
+
+/**
+ * Computes a `component()` signal during render. A suspended render pins its lease, so the relays
+ * it reads stay active until React retries it. A later attempt at the same element releases
+ * earlier attempts' pins once it has leased its own.
+ */
+export function readComponentSignal<T>(signal: ReactiveSignal<T, []>, props: object): T {
+  const element = elementPropsByInnerProps.get(props);
+  let attempts = element === undefined ? undefined : suspendedAttemptsByElement.get(element);
+
+  try {
+    runSignal(signal as ReactiveSignal<any, any[]>);
+    const value = signal.value as T;
+    attempts?.delete(signal);
+    return value;
+  } catch (error) {
+    let pinned = true;
+
+    if (error !== null && typeof error === 'object' && isThennable(error)) {
+      holdLeaseUntilSettled(signal, error);
+    } else if (isReactSuspenseException(error)) {
+      holdSuspendedLease(signal);
+    } else {
+      pinned = false;
+    }
+
+    if (pinned && element !== undefined && signal._isLeased) {
+      if (attempts === undefined) {
+        attempts = new Set();
+        suspendedAttemptsByElement.set(element, attempts);
+      }
+
+      attempts.add(signal);
+    }
+
+    throw error;
+  } finally {
+    if (attempts !== undefined) {
+      for (const attempt of attempts) {
+        if (attempt !== signal) {
+          releaseAbandonedAttempt(attempt);
+          attempts.delete(attempt);
+        }
+      }
+    }
+  }
+}
 
 /**
  * Remembers settled outcomes for yielded thenables so synchronous replay can inject
@@ -175,20 +250,12 @@ export function createAsyncComponentWrapper<P extends object>(
     // Same ordering as sync `component()`: watch before computing (so relays read during the
     // computation activate), and compute + settle the signal before the snapshot is read so the
     // mount render's snapshot is stable (no forced re-render / sync redo).
-    manager?.register(sig);
-    const subscribe = sig.addListenerLazy(!manager?.paused);
+    const subscribe = addRenderListener(sig, manager);
 
-    runSignal(sig as ReactiveSignal<any, any[]>);
-    const value = sig.value;
+    const value = readComponentSignal(sig, props);
 
     const getSnapshot = () => sig!.updatedCount;
-    useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-
-    useEffect(() => {
-      if (manager === null) return;
-      manager.registerOwned(sig!);
-      return () => manager.unregister(sig!);
-    }, [manager, sig]);
+    usePausableStore(manager, sig, subscribe, getSnapshot);
 
     return value;
   };
@@ -196,7 +263,7 @@ export function createAsyncComponentWrapper<P extends object>(
   const Outer = (props: P) => {
     const hash = hashProps(props);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    return useMemo(() => React.createElement(Inner, props), [hash]);
+    return useMemo(() => createComponentElement(Inner, props), [hash]);
   };
 
   Object.defineProperty(Outer, SIGNALIUM_ASYNC_COMPONENT, { value: true, enumerable: false });

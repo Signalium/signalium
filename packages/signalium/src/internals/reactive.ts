@@ -11,6 +11,7 @@ import { Callback } from './callback.js';
 import { unwatchSignal, watchSignal } from './watch.js';
 import { equalsFrom } from './utils/equals.js';
 import { dirtySignal } from './dirty.js';
+import { addLease, removeLease } from './lease.js';
 
 /**
  * This file contains computed signal base types and struct definitions.
@@ -42,6 +43,10 @@ export const enum ReactiveFnFlags {
   isListener = 0b10000,
   isActive = 0b100000,
   isLazy = 0b1000000,
+  // A render's watch, not yet claimed by a subscription; see `lease.ts`.
+  isLeased = 0b10000000,
+  // The listener status holds a watch. Clear while paused.
+  isListenerWatched = 0b100000000,
 }
 
 let ID = 0;
@@ -49,6 +54,9 @@ let ID = 0;
 interface ListenerMeta {
   updatedAt: number;
   current: Map<() => void, () => void>;
+
+  // Subscribers under a paused `PauseSignalsProvider`. The watch is held while any is unpaused.
+  pausedReaders: number;
 
   // Cached bound add method to avoid creating a new one on each call, this is
   // specifically for React hooks where useSyncExternalStore will resubscribe each
@@ -171,6 +179,10 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     }
   }
 
+  get _isLeased() {
+    return (this.flags & ReactiveFnFlags.isLeased) !== 0;
+  }
+
   get _isLazy() {
     return (this.flags & ReactiveFnFlags.isLazy) !== 0;
   }
@@ -189,6 +201,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       (this._listeners = {
         updatedAt: 0,
         current: new Map(),
+        pausedReaders: 0,
         cachedBoundAdd: this.addListener.bind(this),
       })
     );
@@ -199,7 +212,8 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   }
 
   addListener(listener: () => void, opts?: { skipInitial?: boolean }) {
-    const { current } = this.listeners;
+    const meta = this.listeners;
+    const { current } = meta;
 
     if (!current.has(listener)) {
       let effective = listener;
@@ -215,16 +229,33 @@ export class ReactiveSignal<T, Args extends unknown[]> {
         };
       }
 
-      if (!this._isListener) {
-        watchSignal(this);
-        this.flags |= ReactiveFnFlags.isListener;
+      const flags = this.flags;
+
+      current.set(listener, effective);
+
+      const unpaused = meta.pausedReaders < current.size;
+
+      if ((flags & ReactiveFnFlags.isListener) === 0) {
+        this.flags = flags | ReactiveFnFlags.isListener;
+      } else if (
+        (flags & ReactiveFnFlags.isLeased) !== 0 &&
+        (unpaused || (flags & ReactiveFnFlags.isListenerWatched) === 0)
+      ) {
+        // Claim the render lease; its watch now belongs to the listeners. A paused subscriber
+        // leaves a watched lease alone: the unpaused render that took it still needs it.
+        this.flags = flags & ~ReactiveFnFlags.isLeased;
+        removeLease(this);
+      }
+
+      if (unpaused) {
+        this._takeListenerWatch();
+      } else {
+        this._pauseListenerWatch();
       }
 
       if (this.watchCount > 0) {
         schedulePull(this);
       }
-
-      current.set(listener, effective);
     }
 
     return () => {
@@ -232,10 +263,21 @@ export class ReactiveSignal<T, Args extends unknown[]> {
         current.delete(listener);
 
         if (current.size === 0) {
+          const flags = this.flags;
+
+          // An unclaimed render lease keeps the listener status, as it does before any subscriber.
+          if ((flags & ReactiveFnFlags.isLeased) !== 0) return;
+
           cancelPull(this);
-          unwatchSignal(this);
-          this.flags &= ~ReactiveFnFlags.isListener;
-          this.listeners.updatedAt = 0;
+          this.flags = flags & ~(ReactiveFnFlags.isListener | ReactiveFnFlags.isListenerWatched);
+
+          if ((flags & ReactiveFnFlags.isListenerWatched) !== 0) {
+            unwatchSignal(this);
+          }
+
+          meta.updatedAt = 0;
+        } else if (meta.pausedReaders >= current.size) {
+          this._pauseListenerWatch();
         }
       }
     };
@@ -244,15 +286,130 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   // This method is used in React hooks specifically. It returns a bound add method
   // that is cached to avoid creating a new one on each call, and it eagerly sets
   // the listener as watched so that relays that are accessed will be activated.
+  //
+  // The eager watch is a lease (see `lease.ts`): the commit's subscription claims it, and a
+  // discarded render's lease expires. Each render of a still-leased signal extends it.
   addListenerLazy(watch = true) {
-    if (!this._isListener) {
+    const flags = this.flags;
+
+    if ((flags & ReactiveFnFlags.isListener) === 0) {
       if (watch) {
+        // `watchSignal` writes `flags`, so set ours after it.
         watchSignal(this);
+        this.flags |= ReactiveFnFlags.isListener | ReactiveFnFlags.isLeased | ReactiveFnFlags.isListenerWatched;
+      } else {
+        this.flags |= ReactiveFnFlags.isListener | ReactiveFnFlags.isLeased;
       }
-      this.flags |= ReactiveFnFlags.isListener;
+
+      addLease(this);
+    } else if (
+      (flags & ReactiveFnFlags.isLeased) !== 0 ||
+      (watch && (flags & ReactiveFnFlags.isListenerWatched) === 0)
+    ) {
+      // Extend the lease, or lease a watch on a signal only paused readers subscribe to: an
+      // unpaused render that suspends on it never subscribes, so it must start the relays itself.
+      if (watch && (flags & ReactiveFnFlags.isListenerWatched) === 0) {
+        watchSignal(this);
+        this.flags |= ReactiveFnFlags.isListenerWatched;
+      }
+
+      this.flags |= ReactiveFnFlags.isLeased;
+      addLease(this);
     }
 
     return this.listeners.cachedBoundAdd;
+  }
+
+  /** Drops the listener watch; listeners stay subscribed. */
+  _pauseWatch() {
+    const flags = this.flags;
+
+    if ((flags & ReactiveFnFlags.isListenerWatched) !== 0) {
+      this.flags = flags & ~ReactiveFnFlags.isListenerWatched;
+      unwatchSignal(this, { isPausing: true });
+    }
+  }
+
+  /** Retakes the listener watch, pulling changes missed while unwatched. */
+  _resumeWatch() {
+    if ((this.flags & ReactiveFnFlags.isListener) !== 0 && this._takeListenerWatch()) {
+      schedulePull(this);
+    }
+  }
+
+  private _takeListenerWatch() {
+    if ((this.flags & ReactiveFnFlags.isListenerWatched) !== 0) {
+      return false;
+    }
+
+    // `watchSignal` writes `flags`, so set ours after it.
+    watchSignal(this);
+    this.flags |= ReactiveFnFlags.isListenerWatched;
+    return true;
+  }
+
+  /** `deferred` reconciles in a microtask, for a reader that unregisters before it unsubscribes. */
+  _addPausedReaders(delta: number, deferred = false) {
+    this.listeners.pausedReaders += delta;
+
+    if (deferred) {
+      queueMicrotask(() => this._reconcilePausedReaders());
+    } else {
+      this._reconcilePausedReaders();
+    }
+  }
+
+  private _reconcilePausedReaders() {
+    const { current, pausedReaders } = this.listeners;
+
+    if (current.size === 0) return;
+
+    if (pausedReaders < current.size) {
+      this._resumeWatch();
+    } else {
+      this._pauseListenerWatch();
+    }
+  }
+
+  /** Pauses for the listeners' sake; an unclaimed render lease's watch belongs to its render. */
+  private _pauseListenerWatch() {
+    if ((this.flags & ReactiveFnFlags.isLeased) === 0) {
+      this._pauseWatch();
+    }
+  }
+
+  /** Releases an unclaimed render lease; a no-op once claimed. */
+  _releaseLease() {
+    const flags = this.flags;
+
+    if ((flags & ReactiveFnFlags.isLeased) === 0) {
+      return;
+    }
+
+    const meta = this._listeners;
+
+    if (meta !== null && meta.current.size > 0) {
+      // Leased over paused subscribers; return to paused.
+      this.flags = flags & ~ReactiveFnFlags.isLeased;
+
+      if (meta.pausedReaders >= meta.current.size) {
+        this._pauseWatch();
+      }
+
+      return;
+    }
+
+    this.flags = flags & ~(ReactiveFnFlags.isLeased | ReactiveFnFlags.isListenerWatched | ReactiveFnFlags.isListener);
+
+    if (meta !== null) {
+      meta.updatedAt = 0;
+    }
+
+    cancelPull(this);
+
+    if ((flags & ReactiveFnFlags.isListenerWatched) !== 0) {
+      unwatchSignal(this);
+    }
   }
 }
 

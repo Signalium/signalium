@@ -1,13 +1,12 @@
 import * as React from 'react';
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useScope } from './context.js';
-import { usePauseSignalsManager } from './pause-signals-context.js';
+import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
 import { setRequestScopeGetter, SignalScope } from '../internals/contexts.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
-import { runSignal } from '../internals/get.js';
 import { hashProps } from './props-hash.js';
-import { createAsyncComponentWrapper } from './async-component.js';
+import { createAsyncComponentWrapper, createComponentElement, readComponentSignal } from './async-component.js';
 import {
   type ComponentRender,
   isAsyncFunctionWithoutTransform,
@@ -101,30 +100,18 @@ export default function component<Props extends object>(
     }
 
     // Mark the signal as a listener (and watch it unless paused) before computing, so relays read
-    // during the computation are activated. Register now too, so pausing still releases that watch
-    // if the mount suspends and never commits.
-    manager?.register(signal);
-    const subscribe = signal.addListenerLazy(!manager?.paused);
+    // during the computation are activated.
+    const subscribe = addRenderListener(signal, manager);
 
     // Compute and settle the signal BEFORE `useSyncExternalStore` reads the snapshot. Reading
     // `value` runs `checkSignal`, which bumps `updatedCount` when the lazy signal was dirty (always
     // the case on mount). If the snapshot were read first, React would see it change after render
     // and re-render: synchronously after every mount, and as a sync redo of mounts inside a
     // transition.
-    runSignal(signal as ReactiveSignal<any, any[]>);
-    const value = signal.value;
+    const value = readComponentSignal(signal, props);
 
     const getSnapshot = () => signal.updatedCount;
-    useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-
-    // Reconcile with the pause manager on commit (after the store subscription): the commit may
-    // happen under a different pause state than the render, and StrictMode's effect replay
-    // re-registers.
-    useEffect(() => {
-      if (manager === null) return;
-      manager.registerOwned(signal);
-      return () => manager.unregister(signal);
-    }, [manager, signal]);
+    usePausableStore(manager, signal, subscribe, getSnapshot);
 
     return value;
   };
@@ -133,6 +120,6 @@ export default function component<Props extends object>(
     const hash = hashProps(props);
     // Renders Comp only when hash changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    return useMemo(() => <Component {...props} />, [hash]);
+    return useMemo(() => createComponentElement(Component, props), [hash]);
   };
 }

@@ -1,10 +1,15 @@
-import React, { createContext, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useSyncExternalStore } from 'react';
 import { ReactiveSignal } from '../internals/reactive.js';
-import { watchSignal, unwatchSignal } from '../internals/watch.js';
-import { schedulePull } from '../internals/scheduling.js';
 
 class PauseSignalsManager {
-  private signals = new Set<ReactiveSignal<any, any>>();
+  /**
+   * Readers per registered signal. Scope-cached signals can be shared across providers, so pausing
+   * counts readers on the signal instead of pausing it outright.
+   */
+  private signals = new Map<ReactiveSignal<any, any>, number>();
+  /** Unclaimed render leases taken under this provider (e.g. a suspended mount). Pruned lazily. */
+  private leases = new Set<ReactiveSignal<any, any>>();
+  private pruneLeasesAt = 64;
   private _paused: boolean;
 
   constructor(initialPaused: boolean) {
@@ -15,45 +20,62 @@ class PauseSignalsManager {
     return this._paused;
   }
 
-  register(signal: ReactiveSignal<any, any>) {
-    this.signals.add(signal);
+  trackLease(signal: ReactiveSignal<any, any>) {
+    const leases = this.leases;
+
+    leases.add(signal);
+
+    if (leases.size >= this.pruneLeasesAt) {
+      for (const leased of leases) {
+        if (!leased._isLeased) leases.delete(leased);
+      }
+
+      this.pruneLeasesAt = Math.max(64, leases.size * 2);
+    }
   }
 
-  /**
-   * Registers a signal whose only watcher is a single mounted component's store subscription
-   * (`component()` signals), and reconciles its watch state with the current pause state. Call
-   * from a commit-phase effect that runs after the subscription is established: the component may
-   * have rendered under a different pause state than the one it commits under, and StrictMode's
-   * effect replay re-subscribes (re-watching) the signal regardless of the pause state.
-   */
-  registerOwned(signal: ReactiveSignal<any, any>) {
-    this.signals.add(signal);
-
-    const watched = signal.watchCount > 0;
+  /** Call before the reader subscribes, so a paused reader never takes the watch. */
+  register(signal: ReactiveSignal<any, any>) {
+    this.signals.set(signal, (this.signals.get(signal) ?? 0) + 1);
+    this.leases.delete(signal);
 
     if (this._paused) {
-      if (watched) {
-        unwatchSignal(signal, { isPausing: true });
-      }
-    } else if (!watched) {
-      watchSignal(signal);
-      schedulePull(signal);
+      signal._addPausedReaders(1);
     }
   }
 
   unregister(signal: ReactiveSignal<any, any>) {
-    this.signals.delete(signal);
+    const count = this.signals.get(signal);
+
+    if (count === undefined) return;
+
+    if (count > 1) {
+      this.signals.set(signal, count - 1);
+    } else {
+      this.signals.delete(signal);
+    }
+
+    if (this._paused) {
+      // The reader may still be subscribed; reconciling now could briefly re-watch.
+      signal._addPausedReaders(-1, true);
+    }
   }
 
   setPaused(value: boolean) {
     if (value === this._paused) return;
     this._paused = value;
-    for (const signal of this.signals) {
-      if (value) {
-        unwatchSignal(signal, { isPausing: true });
+
+    for (const [signal, count] of this.signals) {
+      signal._addPausedReaders(value ? count : -count);
+    }
+
+    for (const signal of this.leases) {
+      if (!signal._isLeased) {
+        this.leases.delete(signal);
+      } else if (value) {
+        signal._pauseWatch();
       } else {
-        watchSignal(signal);
-        schedulePull(signal);
+        signal._resumeWatch();
       }
     }
   }
@@ -78,4 +100,31 @@ export function PauseSignalsProvider({ value, children }: { value: boolean; chil
 
 export function usePauseSignalsManager(): PauseSignalsManager | null {
   return useContext(PauseSignalsManagerContext);
+}
+
+/** `addListenerLazy`, tracking the lease so pausing reaches it if the render never commits. */
+export function addRenderListener(signal: ReactiveSignal<any, any>, manager: PauseSignalsManager | null) {
+  const subscribe = signal.addListenerLazy(!manager?.paused);
+
+  if (manager !== null && signal._isLeased) {
+    manager.trackLease(signal);
+  }
+
+  return subscribe;
+}
+
+/** `useSyncExternalStore`, registering the reader with `manager` before it subscribes. */
+export function usePausableStore<T>(
+  manager: PauseSignalsManager | null,
+  signal: ReactiveSignal<any, any>,
+  subscribe: (listener: () => void) => () => void,
+  getSnapshot: () => T,
+): T {
+  useEffect(() => {
+    if (manager === null) return;
+    manager.register(signal);
+    return () => manager.unregister(signal);
+  }, [manager, signal]);
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

@@ -1,28 +1,18 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useRef } from 'react';
 import { ReactiveValue } from '../types.js';
 import { getReactiveFnAndDefinition, reactiveSignal } from '../internals/core-api.js';
 import { getCurrentConsumer } from '../internals/consumer.js';
 import { ReactiveSignal } from '../internals/reactive.js';
 import { snapshot } from '../internals/utils/snapshot.js';
 import { useScope } from './context.js';
-import { usePauseSignalsManager } from './pause-signals-context.js';
+import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
 import { getGlobalScope } from '../internals/contexts.js';
 
 function useSignalWithSuspension(signal: ReactiveSignal<any, any>) {
   const manager = usePauseSignalsManager();
-  const watch = !manager?.paused;
+  const getSnapshot = () => signal.value;
 
-  manager?.register(signal);
-
-  useEffect(() => {
-    return () => manager?.unregister(signal);
-  }, [manager, signal]);
-
-  return useSyncExternalStore(
-    signal.addListenerLazy(watch),
-    () => signal.value,
-    () => signal.value,
-  );
+  return usePausableStore(manager, signal, addRenderListener(signal, manager), getSnapshot);
 }
 
 /**
@@ -76,7 +66,6 @@ export function useReactive<R>(fn: () => R): ReactiveValue<R> {
   }
 
   const manager = usePauseSignalsManager();
-  const watch = !manager?.paused;
 
   const scope = useScope() ?? getGlobalScope();
   const innerSignalRef = useRef<ReactiveSignal<R, []> | undefined>(undefined);
@@ -100,17 +89,9 @@ export function useReactive<R>(fn: () => R): ReactiveValue<R> {
 
   const cloneSignal = cloneSignalRef.current!;
 
-  manager?.register(cloneSignal);
+  const getSnapshot = () => cloneSignal.value as ReactiveValue<R>;
 
-  useEffect(() => {
-    return () => manager?.unregister(cloneSignal);
-  }, [manager, cloneSignal]);
-
-  return useSyncExternalStore(
-    cloneSignal.addListenerLazy(watch),
-    () => cloneSignal.value as ReactiveValue<R>,
-    () => cloneSignal.value as ReactiveValue<R>,
-  );
+  return usePausableStore(manager, cloneSignal, addRenderListener(cloneSignal, manager), getSnapshot);
 }
 
 /**

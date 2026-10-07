@@ -18,6 +18,7 @@ function createSignaliumPromiseMethodsTransform(api: any, opts?: SignaliumPromis
       ['relay', ['signalium']],
       ['task', ['signalium']],
       ['watcher', ['signalium']],
+      ['retain', ['signalium', 'signalium/utils']],
     ],
     opts?.transformedImports,
     opts?.importPaths,
