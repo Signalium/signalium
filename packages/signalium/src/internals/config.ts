@@ -6,24 +6,14 @@ let _scheduleFlush: (fn: () => void) => void = flushWatchers => {
 
 let _runBatch: (fn: () => void) => void = fn => fn();
 
-/**
- * Default lifetime of a render lease, in ms. It must outlive the gap between a React render and
- * its commit, which for a concurrent (transition) render can last until React's 5 s transition
- * expiry forces it to finish synchronously.
- */
+/** Default render lease TTL (ms). It must outlive a transition render, which React caps at 5 s. */
 export const DEFAULT_RENDER_LEASE_TTL = 10_000;
 
 let _renderLeaseTtl = DEFAULT_RENDER_LEASE_TTL;
 
-/** The longest delay `setTimeout` honours (2^31 - 1 ms, ~24.8 days); longer delays fire at once. */
+/** The longest `setTimeout` delay (2^31 - 1 ms); longer ones fire immediately. */
 export const MAX_TIMEOUT = 2 ** 31 - 1;
 
-/**
- * Validates `renderLeaseTtl`. A TTL is a timer delay, so it must be a positive number no larger
- * than {@link MAX_TIMEOUT}: `setTimeout` treats anything larger (including `Infinity`) as 0, which
- * would release every render lease on the next tick. Larger values are clamped; anything else is
- * ignored. Both warn in development.
- */
 function validateRenderLeaseTtl(ttl: number): number {
   if (typeof ttl !== 'number' || Number.isNaN(ttl) || ttl <= 0) {
     if (IS_DEV) {
@@ -77,11 +67,9 @@ export function setConfig(
     scheduleFlush: (fn: () => void) => void;
     runBatch: (fn: () => void) => void;
     /**
-     * Minimum time (ms) a watch taken while rendering stays alive without being claimed by the
-     * commit (the store subscription). A render React discards — an interrupted transition, a
-     * mount that suspends, a StrictMode double render — releases its watch after between one
-     * and two TTLs. Defaults to {@link DEFAULT_RENDER_LEASE_TTL}. Must be positive; values above
-     * {@link MAX_TIMEOUT} (including `Infinity`) are clamped to it.
+     * How long (ms) a watch taken during render survives without a commit claiming it. A
+     * discarded render releases its watch after one to two TTLs. Defaults to 10 s; values above
+     * 2^31 - 1 ms are clamped.
      */
     renderLeaseTtl: number;
     /**

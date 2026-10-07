@@ -43,12 +43,9 @@ export const enum ReactiveFnFlags {
   isListener = 0b10000,
   isActive = 0b100000,
   isLazy = 0b1000000,
-  // The listener status was taken by a render (`addListenerLazy`) and not yet claimed by a
-  // subscription (`addListener`); see `lease.ts`.
+  // Listener status taken by a render and not yet claimed by a subscription; see `lease.ts`.
   isLeased = 0b10000000,
-  // The listener status (a render lease, or the subscriptions that claimed it) holds a watch on
-  // the signal, which releasing the lease or the last unsubscribe drops. Clear for a lease taken
-  // while paused and while a `PauseSignalsProvider` has paused the signal (`_pauseWatch`).
+  // The listener status holds a watch. Clear while paused.
   isListenerWatched = 0b100000000,
 }
 
@@ -58,8 +55,7 @@ interface ListenerMeta {
   updatedAt: number;
   current: Map<() => void, () => void>;
 
-  // Subscribers a paused `PauseSignalsProvider` holds. The listener watch is held while any
-  // subscriber is unpaused; readers are counted before they subscribe, so a paused one never takes it.
+  // Subscribers under a paused `PauseSignalsProvider`. The watch is held while any is unpaused.
   pausedReaders: number;
 
   // Cached bound add method to avoid creating a new one on each call, this is
@@ -187,10 +183,6 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     return (this.flags & ReactiveFnFlags.isLeased) !== 0;
   }
 
-  get _isListenerWatched() {
-    return (this.flags & ReactiveFnFlags.isListenerWatched) !== 0;
-  }
-
   get _isLazy() {
     return (this.flags & ReactiveFnFlags.isLazy) !== 0;
   }
@@ -242,8 +234,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       if ((flags & ReactiveFnFlags.isListener) === 0) {
         this.flags = flags | ReactiveFnFlags.isListener;
       } else if ((flags & ReactiveFnFlags.isLeased) !== 0) {
-        // Claim the render lease: its watch (if any) now belongs to the listener set and is
-        // released when the last listener unsubscribes, exactly like a watch taken here.
+        // Claim the render lease; its watch now belongs to the listeners.
         this.flags = flags & ~ReactiveFnFlags.isLeased;
         removeLease(this);
       }
@@ -287,18 +278,14 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   // that is cached to avoid creating a new one on each call, and it eagerly sets
   // the listener as watched so that relays that are accessed will be activated.
   //
-  // Renders are not commitments, so the eager watch is a lease (see `lease.ts`): the
-  // store subscription React makes on commit claims it via `addListener`, and a lease
-  // that is never claimed (the render was discarded) is released when it expires. Every
-  // render that reads a still-leased signal extends the lease, and takes the watch if an
-  // earlier render took the lease while paused. A signal that already has listeners is
-  // unaffected.
+  // The eager watch is a lease (see `lease.ts`): the commit's subscription claims it, and a
+  // discarded render's lease expires. Each render of a still-leased signal extends it.
   addListenerLazy(watch = true) {
     const flags = this.flags;
 
     if ((flags & ReactiveFnFlags.isListener) === 0) {
       if (watch) {
-        // `watchSignal` updates the flags (activation), so set ours afterwards.
+        // `watchSignal` writes `flags`, so set ours after it.
         watchSignal(this);
         this.flags |= ReactiveFnFlags.isListener | ReactiveFnFlags.isLeased | ReactiveFnFlags.isListenerWatched;
       } else {
@@ -318,10 +305,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     return this.listeners.cachedBoundAdd;
   }
 
-  /**
-   * Drops the watch the listener status holds (a `PauseSignalsProvider` pausing). The listeners
-   * stay subscribed; `_resumeWatch` takes the watch again.
-   */
+  /** Drops the listener watch; listeners stay subscribed. */
   _pauseWatch() {
     const flags = this.flags;
 
@@ -331,33 +315,25 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     }
   }
 
-  /**
-   * Takes the watch for the listener status (a subscription or a render lease) if it does not hold
-   * one, and pulls the signal so changes made while it was unwatched are delivered.
-   */
+  /** Retakes the listener watch, pulling changes missed while unwatched. */
   _resumeWatch() {
     if ((this.flags & ReactiveFnFlags.isListener) !== 0 && this._takeListenerWatch()) {
       schedulePull(this);
     }
   }
 
-  /** Takes the listener watch if it isn't held, returning whether it was taken. */
   private _takeListenerWatch() {
     if ((this.flags & ReactiveFnFlags.isListenerWatched) !== 0) {
       return false;
     }
 
-    // `watchSignal` updates the flags (activation), so set ours afterwards.
+    // `watchSignal` writes `flags`, so set ours after it.
     watchSignal(this);
     this.flags |= ReactiveFnFlags.isListenerWatched;
     return true;
   }
 
-  /**
-   * Adjusts the count of subscribers a paused `PauseSignalsProvider` holds, then takes or drops the
-   * listener watch so it is held while any subscriber is unpaused. `deferred` reconciles in a
-   * microtask, for a reader that unregisters before it unsubscribes.
-   */
+  /** `deferred` reconciles in a microtask, for a reader that unregisters before it unsubscribes. */
   _addPausedReaders(delta: number, deferred = false) {
     this.listeners.pausedReaders += delta;
 
@@ -380,10 +356,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     }
   }
 
-  /**
-   * Releases an unclaimed render lease, returning the signal to the state it was in before the
-   * render took it. Called by the lease wheel; a no-op once the lease was claimed.
-   */
+  /** Releases an unclaimed render lease; a no-op once claimed. */
   _releaseLease() {
     const flags = this.flags;
 

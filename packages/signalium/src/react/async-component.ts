@@ -11,24 +11,12 @@ import { useScope } from './context.js';
 import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
 import { holdLeaseUntilSettled, holdSuspendedLease, releaseAbandonedAttempt } from '../internals/lease.js';
 
-/**
- * The props of the element a `component()` wrapper rendered, by the props of the inner element it
- * created for them. Lets an inner render find the user's element, which (unlike any render state)
- * survives React retrying a mount that suspended.
- */
+/** Inner element props to the user's element props, which survive React retrying a suspended mount. */
 const elementPropsByInnerProps = new WeakMap<object, object>();
 
-/**
- * Per user element: the signals of mount attempts that suspended rendering it and still hold a
- * pinned lease. React keeps no render state for a mount that suspends, so its retry creates new
- * signals; the retry releases these once it has leased what it reads.
- */
+/** Per user element, suspended mount attempts still holding a pinned lease. */
 const suspendedAttemptsByElement = new WeakMap<object, Set<ReactiveSignal<any, any>>>();
 
-/**
- * Creates the inner element a `component()` wrapper renders for the user's element `props`,
- * recording which user element it belongs to (see {@link readComponentSignal}).
- */
 export function createComponentElement<P extends object>(
   Inner: (props: P) => ReactTypes.ReactNode,
   props: P,
@@ -39,9 +27,8 @@ export function createComponentElement<P extends object>(
 }
 
 /**
- * React 19's `use()` (and `useActionState`) suspend by throwing an opaque `SuspenseException`
- * rather than the thenable. It is a plain `Error`; its message is the only stable mark, in
- * development builds and as the error code in minified production builds.
+ * React 19's `use()` throws an opaque `SuspenseException`, recognisable only by its message (or
+ * error code when minified).
  */
 function isReactSuspenseException(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -52,15 +39,9 @@ function isReactSuspenseException(error: unknown): boolean {
 }
 
 /**
- * Computes and settles a `component()` signal during render and returns its value. If the render
- * suspends, the signal's render lease is pinned, so the relays the suspended render reads stay
- * active for however long React waits to retry it: until the thrown thenable settles, or, for
- * React's `use()`, whose thenable is hidden, until React retries or commits the element (see
- * `holdSuspendedLease`). A render that throws an error keeps an ordinary lease; React does not
- * wait on it.
- *
- * `props` are the props the inner component received. A render of the same user element that
- * starts after earlier mount attempts suspended releases their pins, once it has leased its own.
+ * Computes a `component()` signal during render. A suspended render pins its lease, so the relays
+ * it reads stay active until React retries it. A later attempt at the same element releases
+ * earlier attempts' pins once it has leased its own.
  */
 export function readComponentSignal<T>(signal: ReactiveSignal<T, []>, props: object): T {
   const element = elementPropsByInnerProps.get(props);
