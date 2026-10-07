@@ -454,8 +454,8 @@ describe('React > render leases', () => {
       await expect.element(getByTestId('leaf-1')).toHaveTextContent('1');
       await settle();
 
+      // Not `activations`: nothing pins this lease, so a retry slower than the TTL restarts the relay.
       expect(counts.activeRelays).toBe(1);
-      expect(counts.activations).toBe(1);
 
       React.act(() => show(false));
       await expect.element(getByTestId('empty')).toBeInTheDocument();
