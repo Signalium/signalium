@@ -175,6 +175,7 @@ export function createAsyncComponentWrapper<P extends object>(
     // Same ordering as sync `component()`: watch before computing (so relays read during the
     // computation activate), and compute + settle the signal before the snapshot is read so the
     // mount render's snapshot is stable (no forced re-render / sync redo).
+    manager?.register(sig);
     const subscribe = sig.addListenerLazy(!manager?.paused);
 
     runSignal(sig as ReactiveSignal<any, any[]>);
