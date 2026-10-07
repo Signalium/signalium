@@ -61,8 +61,7 @@ function hashPropValue(value: unknown, seen: unknown[]): number {
 
 /** `hashValue(props)`, except React elements are hashed by identity. */
 export function hashProps(props: object): number {
-  // 2^32 / golden ratio, the same key multiplier `hashValue` uses for objects.
-  const keyMultiplier = 0x9e3779b9;
+  const keyMultiplier = 0x9e3779b9; // 2^32 / golden ratio, as in `hashObjectKeys`
   const seen: unknown[] = [];
   let sum = EMPTY_PROPS_HASH;
   for (const key of objectKeys(props)) {
