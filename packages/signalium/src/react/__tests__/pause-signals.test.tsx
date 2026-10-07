@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { signal, reactive, relay } from 'signalium';
-import { useReactive, PauseSignalsProvider } from 'signalium/react';
+import { useReactive, useReactiveShallow, PauseSignalsProvider } from 'signalium/react';
 import React, { useState } from 'react';
 import { userEvent } from '@vitest/browser/context';
 import { sleep } from '../../__tests__/utils/async.js';
@@ -414,6 +414,82 @@ describe('React > Pause Signals', () => {
     expect(relayActivateCount).toBe(0);
     await expect.element(getByTestId('content')).toHaveTextContent('pending');
   });
+
+  describe.each(['sync', 'state'] as const)(
+    'a useReactiveShallow signal shared with a paused provider (%s)',
+    delivery => {
+      function setup() {
+        const counts = { active: 0, activations: 0 };
+        const text = signal('a');
+        const source = reactive(() =>
+          relay<string>(state => {
+            counts.active++;
+            counts.activations++;
+            state.value = 'r';
+            return () => counts.active--;
+          }),
+        );
+        // One thunk, so every reader shares one scope-cached signal.
+        const read = () => `${text.value}:${source().value}`;
+        const Reader = ({ id }: { id: string }) => (
+          <span data-testid={id}>{useReactiveShallow(read, { delivery })}</span>
+        );
+
+        const show = { outside: (_: boolean) => {}, paused: (_: boolean) => {} };
+
+        function Host({ outside, paused }: { outside: boolean; paused: boolean }) {
+          const [showOutside, setShowOutside] = useState(outside);
+          const [showPaused, setShowPaused] = useState(paused);
+          show.outside = setShowOutside;
+          show.paused = setShowPaused;
+          return (
+            <>
+              {showOutside && <Reader id="outside" />}
+              <PauseSignalsProvider value={true}>{showPaused && <Reader id="paused" />}</PauseSignalsProvider>
+            </>
+          );
+        }
+
+        return { counts, text, show, Host };
+      }
+
+      test('mounting a paused reader does not freeze an unpaused one', async () => {
+        const { counts, text, show, Host } = setup();
+        const { getByTestId } = render(<Host outside paused={false} />);
+        await expect.element(getByTestId('outside')).toHaveTextContent('a:r');
+
+        React.act(() => show.paused(true));
+        await sleep(50);
+        expect(counts.active).toBe(1);
+
+        text.value = 'b';
+        await expect.element(getByTestId('outside')).toHaveTextContent('b:r');
+      });
+
+      test('a paused reader never activates the relay, mounting or unmounting', async () => {
+        const { counts, show, Host } = setup();
+        render(<Host outside={false} paused />);
+
+        React.act(() => show.paused(false));
+        await sleep(50);
+        expect(counts.activations).toBe(0);
+      });
+
+      test('an unpaused reader mounting next to a paused one takes the watch', async () => {
+        const { counts, text, show, Host } = setup();
+        const { getByTestId } = render(<Host outside={false} paused />);
+        await sleep(50);
+        expect(counts.active).toBe(0);
+
+        React.act(() => show.outside(true));
+        await sleep(50);
+        expect(counts.active).toBe(1);
+
+        text.value = 'b';
+        await expect.element(getByTestId('outside')).toHaveTextContent('b:r');
+      });
+    },
+  );
 
   test('toggling pause does not cause re-renders when signals have not changed', async () => {
     const count = signal(0);

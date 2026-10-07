@@ -4,7 +4,7 @@ export const isBabelApi = (value: unknown): value is ConfigAPI =>
   !!value && typeof value === 'object' && 'types' in value;
 
 export const createTransformedImports = (
-  defaultImports: [string, [string | RegExp]][],
+  defaultImports: [string, (string | RegExp)[]][],
   additionalImports?: [string, string | RegExp][],
   globalImportPaths?: (string | RegExp)[],
 ) => {

@@ -1,11 +1,11 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useRef } from 'react';
 import { ReactiveValue } from '../types.js';
 import { getReactiveFnAndDefinition, reactiveSignal } from '../internals/core-api.js';
 import { getCurrentConsumer } from '../internals/consumer.js';
 import { ReactiveSignal } from '../internals/reactive.js';
 import { snapshot } from '../internals/utils/snapshot.js';
 import { useScope } from './context.js';
-import { usePauseSignalsManager } from './pause-signals-context.js';
+import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
 import { getGlobalScope } from '../internals/contexts.js';
 import { useDeliveryMode, useStateDelivery, type ReactReaderOptions } from './delivery.js';
 
@@ -14,39 +14,20 @@ export type ReactiveHookOptions = ReactReaderOptions;
 
 function useSignalWithSuspension(signal: ReactiveSignal<any, any>, options: ReactiveHookOptions | undefined) {
   const manager = usePauseSignalsManager();
-  const watch = !manager?.paused;
   const delivery = useDeliveryMode(options?.delivery);
-
-  const subscribe = signal.addListenerLazy(watch);
-  let value;
+  const subscribe = addRenderListener(signal, manager);
 
   // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
   if (delivery === 'state') {
-    value = signal.value;
+    const value = signal.value;
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    useStateDelivery(signal, subscribe, signal.updatedCount);
-  } else {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    value = useSyncExternalStore(
-      subscribe,
-      () => signal.value,
-      () => signal.value,
-    );
+    useStateDelivery(signal, subscribe, signal.updatedCount, manager);
+    return value;
   }
 
-  // Register on commit, not during render: a render React discards must not leave the signal in
-  // the manager, where un-pausing would watch it again with nothing left to release it. The commit
-  // may happen under a different pause state than the render took its lease under, so registering
-  // reconciles the watch the subscriptions hold. The signal is scope-cached and may be shared with
-  // other readers, so the manager counts registrations: it keeps pausing the signal until the
-  // last of them unmounts.
-  useEffect(() => {
-    if (manager === null) return;
-    manager.register(signal);
-    return () => manager.unregister(signal);
-  }, [manager, signal]);
-
-  return value;
+  const getSnapshot = () => signal.value;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return usePausableStore(manager, signal, subscribe, getSnapshot);
 }
 
 /**
@@ -100,7 +81,6 @@ export function useReactive<R>(fn: () => R, options?: ReactiveHookOptions): Reac
   }
 
   const manager = usePauseSignalsManager();
-  const watch = !manager?.paused;
   const delivery = useDeliveryMode(options?.delivery);
 
   const scope = useScope() ?? getGlobalScope();
@@ -125,32 +105,19 @@ export function useReactive<R>(fn: () => R, options?: ReactiveHookOptions): Reac
 
   const cloneSignal = cloneSignalRef.current!;
 
-  const subscribe = cloneSignal.addListenerLazy(watch);
-  let value: ReactiveValue<R>;
+  const subscribe = addRenderListener(cloneSignal, manager);
 
   // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
   if (delivery === 'state') {
-    value = cloneSignal.value as ReactiveValue<R>;
+    const value = cloneSignal.value as ReactiveValue<R>;
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    useStateDelivery(cloneSignal, subscribe, cloneSignal.updatedCount);
-  } else {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    value = useSyncExternalStore(
-      subscribe,
-      () => cloneSignal.value as ReactiveValue<R>,
-      () => cloneSignal.value as ReactiveValue<R>,
-    );
+    useStateDelivery(cloneSignal, subscribe, cloneSignal.updatedCount, manager);
+    return value;
   }
 
-  // Like `component()`, register the clone signal with the pause manager on commit, after the store
-  // subscription, reconciling its watch with the pause state it committed under.
-  useEffect(() => {
-    if (manager === null) return;
-    manager.register(cloneSignal);
-    return () => manager.unregister(cloneSignal);
-  }, [manager, cloneSignal]);
-
-  return value;
+  const getSnapshot = () => cloneSignal.value as ReactiveValue<R>;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return usePausableStore(manager, cloneSignal, subscribe, getSnapshot);
 }
 
 /**

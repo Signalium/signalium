@@ -277,6 +277,55 @@ describe('React > component() mount', () => {
     });
   });
 
+  describe('a mount that suspends before committing', () => {
+    const never = new Promise<never>(() => {});
+
+    async function expectPauseReleases(Leaf: () => React.ReactNode, counts: { activeRelays: number }) {
+      let setPaused: (value: boolean) => void = () => {};
+
+      function Host() {
+        const [paused, _setPaused] = useState(false);
+        setPaused = _setPaused;
+        return (
+          <PauseSignalsProvider value={paused}>
+            <Suspense fallback={<span data-testid="fallback" />}>
+              <Leaf />
+            </Suspense>
+          </PauseSignalsProvider>
+        );
+      }
+
+      const { getByTestId } = render(<Host />);
+      await expect.element(getByTestId('fallback')).toBeInTheDocument();
+      await settle();
+      expect(counts.activeRelays).toBe(1);
+
+      React.act(() => setPaused(true));
+      await settle();
+      expect(counts.activeRelays).toBe(0);
+    }
+
+    test('sync component(): pausing releases the relays it read', async () => {
+      const { counts, leafRelay } = createHarness();
+      const Leaf = component(() => {
+        void leafRelay(1).value;
+        throw never;
+      });
+
+      await expectPauseReleases(Leaf, counts);
+    });
+
+    test('async component(): pausing releases the relays it read', async () => {
+      const { counts, leafRelay } = createHarness();
+      const Leaf = component(async () => {
+        void leafRelay(1).value;
+        return await never;
+      });
+
+      await expectPauseReleases(Leaf, counts);
+    });
+  });
+
   describe('useReactive() control', () => {
     test('renders each body once when mounted inside a transition and leaks no relays', async () => {
       const { counts, leafRelay } = createHarness();

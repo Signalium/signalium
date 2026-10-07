@@ -2,6 +2,7 @@ import { useEffect, useInsertionEffect, useLayoutEffect, useReducer, useRef, use
 import type { ReactiveSignal } from '../internals/reactive.js';
 import { checkSignal } from '../internals/get.js';
 import { getReactDelivery, runBatch, scheduleReactDelivery, type ReactDelivery } from '../internals/config.js';
+import type { PauseSignalsManager } from './pause-signals-context.js';
 
 export type { ReactDelivery };
 
@@ -59,8 +60,10 @@ class StateDelivery {
    * hidden `<Activity>`, or mounted into a Suspense-hidden tree), so its first connect is a reveal.
    */
   committedHidden = false;
-  /** The subscription currently held, and the subscribe function it was made with. */
+  /** The subscription currently held, the subscribe function it was made with, and its signal and pause manager. */
   subscribedWith: ((listener: () => void) => () => void) | null = null;
+  subscribedSignal: ReactiveSignal<any, any> | null = null;
+  pauseManager: PauseSignalsManager | null = null;
   unsubscribe: (() => void) | null = null;
   listener: () => void;
 
@@ -95,18 +98,28 @@ class StateDelivery {
     return this.signal.updatedCount !== this.committed ? PullResult.Changed : PullResult.Current;
   }
 
-  subscribe(subscribe: (listener: () => void) => () => void) {
-    if (this.subscribedWith === subscribe) return;
+  subscribe(subscribe: (listener: () => void) => () => void, manager: PauseSignalsManager | null) {
+    if (this.subscribedWith === subscribe && this.pauseManager === manager) return;
 
-    this.unsubscribe?.();
+    this.release();
+
+    // Register before subscribing, so a paused reader never takes the watch.
+    manager?.register(this.signal);
+    this.subscribedSignal = this.signal;
+    this.pauseManager = manager;
     this.unsubscribe = subscribe(this.listener);
     this.subscribedWith = subscribe;
   }
 
   release() {
-    this.unsubscribe?.();
+    if (this.unsubscribe === null) return;
+
+    this.unsubscribe();
+    this.pauseManager?.unregister(this.subscribedSignal!);
     this.unsubscribe = null;
     this.subscribedWith = null;
+    this.subscribedSignal = null;
+    this.pauseManager = null;
   }
 }
 
@@ -177,6 +190,7 @@ export function useStateDelivery(
   signal: ReactiveSignal<any, any>,
   subscribe: (listener: () => void) => () => void,
   version: number,
+  manager: PauseSignalsManager | null,
 ): void {
   const [, forceUpdate] = useReducer(increment, 0);
   const [delivery] = useState(() => new StateDelivery(signal, version, forceUpdate));
@@ -209,7 +223,7 @@ export function useStateDelivery(
     delivery.connected = true;
     delivery.committedHidden = false;
     delivery.mounted = true;
-    delivery.subscribe(subscribe);
+    delivery.subscribe(subscribe, manager);
 
     const pulled = delivery.pull();
 
@@ -226,7 +240,7 @@ export function useStateDelivery(
     return () => {
       delivery.mounted = false;
     };
-  }, [subscribe]);
+  }, [subscribe, manager]);
 
   // Releases the subscription on unmount and on `<Activity mode="hidden">`, but not on a Suspense
   // hide, which leaves passive effects connected.

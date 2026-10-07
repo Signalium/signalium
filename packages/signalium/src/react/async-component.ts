@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useMemo, useRef } from 'react';
 import type * as ReactTypes from 'react';
 import { getCurrentConsumer, setCurrentConsumer } from '../internals/consumer.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
@@ -8,7 +8,7 @@ import { usePropsHash } from './props-hash.js';
 import { useDeliveryMode, useStateDelivery, type ReactReaderOptions } from './delivery.js';
 import { isPromise, isThennable } from '../internals/utils/type-utils.js';
 import { useScope } from './context.js';
-import { usePauseSignalsManager } from './pause-signals-context.js';
+import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
 import { holdLeaseUntilSettled, holdSuspendedLease, releaseAbandonedAttempt } from '../internals/lease.js';
 
 /**
@@ -274,25 +274,19 @@ export function createAsyncComponentWrapper<P extends object>(
     // Same ordering as sync `component()`: watch before computing (so relays read during the
     // computation activate), and compute + settle the signal before the snapshot is read so the
     // mount render's snapshot is stable (no forced re-render / sync redo).
-    const subscribe = sig.addListenerLazy(!manager?.paused);
+    const subscribe = addRenderListener(sig, manager);
 
     const value = readComponentSignal(sig, props);
 
     // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
     if (delivery === 'state') {
       // eslint-disable-next-line react-hooks/rules-of-hooks
-      useStateDelivery(sig, subscribe, sig.updatedCount);
+      useStateDelivery(sig, subscribe, sig.updatedCount, manager);
     } else {
       const getSnapshot = () => sig!.updatedCount;
       // eslint-disable-next-line react-hooks/rules-of-hooks
-      useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+      usePausableStore(manager, sig, subscribe, getSnapshot);
     }
-
-    useEffect(() => {
-      if (manager === null) return;
-      manager.register(sig!);
-      return () => manager.unregister(sig!);
-    }, [manager, sig]);
 
     return value;
   };

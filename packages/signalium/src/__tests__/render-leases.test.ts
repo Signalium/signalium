@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { sleep } from './utils/async.js';
-import { reactive, relay, reactiveSignal, retain } from '../index.js';
+import { reactive, relay, reactiveSignal } from '../index.js';
+// The package path, so the Babel preset transforms async callbacks passed to it.
+import { retain } from 'signalium';
 import { setConfig } from '../config.js';
 import { DEFAULT_RENDER_LEASE_TTL, getRenderLeaseTtl, MAX_TIMEOUT } from '../internals/config.js';
 import {
@@ -454,6 +456,21 @@ describe('retain()', () => {
     release();
     release();
     await sleep(5);
+    expect(counts.active).toBe(0);
+  });
+
+  test('tracks reads after an await in an async fn', async () => {
+    const { counts, derived } = createRelayHarness();
+
+    const release = retain(async () => {
+      await sleep(1);
+      return derived.value;
+    });
+    await sleep(20);
+    expect(counts.active).toBe(1);
+
+    release();
+    await flush();
     expect(counts.active).toBe(0);
   });
 

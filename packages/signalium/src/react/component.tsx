@@ -1,8 +1,8 @@
 import * as React from 'react';
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useScope } from './context.js';
-import { usePauseSignalsManager } from './pause-signals-context.js';
+import { addRenderListener, usePausableStore, usePauseSignalsManager } from './pause-signals-context.js';
 import { setRequestScopeGetter, SignalScope } from '../internals/contexts.js';
 import { createReactiveSignal, ReactiveSignal } from '../internals/reactive.js';
 import { usePropsHash } from './props-hash.js';
@@ -110,7 +110,7 @@ export default function component<Props extends object>(
 
     // Mark the signal as a listener (and watch it unless paused) before computing, so relays read
     // during the computation are activated.
-    const subscribe = signal.addListenerLazy(!manager?.paused);
+    const subscribe = addRenderListener(signal, manager);
 
     // Compute and settle the signal BEFORE `useSyncExternalStore` reads the snapshot. Reading
     // `value` runs `checkSignal`, which bumps `updatedCount` when the lazy signal was dirty (always
@@ -122,20 +122,12 @@ export default function component<Props extends object>(
     // The delivery mode is fixed for the lifetime of the instance, so the hook order is stable.
     if (delivery === 'state') {
       // eslint-disable-next-line react-hooks/rules-of-hooks
-      useStateDelivery(signal, subscribe, signal.updatedCount);
+      useStateDelivery(signal, subscribe, signal.updatedCount, manager);
     } else {
       const getSnapshot = () => signal.updatedCount;
       // eslint-disable-next-line react-hooks/rules-of-hooks
-      useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+      usePausableStore(manager, signal, subscribe, getSnapshot);
     }
-
-    // Register with the pause manager on commit (after the store subscription), so renders React
-    // discards never register, and StrictMode's effect replay re-registers.
-    useEffect(() => {
-      if (manager === null) return;
-      manager.register(signal);
-      return () => manager.unregister(signal);
-    }, [manager, signal]);
 
     return value;
   };

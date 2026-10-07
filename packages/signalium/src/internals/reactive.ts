@@ -58,6 +58,10 @@ interface ListenerMeta {
   updatedAt: number;
   current: Map<() => void, () => void>;
 
+  // Subscribers a paused `PauseSignalsProvider` holds. The listener watch is held while any
+  // subscriber is unpaused; readers are counted before they subscribe, so a paused one never takes it.
+  pausedReaders: number;
+
   // Cached bound add method to avoid creating a new one on each call, this is
   // specifically for React hooks where useSyncExternalStore will resubscribe each
   // time if the method is not cached. This prevents us from having to add a
@@ -205,6 +209,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       (this._listeners = {
         updatedAt: 0,
         current: new Map(),
+        pausedReaders: 0,
         cachedBoundAdd: this.addListener.bind(this),
       })
     );
@@ -215,7 +220,8 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   }
 
   addListener(listener: () => void, opts?: { skipInitial?: boolean }) {
-    const { current } = this.listeners;
+    const meta = this.listeners;
+    const { current } = meta;
 
     if (!current.has(listener)) {
       let effective = listener;
@@ -234,22 +240,25 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       const flags = this.flags;
 
       if ((flags & ReactiveFnFlags.isListener) === 0) {
-        // `watchSignal` updates the flags (activation), so re-read them afterwards.
-        watchSignal(this);
-        this.flags |= ReactiveFnFlags.isListener | ReactiveFnFlags.isListenerWatched;
+        this.flags = flags | ReactiveFnFlags.isListener;
       } else if ((flags & ReactiveFnFlags.isLeased) !== 0) {
         // Claim the render lease: its watch (if any) now belongs to the listener set and is
-        // released when the last listener unsubscribes, exactly like a watch taken here. A lease
-        // taken while paused holds none; `PauseSignalsManager.register` reconciles that on commit.
+        // released when the last listener unsubscribes, exactly like a watch taken here.
         this.flags = flags & ~ReactiveFnFlags.isLeased;
         removeLease(this);
+      }
+
+      current.set(listener, effective);
+
+      if (meta.pausedReaders < current.size) {
+        this._takeListenerWatch();
+      } else {
+        this._pauseWatch();
       }
 
       if (this.watchCount > 0) {
         schedulePull(this);
       }
-
-      current.set(listener, effective);
     }
 
     return () => {
@@ -266,7 +275,9 @@ export class ReactiveSignal<T, Args extends unknown[]> {
             unwatchSignal(this);
           }
 
-          this.listeners.updatedAt = 0;
+          meta.updatedAt = 0;
+        } else if (meta.pausedReaders >= current.size) {
+          this._pauseWatch();
         }
       }
     };
@@ -325,13 +336,47 @@ export class ReactiveSignal<T, Args extends unknown[]> {
    * one, and pulls the signal so changes made while it was unwatched are delivered.
    */
   _resumeWatch() {
-    const flags = this.flags;
-
-    if ((flags & ReactiveFnFlags.isListener) !== 0 && (flags & ReactiveFnFlags.isListenerWatched) === 0) {
-      // `watchSignal` updates the flags (activation), so set ours afterwards.
-      watchSignal(this);
-      this.flags |= ReactiveFnFlags.isListenerWatched;
+    if ((this.flags & ReactiveFnFlags.isListener) !== 0 && this._takeListenerWatch()) {
       schedulePull(this);
+    }
+  }
+
+  /** Takes the listener watch if it isn't held, returning whether it was taken. */
+  private _takeListenerWatch() {
+    if ((this.flags & ReactiveFnFlags.isListenerWatched) !== 0) {
+      return false;
+    }
+
+    // `watchSignal` updates the flags (activation), so set ours afterwards.
+    watchSignal(this);
+    this.flags |= ReactiveFnFlags.isListenerWatched;
+    return true;
+  }
+
+  /**
+   * Adjusts the count of subscribers a paused `PauseSignalsProvider` holds, then takes or drops the
+   * listener watch so it is held while any subscriber is unpaused. `deferred` reconciles in a
+   * microtask, for a reader that unregisters before it unsubscribes.
+   */
+  _addPausedReaders(delta: number, deferred = false) {
+    this.listeners.pausedReaders += delta;
+
+    if (deferred) {
+      queueMicrotask(() => this._reconcilePausedReaders());
+    } else {
+      this._reconcilePausedReaders();
+    }
+  }
+
+  private _reconcilePausedReaders() {
+    const { current, pausedReaders } = this.listeners;
+
+    if (current.size === 0) return;
+
+    if (pausedReaders < current.size) {
+      this._resumeWatch();
+    } else {
+      this._pauseWatch();
     }
   }
 
