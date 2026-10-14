@@ -403,7 +403,13 @@ export class ReactivePromiseImpl<T> {
   }
 
   _clearPending() {
-    this._setValue(this._value!);
+    // Restore the settled state the pending flag interrupted; resolving here would mark a
+    // rejection Ready with no value.
+    if ((this._flags & AsyncFlags.Rejected) !== 0) {
+      this._setError(this._error);
+    } else {
+      this._setValue(this._value!);
+    }
   }
 
   async _setPromise(promise: Promise<T>) {

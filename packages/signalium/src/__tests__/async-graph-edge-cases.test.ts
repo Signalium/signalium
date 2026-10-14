@@ -249,6 +249,47 @@ describe('async graph edge cases', () => {
   });
 });
 
+describe('rejected async reactive whose awaited dependency re-resolves', () => {
+  test('stays rejected when the dependency resolves to an equal value', async () => {
+    const source = signal(1);
+
+    const dependency = reactive(
+      async () => {
+        const isPositive = source.value > 0;
+        await nextTick();
+        return isPositive ? 'same' : 'different';
+      },
+      { desc: 'dependency' },
+    );
+
+    const consumer = reactive(
+      async () => {
+        await dependency();
+        throw new Error('consumer failure');
+      },
+      { desc: 'consumer' },
+    );
+
+    const w = watcher(() => consumer());
+    w.addListener(() => {});
+    await sleep(50);
+
+    const rejected = consumer();
+    expect(rejected.isRejected).toBe(true);
+    expect(rejected.isReady).toBe(false);
+
+    source.value = 2;
+    await sleep(50);
+
+    const result = consumer();
+    expect(result.isPending).toBe(false);
+    expect(result.isRejected).toBe(true);
+    expect(result.isReady).toBe(false);
+    expect(result.value).toBeUndefined();
+    expect((result.error as Error).message).toBe('consumer failure');
+  });
+});
+
 describe('combinatorial sync/async tree chaos tests', () => {
   type NodeKind = 'sync' | 'async';
 
