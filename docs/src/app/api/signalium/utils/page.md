@@ -41,7 +41,10 @@ Stable hash for arbitrary values. Values are hashed semi-deeply, meaning that ob
 ### registerCustomHash
 
 ```ts
-export function registerCustomHash<T>(ctor: { new (): T }, hashFn: (obj: T) => number): void;
+export function registerCustomHash<T>(
+  ctor: { new (): T },
+  hashFn: (obj: T) => number,
+): void;
 ```
 
 Provide a custom hash for a prototype. This is useful for hashing class instances, which are hashed by reference by default.
