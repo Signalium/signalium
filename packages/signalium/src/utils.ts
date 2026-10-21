@@ -15,6 +15,10 @@ import type { ReactiveSignal } from './internals/reactive.js';
 import { isPromise } from './internals/utils/type-utils.js';
 import { MAX_TIMEOUT } from './internals/config.js';
 import { ReactiveValue, RelayState, ReactivePromise } from './types.js';
+import type { Watcher } from './types.js';
+
+// Promise reactions and weak graph edges do not root their producing watcher.
+const pendingOnceWatchers = new Set<Watcher<unknown>>();
 
 /**
  * Watches a function once in a reactive context, activating any relays,
@@ -22,9 +26,11 @@ import { ReactiveValue, RelayState, ReactivePromise } from './types.js';
  *
  * This is useful for testing or one-time reactive operations where you need
  * relays to be active but don't want the watcher to reschedule on updates.
+ * Pending operations keep their watcher alive until fulfillment or rejection.
+ * There is no timeout or cancellation; work that never settles remains watched.
  *
  * @param fn - A sync or async function to watch once
- * @returns A promise that resolves with the function's return value
+ * @returns The synchronous value, or a native promise for an asynchronous result
  *
  * @example
  * ```ts
@@ -41,6 +47,13 @@ import { ReactiveValue, RelayState, ReactivePromise } from './types.js';
 export function watchOnce<T>(fn: () => T): T {
   // Create a watcher signal
   const signal = watcher(fn) as ReactiveSignal<T, unknown[]>;
+  pendingOnceWatchers.add(signal);
+
+  const release = () => {
+    if (pendingOnceWatchers.delete(signal)) {
+      unwatchSignal(signal);
+    }
+  };
 
   try {
     // Watch the signal to activate any relays
@@ -49,17 +62,15 @@ export function watchOnce<T>(fn: () => T): T {
     // Get the value, which runs the function
     let result = getSignal(signal);
 
-    if (isReactivePromise(result as object) || isPromise(result as object)) {
-      result = (result as Promise<T>).finally(() => {
-        unwatchSignal(signal);
-      }) as ReactiveValue<T>;
+    if (result !== null && typeof result === 'object' && (isReactivePromise(result) || isPromise(result))) {
+      result = result.finally(release) as ReactiveValue<T>;
     } else {
-      unwatchSignal(signal);
+      release();
     }
 
     return result as T;
   } catch (error) {
-    unwatchSignal(signal);
+    release();
     throw error;
   }
 }
