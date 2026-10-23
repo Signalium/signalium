@@ -1,5 +1,11 @@
 # signalium
 
+## 4.0.2
+
+### Patch Changes
+
+- 2bf532c: Fix `watchOnce` letting a pending async graph be garbage collected before it settles. The watcher is now kept alive until its promise fulfills or rejects.
+
 ## 4.0.1
 
 ### Patch Changes
