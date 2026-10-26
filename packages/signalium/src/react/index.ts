@@ -10,5 +10,5 @@ export {
 export { useContext } from './context.js';
 export { useSignal } from './use-signal.js';
 export { useReactive, useReactiveShallow, useReactiveDeep, type ReactiveHookOptions } from './use-reactive.js';
-export type { ReactDelivery, ReactReaderOptions } from './delivery.js';
+export { deliverAsTransitionsFor, type ReactDelivery, type ReactReaderOptions } from './delivery.js';
 export { PauseSignalsProvider } from './pause-signals-context.js';

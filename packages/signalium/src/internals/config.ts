@@ -81,7 +81,8 @@ export function setConfig(
     /**
      * Schedules a flush of pending `'state'` deliveries. All readers notified before the flush
      * runs are updated together, inside `runBatch`. Defaults to a microtask. Must not run the
-     * flush inside `startTransition`, or deliveries would take the transition's lane.
+     * flush inside `startTransition`, or every delivery would take the transition's lane; use
+     * `deliverAsTransitionsFor` from `signalium/react` for a bounded window instead.
      */
     scheduleReactDelivery: (fn: () => void) => void;
   }>,
