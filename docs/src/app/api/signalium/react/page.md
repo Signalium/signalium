@@ -230,6 +230,27 @@ const User = () => {
 | ReactivePromise | `signal: ReactivePromise<R>`  | `ReactivePromise<R>`                |
 | Function        | `fn: (...args) => R, ...args` | `R` (or `ReactivePromise` if async) |
 
+### deliverAsTransitionsFor
+
+```ts
+export function deliverAsTransitionsFor(ms: number): void;
+```
+
+For the next `ms` milliseconds, `'state'` deliveries render inside `startTransition` instead of at React's default priority. Use it around a burst of non-urgent updates, such as a screen resuming after a tab switch, so React time-slices the burst instead of blocking frames. A call never shortens a window that is already open. `'sync'` readers are unaffected. See [Update delivery and transitions](/core/react#update-delivery-and-transitions).
+
+```tsx
+import { deliverAsTransitionsFor } from 'signalium/react';
+
+function onTabPress(tab: string) {
+  deliverAsTransitionsFor(800);
+  navigate(tab);
+}
+```
+
+| Parameter | Type     | Description                               |
+| --------- | -------- | ----------------------------------------- |
+| ms        | `number` | How long deliveries render as transitions |
+
 ### useContext
 
 ```ts
