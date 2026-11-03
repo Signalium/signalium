@@ -570,6 +570,79 @@ describe('async computeds', () => {
     expect(outerCount).toBe(1);
   });
 
+  test('watcher wrapping an async function notifies listeners when the result settles', async () => {
+    const name = signal('world');
+    const w = watcher(async () => `hello ${name.value}`);
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(() => {
+      seen.push(w.value.value);
+    });
+
+    await asyncSettled();
+    expect(seen).toEqual(['hello world']);
+
+    name.value = 'developers';
+    await asyncSettled();
+    expect(seen).toEqual(['hello world', 'hello developers']);
+
+    unsub();
+  });
+
+  test('watcher wrapping a slow async function notifies listeners when it settles', async () => {
+    const name = signal('world');
+    const w = watcher(async () => {
+      const value = `hello ${name.value.toLowerCase()}`;
+      await sleep(10);
+      return value;
+    });
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(() => {
+      seen.push(w.value.value);
+    });
+
+    await sleep(30);
+    // The initial run sees the pending promise, then the listener runs again once it resolves
+    expect(seen).toEqual([undefined, 'hello world']);
+
+    name.value = 'developers';
+    await sleep(30);
+    expect(seen).toEqual([undefined, 'hello world', 'hello developers']);
+
+    // Rerunning and settling to an equal value does not notify again
+    name.value = 'DEVELOPERS';
+    await sleep(30);
+    expect(seen).toEqual([undefined, 'hello world', 'hello developers']);
+
+    unsub();
+  });
+
+  test('watcher wrapping an async function notifies listeners on rejection', async () => {
+    const shouldThrow = signal(false);
+    const w = watcher(async () => {
+      if (shouldThrow.value) {
+        throw new Error('boom');
+      }
+
+      return 'ok';
+    });
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(() => {
+      seen.push(w.value.isRejected ? (w.value.error as Error).message : w.value.value);
+    });
+
+    await asyncSettled();
+    expect(seen).toEqual(['ok']);
+
+    shouldThrow.value = true;
+    await asyncSettled();
+    expect(seen).toEqual(['ok', 'boom']);
+
+    unsub();
+  });
+
   describe('dependency pruning during async rerun', () => {
     test('dependencies consumed after an await are NOT disconnected when the function reruns due to being directly dirtied', async () => {
       // This test verifies that dependencies consumed after an await point are not

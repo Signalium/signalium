@@ -62,6 +62,13 @@ export const scheduleListeners = (signal: ReactiveSignal<any, any> | StateSignal
   scheduleFlush(flushWatchers);
 };
 
+// Like `scheduleListeners`, but a no-op if the signal's listeners are already queued for this flush.
+export const scheduleListenersOnce = (signal: ReactiveSignal<any, any>) => {
+  if (!PENDING_LISTENERS.includes(signal)) {
+    scheduleListeners(signal);
+  }
+};
+
 export const scheduleTracer = (tracer: Tracer) => {
   if (IS_DEV) {
     PENDING_TRACERS!.push(tracer);

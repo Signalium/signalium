@@ -51,6 +51,8 @@ export const enum ReactiveFnFlags {
   isListenerPaused = 0b1000000000,
   // Deactivated while it had paused holders: holds a paused hold on each dep until rewatched or released.
   isPausedHeld = 0b10000000000,
+  // Created by `watcher()`; its listeners also run when its own async result settles.
+  isWatcher = 0b100000000000,
 }
 
 let ID = 0;
@@ -201,6 +203,18 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       this.flags |= ReactiveFnFlags.isPausedHeld;
     } else {
       this.flags &= ~ReactiveFnFlags.isPausedHeld;
+    }
+  }
+
+  get _isWatcher() {
+    return (this.flags & ReactiveFnFlags.isWatcher) !== 0;
+  }
+
+  set _isWatcher(isWatcher: boolean) {
+    if (isWatcher) {
+      this.flags |= ReactiveFnFlags.isWatcher;
+    } else {
+      this.flags &= ~ReactiveFnFlags.isWatcher;
     }
   }
 
