@@ -4,7 +4,7 @@ import { getUnknownSignalFnName } from './utils/debug-name.js';
 import { SignalScope } from './contexts.js';
 import { getSignal } from './get.js';
 import { Edge } from './edge.js';
-import { cancelPull, schedulePull } from './scheduling.js';
+import { cancelPull, schedulePull, scheduleRelease } from './scheduling.js';
 import { hashValue } from './utils/hash.js';
 import { stringifyValue } from './utils/stringify.js';
 import { Callback } from './callback.js';
@@ -273,6 +273,9 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
           if ((flags & ReactiveFnFlags.isListenerWatched) !== 0) {
             unwatchSignal(this);
+          } else {
+            // Paused: the pause already unwatched, but told relays to skip cleanup.
+            scheduleRelease(this);
           }
 
           meta.updatedAt = 0;

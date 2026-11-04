@@ -41,6 +41,19 @@ export function activateSignal(signal: ReactiveSignal<any, any>): void {
   }
 }
 
+/** Delivers the cleanup a pause skipped to the relays under `signal` that nothing has re-watched. */
+export function releasePausedSignal(signal: ReactiveSignal<any, any>) {
+  for (const dep of signal.deps.keys()) {
+    if (dep.watchCount === 0 && !dep._isActive) {
+      releasePausedSignal(dep);
+    }
+  }
+
+  if (isRelay(signal)) {
+    signal._value?.();
+  }
+}
+
 export function deactivateSignal(signal: ReactiveSignal<any, any>, options: DeactivateOptions = {}) {
   signal._isActive = false;
 

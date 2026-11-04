@@ -739,12 +739,22 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
 
   let active = false;
   let currentSub: RelayHooks | (() => void) | undefined | void;
+  // A pausing consumer skips its final cleanup, so it is owed one if the relay is released without resuming.
+  let pausedSub: RelayHooks | undefined;
 
   const unsubscribe = (options?: DeactivateOptions) => {
+    // Already torn down and owed nothing: a release walk can reach relays a pause never touched.
+    if (!active && pausedSub === undefined) return;
+
     if (typeof currentSub === 'function') {
       currentSub();
     } else if (currentSub !== undefined) {
       currentSub.deactivate?.(options);
+      if (options?.isPausing) pausedSub = currentSub;
+    } else if (pausedSub !== undefined && !options?.isPausing) {
+      const sub = pausedSub;
+      pausedSub = undefined;
+      sub.deactivate?.(options);
     }
 
     const signal = p['_signal'] as ReactiveSignal<any, any>;
@@ -781,6 +791,7 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
   const def: ReactiveDefinition<(options?: DeactivateOptions) => void, unknown[]> = {
     compute: () => {
       if (active === false) {
+        pausedSub = undefined;
         currentSub = activate(state);
         active = true;
       } else if (typeof currentSub === 'function' || currentSub === undefined) {

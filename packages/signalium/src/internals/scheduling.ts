@@ -5,7 +5,7 @@ import { checkAndRunListeners, checkSignal } from './get.js';
 import { runListeners as runDerivedListeners } from './reactive.js';
 import { runListeners as runStateListeners } from './signal.js';
 import type { Tracer } from './trace.js';
-import { deactivateSignal } from './watch.js';
+import { deactivateSignal, releasePausedSignal } from './watch.js';
 import { StateSignal } from './signal.js';
 
 let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
@@ -13,6 +13,7 @@ let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
 // Maps each pending signal to its deactivation context (pause vs cleanup).
 // Clean wins on conflict.
 let PENDING_DEACTIVE = new Map<ReactiveSignal<any, any>, DeactivateOptions>();
+let PENDING_RELEASES = new Set<ReactiveSignal<any, any>>();
 let PENDING_LISTENERS: (ReactiveSignal<any, any> | StateSignal<any>)[] = [];
 let PENDING_TRACERS: Tracer[] | undefined = IS_DEV ? [] : undefined;
 
@@ -58,6 +59,11 @@ export const scheduleDeactivate = (signal: ReactiveSignal<any, any>, options: De
 
 export const cancelDeactivate = (signal: ReactiveSignal<any, any>) => {
   PENDING_DEACTIVE.delete(signal);
+};
+
+export const scheduleRelease = (signal: ReactiveSignal<any, any>) => {
+  PENDING_RELEASES.add(signal);
+  scheduleFlush(flushWatchers);
 };
 
 export const scheduleListeners = (signal: ReactiveSignal<any, any> | StateSignal<any>) => {
@@ -113,6 +119,15 @@ const flushWatchers = async () => {
     }
 
     PENDING_DEACTIVE.clear();
+
+    // After deactivations, so a pause in this flush has already torn its relays down.
+    for (const signal of PENDING_RELEASES) {
+      if (signal.watchCount === 0 && !signal._isListener) {
+        releasePausedSignal(signal);
+      }
+    }
+
+    PENDING_RELEASES.clear();
 
     for (const signal of PENDING_LISTENERS) {
       if (signal instanceof ReactiveSignal) {
