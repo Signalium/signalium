@@ -305,12 +305,14 @@ export class ReactivePromiseImpl<T> {
     // isPending/value). Skip self-subscription to avoid a dependency cycle.
     if (currentConsumer === signal) return;
 
-    if (currentConsumer?.watchCount === 0) {
+    if (currentConsumer !== undefined && !currentConsumer._isActive) {
       const { ref, computedCount, deps } = currentConsumer;
       const prevEdge = deps.get(signal);
 
       if (prevEdge?.consumedAt !== computedCount) {
-        if (prevEdge === undefined && currentConsumer._isPausedHeld) signal.pausedCount++;
+        if (prevEdge === undefined && currentConsumer._isPausedHeld) {
+          signal.pausedCount++;
+        }
 
         const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, signal.updatedCount, computedCount);
 

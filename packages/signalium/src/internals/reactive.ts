@@ -8,7 +8,7 @@ import { cancelPull, schedulePull, scheduleRelease } from './scheduling.js';
 import { hashValue } from './utils/hash.js';
 import { stringifyValue } from './utils/stringify.js';
 import { Callback } from './callback.js';
-import { dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
+import { deactivateSignal, dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
 import { equalsFrom } from './utils/equals.js';
 import { dirtySignal } from './dirty.js';
 import { addLease, removeLease } from './lease.js';
@@ -49,7 +49,7 @@ export const enum ReactiveFnFlags {
   isListenerWatched = 0b100000000,
   // The listener status holds a paused hold instead of a watch; see `pausedCount`.
   isListenerPaused = 0b1000000000,
-  // Deactivated by a pause: holds a paused hold on each dep until rewatched or released.
+  // Deactivated while it had paused holders: holds a paused hold on each dep until rewatched or released.
   isPausedHeld = 0b10000000000,
 }
 
@@ -127,7 +127,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   computedCount: number = 0;
 
   watchCount: number = 0;
-  // Paused-off signals and listeners that hold this one. The pause's skipped cleanup runs when the last is dropped.
+  // Paused-off subs that depend on this, plus a paused listener. While any remain, deactivation pauses.
   pausedCount: number = 0;
 
   key: SignalId | undefined;
@@ -338,7 +338,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     if ((flags & ReactiveFnFlags.isListenerWatched) !== 0) {
       this.flags = (flags & ~ReactiveFnFlags.isListenerWatched) | ReactiveFnFlags.isListenerPaused;
       this.pausedCount++;
-      unwatchSignal(this, { isPausing: true });
+      unwatchSignal(this);
     }
   }
 
@@ -361,7 +361,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     this.flags = (flags & ~ReactiveFnFlags.isListenerPaused) | ReactiveFnFlags.isListenerWatched;
 
     if ((flags & ReactiveFnFlags.isListenerPaused) !== 0) {
-      this.pausedCount--;
+      dropPausedHold(this);
     }
 
     return true;
@@ -385,7 +385,10 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       ReactiveFnFlags.isListenerPaused
     ) {
       this.flags = flags & ~ReactiveFnFlags.isListenerPaused;
-      dropPausedHold(this);
+
+      if (dropPausedHold(this)) {
+        deactivateSignal(this);
+      }
     }
   }
 

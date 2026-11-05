@@ -1,20 +1,16 @@
 import { scheduleFlush as _scheduleFlush, runBatch } from './config.js';
 import { ReactiveSignal } from './reactive.js';
-import type { DeactivateOptions } from '../types.js';
 import { checkAndRunListeners, checkSignal } from './get.js';
 import { runListeners as runDerivedListeners } from './reactive.js';
 import { runListeners as runStateListeners } from './signal.js';
 import type { Tracer } from './trace.js';
-import { deactivateSignal, dropPausedHold } from './watch.js';
+import { deactivateSignal } from './watch.js';
 import { StateSignal } from './signal.js';
 
 let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
 let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
-// Maps each pending signal to its deactivation context (pause vs cleanup).
-// Clean wins on conflict.
-let PENDING_DEACTIVE = new Map<ReactiveSignal<any, any>, DeactivateOptions>();
+let PENDING_DEACTIVE = new Set<ReactiveSignal<any, any>>();
 let PENDING_RELEASES = new Set<ReactiveSignal<any, any>>();
-let PENDING_HOLD_DROPS: ReactiveSignal<any, any>[] = [];
 let PENDING_LISTENERS: (ReactiveSignal<any, any> | StateSignal<any>)[] = [];
 let PENDING_TRACERS: Tracer[] | undefined = IS_DEV ? [] : undefined;
 
@@ -47,14 +43,8 @@ export const scheduleAsyncPull = (signal: ReactiveSignal<any, any>) => {
   scheduleFlush(flushWatchers);
 };
 
-export const scheduleDeactivate = (signal: ReactiveSignal<any, any>, options: DeactivateOptions = {}) => {
-  const existing = PENDING_DEACTIVE.get(signal);
-  // A genuine cleanup must never be downgraded to a pause: if this signal was
-  // already scheduled as a clean, keep it a clean.
-  PENDING_DEACTIVE.set(
-    signal,
-    existing === undefined ? options : { isPausing: Boolean(existing.isPausing && options.isPausing) },
-  );
+export const scheduleDeactivate = (signal: ReactiveSignal<any, any>) => {
+  PENDING_DEACTIVE.add(signal);
   scheduleFlush(flushWatchers);
 };
 
@@ -64,12 +54,6 @@ export const cancelDeactivate = (signal: ReactiveSignal<any, any>) => {
 
 export const scheduleRelease = (signal: ReactiveSignal<any, any>) => {
   PENDING_RELEASES.add(signal);
-  scheduleFlush(flushWatchers);
-};
-
-// Deferred so a relay's cleanup never runs inside the compute that dropped the edge.
-export const scheduleDropPausedHold = (signal: ReactiveSignal<any, any>) => {
-  PENDING_HOLD_DROPS.push(signal);
   scheduleFlush(flushWatchers);
 };
 
@@ -121,24 +105,18 @@ const flushWatchers = async () => {
   currentFlush = null;
 
   runBatch(() => {
-    for (const [signal, options] of PENDING_DEACTIVE) {
-      deactivateSignal(signal, options);
-    }
-
-    PENDING_DEACTIVE.clear();
-
-    // After deactivations, so a pause in this flush has already left its holds.
+    // Before deactivations, so a reader paused and released in one tick gets a single cleanup.
     for (const signal of PENDING_RELEASES) {
       signal._releasePausedHold();
     }
 
     PENDING_RELEASES.clear();
 
-    for (const signal of PENDING_HOLD_DROPS) {
-      dropPausedHold(signal);
+    for (const signal of PENDING_DEACTIVE) {
+      deactivateSignal(signal);
     }
 
-    PENDING_HOLD_DROPS = [];
+    PENDING_DEACTIVE.clear();
 
     for (const signal of PENDING_LISTENERS) {
       if (signal instanceof ReactiveSignal) {
