@@ -771,4 +771,46 @@ describe('React > Pause Signals', () => {
     await sleep(50);
     expect(log).toEqual(['one:pause', 'two:pause', 'one:clean', 'two:clean']);
   });
+  test('a reader that mounts under a paused provider keeps a relay paused after an active reader unmounts', async () => {
+    const log: string[] = [];
+    const source = relay<string>(state => {
+      state.value = 'r';
+      return {
+        deactivate: ({ isPausing = false } = {}) => {
+          log.push(isPausing ? 'pause' : 'clean');
+        },
+      };
+    });
+    const readA = () => source.value;
+    const readB = () => source.value;
+    const A = () => <span data-testid="a">{useReactive(readA)}</span>;
+    const B = () => <span data-testid="b">{useReactive(readB)}</span>;
+
+    const controls = { shown: (_: { a: boolean; b: boolean }) => {} };
+
+    function Host() {
+      const [shown, setShown] = useState({ a: true, b: false });
+      controls.shown = setShown;
+      return (
+        <>
+          {shown.a && <A />}
+          <PauseSignalsProvider value={true}>{shown.b && <B />}</PauseSignalsProvider>
+        </>
+      );
+    }
+
+    const { getByTestId } = render(<Host />);
+    await expect.element(getByTestId('a')).toHaveTextContent('r');
+
+    React.act(() => controls.shown({ a: true, b: true }));
+    await expect.element(getByTestId('b')).toHaveTextContent('r');
+
+    React.act(() => controls.shown({ a: false, b: true }));
+    await sleep(50);
+    expect(log).toEqual(['pause']);
+
+    React.act(() => controls.shown({ a: false, b: false }));
+    await sleep(50);
+    expect(log).toEqual(['pause', 'clean']);
+  });
 });

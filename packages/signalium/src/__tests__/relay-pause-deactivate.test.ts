@@ -246,6 +246,50 @@ describe('relay deactivate distinguishes pause from cleanup', () => {
     expect(r.deactivations).toEqual([true, false]);
   });
 
+  describe('a reader that subscribes while paused', () => {
+    const setupSharedRelay = async () => {
+      const r = createRelay();
+      const a = watcher(() => r.sub.value);
+      const b = watcher(() => r.sub.value);
+      const unsubA = a.addListener(() => {});
+      await nextTick();
+      return { r, b, unsubA };
+    };
+
+    test('keeps a relay paused after its active reader leaves', async () => {
+      const { r, b, unsubA } = await setupSharedRelay();
+
+      asSignal(b)._addPausedReaders(1);
+      const unsubB = b.addListener(() => {});
+      void b.value;
+      await nextTick();
+
+      unsubA();
+      await nextTick();
+      expect(r.deactivations).toEqual([true]);
+
+      unsubB();
+      await nextTick();
+      expect(r.deactivations).toEqual([true, false]);
+    });
+
+    test('with a paused render lease keeps a relay paused until the lease expires', async () => {
+      const { r, b, unsubA } = await setupSharedRelay();
+
+      asSignal(b).addListenerLazy(false);
+      void b.value;
+      await nextTick();
+
+      unsubA();
+      await nextTick();
+      expect(r.deactivations).toEqual([true]);
+
+      releaseRenderLeases();
+      await nextTick();
+      expect(r.deactivations).toEqual([true, false]);
+    });
+  });
+
   describe('a paused reader that recomputes', () => {
     test('and stops reading a relay leaves an active reader watching it', async () => {
       const r = createRelay();

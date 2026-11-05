@@ -8,7 +8,7 @@ import { cancelPull, schedulePull, scheduleRelease } from './scheduling.js';
 import { hashValue } from './utils/hash.js';
 import { stringifyValue } from './utils/stringify.js';
 import { Callback } from './callback.js';
-import { deactivateSignal, dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
+import { addPausedHold, deactivateSignal, dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
 import { equalsFrom } from './utils/equals.js';
 import { dirtySignal } from './dirty.js';
 import { addLease, removeLease } from './lease.js';
@@ -307,11 +307,13 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     const flags = this.flags;
 
     if ((flags & ReactiveFnFlags.isListener) === 0) {
+      this.flags |= ReactiveFnFlags.isListener | ReactiveFnFlags.isLeased;
+
       if (watch) {
         this._takeListenerWatch();
+      } else {
+        this._pauseWatch();
       }
-
-      this.flags |= ReactiveFnFlags.isListener | ReactiveFnFlags.isLeased;
 
       addLease(this);
     } else if (
@@ -331,7 +333,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     return this.listeners.cachedBoundAdd;
   }
 
-  /** Drops the listener watch; listeners stay subscribed. */
+  /** Swaps the listener watch for a paused hold, or takes one if it held nothing; listeners stay subscribed. */
   _pauseWatch() {
     const flags = this.flags;
 
@@ -339,6 +341,13 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       this.flags = (flags & ~ReactiveFnFlags.isListenerWatched) | ReactiveFnFlags.isListenerPaused;
       this.pausedCount++;
       unwatchSignal(this);
+    } else if (
+      (flags & (ReactiveFnFlags.isListener | ReactiveFnFlags.isListenerPaused)) ===
+      ReactiveFnFlags.isListener
+    ) {
+      // A reader that subscribed while paused never had a watch to swap.
+      this.flags = flags | ReactiveFnFlags.isListenerPaused;
+      addPausedHold(this);
     }
   }
 
