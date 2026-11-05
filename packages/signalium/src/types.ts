@@ -33,6 +33,9 @@ export interface DeactivateOptions {
    * genuine cleanup (no remaining watchers). Relays should avoid scheduling
    * destructive work like garbage collection while pausing, so that resuming
    * can reuse the existing state.
+   *
+   * If every paused reader is then released without resuming, the relay gets a
+   * second call with `isPausing: false` and no `activate` in between.
    */
   isPausing?: boolean;
 }
@@ -42,6 +45,10 @@ export type RelayHooks = {
   /**
    * Called when the relay is torn down. See {@link DeactivateOptions.isPausing}
    * for distinguishing a temporary pause from a genuine cleanup.
+   *
+   * One activation can get two calls: `{ isPausing: true }`, then
+   * `{ isPausing: false }` once its paused readers are released. The hook must
+   * accept the second call after the first has already torn down.
    */
   deactivate?(options?: DeactivateOptions): void;
 };

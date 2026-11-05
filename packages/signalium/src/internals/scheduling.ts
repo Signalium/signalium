@@ -5,7 +5,7 @@ import { checkAndRunListeners, checkSignal } from './get.js';
 import { runListeners as runDerivedListeners } from './reactive.js';
 import { runListeners as runStateListeners } from './signal.js';
 import type { Tracer } from './trace.js';
-import { deactivateSignal, releasePausedSignal } from './watch.js';
+import { deactivateSignal } from './watch.js';
 import { StateSignal } from './signal.js';
 
 let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
@@ -120,11 +120,9 @@ const flushWatchers = async () => {
 
     PENDING_DEACTIVE.clear();
 
-    // After deactivations, so a pause in this flush has already torn its relays down.
+    // After deactivations, so a pause in this flush has already left its holds.
     for (const signal of PENDING_RELEASES) {
-      if (signal.watchCount === 0 && !signal._isListener) {
-        releasePausedSignal(signal);
-      }
+      signal._releasePausedHold();
     }
 
     PENDING_RELEASES.clear();

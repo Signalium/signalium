@@ -743,7 +743,7 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
   let pausedSub: RelayHooks | undefined;
 
   const unsubscribe = (options?: DeactivateOptions) => {
-    // Already torn down and owed nothing: a release walk can reach relays a pause never touched.
+    // A release after a pause that left no deactivate hook owes nothing.
     if (!active && pausedSub === undefined) return;
 
     if (typeof currentSub === 'function') {

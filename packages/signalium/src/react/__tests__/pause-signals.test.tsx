@@ -598,4 +598,54 @@ describe('React > Pause Signals', () => {
     // Render count should not have changed
     expect(Child.renderCount).toBe(initialRenderCount);
   });
+
+  test('a relay shared by paused readers is cleaned up once the last one unmounts', async () => {
+    const deactivations: boolean[] = [];
+    const source = reactive(() =>
+      relay<string>(state => {
+        state.value = 'r';
+        return {
+          deactivate: ({ isPausing = false } = {}) => {
+            deactivations.push(isPausing);
+          },
+        };
+      }),
+    );
+    // Two thunks, so each reader has its own signal over the one relay.
+    const readA = () => source().value;
+    const readB = () => source().value;
+    const A = () => <span data-testid="a">{useReactiveShallow(readA)}</span>;
+    const B = () => <span data-testid="b">{useReactiveShallow(readB)}</span>;
+
+    const controls = { paused: (_: boolean) => {}, shown: (_: { a: boolean; b: boolean }) => {} };
+
+    function Host() {
+      const [paused, setPaused] = useState(false);
+      const [shown, setShown] = useState({ a: true, b: true });
+      controls.paused = setPaused;
+      controls.shown = setShown;
+      return (
+        <PauseSignalsProvider value={paused}>
+          {shown.a && <A />}
+          {shown.b && <B />}
+        </PauseSignalsProvider>
+      );
+    }
+
+    const { getByTestId } = render(<Host />);
+    await expect.element(getByTestId('a')).toHaveTextContent('r');
+    await expect.element(getByTestId('b')).toHaveTextContent('r');
+
+    React.act(() => controls.paused(true));
+    await sleep(50);
+    expect(deactivations).toEqual([true]);
+
+    React.act(() => controls.shown({ a: false, b: true }));
+    await sleep(50);
+    expect(deactivations).toEqual([true]);
+
+    React.act(() => controls.shown({ a: false, b: false }));
+    await sleep(50);
+    expect(deactivations).toEqual([true, false]);
+  });
 });
