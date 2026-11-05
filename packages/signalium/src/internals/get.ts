@@ -4,7 +4,7 @@ import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
 import { createEdge, Edge, EdgeType } from './edge.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
 import { ReactiveFnState, isRelay, ReactiveSignal } from './reactive.js';
-import { scheduleListeners, scheduleTracer } from './scheduling.js';
+import { scheduleDropPausedHold, scheduleListeners, scheduleTracer } from './scheduling.js';
 import { getTracerProxy, SignalType, TracerEventType } from './trace.js';
 import { isGeneratorResult, isPromise } from './utils/type-utils.js';
 import { unwatchSignal, watchSignal } from './watch.js';
@@ -32,6 +32,8 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
 
         if (currentConsumer.watchCount > 0) {
           watchSignal(signal);
+        } else if (currentConsumer._isPausedHeld) {
+          signal.pausedCount++;
         }
       }
 
@@ -210,7 +212,11 @@ export function disconnectSignal(signal: ReactiveSignal<any, any>, computedCount
 
   for (const [dep, edge] of deps) {
     if (edge.consumedAt !== computedCount) {
-      unwatchSignal(dep);
+      if (signal._isPausedHeld) {
+        scheduleDropPausedHold(dep);
+      } else {
+        unwatchSignal(dep);
+      }
       dep.subs.delete(ref);
       deps.delete(dep);
       // Mark disconnected dep as Dirty so it revalidates when re-read.

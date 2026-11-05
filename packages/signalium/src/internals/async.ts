@@ -310,6 +310,8 @@ export class ReactivePromiseImpl<T> {
       const prevEdge = deps.get(signal);
 
       if (prevEdge?.consumedAt !== computedCount) {
+        if (prevEdge === undefined && currentConsumer._isPausedHeld) signal.pausedCount++;
+
         const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, signal.updatedCount, computedCount);
 
         signal.subs.set(ref, newEdge);

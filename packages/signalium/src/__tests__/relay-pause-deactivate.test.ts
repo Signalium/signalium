@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { reactive, relay, watcher } from '../index.js';
+import { reactive, relay, signal, watcher } from '../index.js';
 import { watchSignal, unwatchSignal } from '../internals/watch.js';
 import { ReactiveSignal } from '../internals/reactive.js';
 import { releaseRenderLeases } from '../internals/lease.js';
@@ -133,6 +133,67 @@ describe('relay deactivate distinguishes pause from cleanup', () => {
     releaseRenderLeases();
     await nextTick();
     expect(deactivations).toEqual([true, false]);
+  });
+
+  test.each([
+    ['directly', (r: ReturnType<typeof createRelay>['sub']) => () => r.value],
+    ['through a reactive', (r: ReturnType<typeof createRelay>['sub']) => reactive(() => r.value)],
+  ])('a paused reader that switches deps holds its new deps (%s)', async (_, read) => {
+    const r1 = createRelay();
+    const r2 = createRelay();
+    const read1 = read(r1.sub);
+    const read2 = read(r2.sub);
+    const useFirst = signal(true);
+    const a = watcher(() => (useFirst.value ? read1() : read2()));
+    const b = watcher(() => read2());
+    const unsubA = a.addListener(() => {});
+    const unsubB = b.addListener(() => {});
+    await nextTick();
+
+    for (const r of [a, b]) (r as unknown as ReactiveSignal<any, any>)._addPausedReaders(1);
+    await nextTick();
+    expect([r1.deactivations, r2.deactivations]).toEqual([[true], [true]]);
+
+    // A paused reader still recomputes when its parent rerenders.
+    useFirst.value = false;
+    void a.value;
+    await nextTick();
+    expect([r1.deactivations, r2.deactivations]).toEqual([[true, false], [true]]);
+
+    unsubA();
+    await nextTick();
+    expect(r2.deactivations).toEqual([true]);
+
+    unsubB();
+    await nextTick();
+    expect(r2.deactivations).toEqual([true, false]);
+  });
+
+  test('a dep a paused reader stops reading keeps no hold', async () => {
+    const { deactivations, sub } = createRelay();
+    const other = createRelay();
+    const useRelay = signal(true);
+    const a = watcher(() => (useRelay.value ? sub.value : other.sub.value));
+    const unsubA = a.addListener(() => {});
+    await nextTick();
+
+    (a as unknown as ReactiveSignal<any, any>)._addPausedReaders(1);
+    await nextTick();
+    useRelay.value = false;
+    void a.value;
+    await nextTick();
+    expect(deactivations).toEqual([true, false]);
+    unsubA();
+    await nextTick();
+
+    const b = watcher(() => sub.value);
+    const unsubB = b.addListener(() => {});
+    await nextTick();
+    (b as unknown as ReactiveSignal<any, any>)._addPausedReaders(1);
+    await nextTick();
+    unsubB();
+    await nextTick();
+    expect(deactivations).toEqual([true, false, true, false]);
   });
 
   test('a release reaches each signal of a diamond-shaped graph once', async () => {

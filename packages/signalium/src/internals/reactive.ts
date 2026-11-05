@@ -127,7 +127,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   computedCount: number = 0;
 
   watchCount: number = 0;
-  // Holders that a pause unwatched without releasing. The pause's skipped cleanup runs when the last is dropped.
+  // Paused-off signals and listeners that hold this one. The pause's skipped cleanup runs when the last is dropped.
   pausedCount: number = 0;
 
   key: SignalId | undefined;

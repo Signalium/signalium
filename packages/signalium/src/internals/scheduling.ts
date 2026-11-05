@@ -5,7 +5,7 @@ import { checkAndRunListeners, checkSignal } from './get.js';
 import { runListeners as runDerivedListeners } from './reactive.js';
 import { runListeners as runStateListeners } from './signal.js';
 import type { Tracer } from './trace.js';
-import { deactivateSignal } from './watch.js';
+import { deactivateSignal, dropPausedHold } from './watch.js';
 import { StateSignal } from './signal.js';
 
 let PENDING_PULLS: Set<ReactiveSignal<any, any>> = new Set();
@@ -14,6 +14,7 @@ let PENDING_ASYNC_PULLS: ReactiveSignal<any, any>[] = [];
 // Clean wins on conflict.
 let PENDING_DEACTIVE = new Map<ReactiveSignal<any, any>, DeactivateOptions>();
 let PENDING_RELEASES = new Set<ReactiveSignal<any, any>>();
+let PENDING_HOLD_DROPS: ReactiveSignal<any, any>[] = [];
 let PENDING_LISTENERS: (ReactiveSignal<any, any> | StateSignal<any>)[] = [];
 let PENDING_TRACERS: Tracer[] | undefined = IS_DEV ? [] : undefined;
 
@@ -63,6 +64,12 @@ export const cancelDeactivate = (signal: ReactiveSignal<any, any>) => {
 
 export const scheduleRelease = (signal: ReactiveSignal<any, any>) => {
   PENDING_RELEASES.add(signal);
+  scheduleFlush(flushWatchers);
+};
+
+// Deferred so a relay's cleanup never runs inside the compute that dropped the edge.
+export const scheduleDropPausedHold = (signal: ReactiveSignal<any, any>) => {
+  PENDING_HOLD_DROPS.push(signal);
   scheduleFlush(flushWatchers);
 };
 
@@ -126,6 +133,12 @@ const flushWatchers = async () => {
     }
 
     PENDING_RELEASES.clear();
+
+    for (const signal of PENDING_HOLD_DROPS) {
+      dropPausedHold(signal);
+    }
+
+    PENDING_HOLD_DROPS = [];
 
     for (const signal of PENDING_LISTENERS) {
       if (signal instanceof ReactiveSignal) {
