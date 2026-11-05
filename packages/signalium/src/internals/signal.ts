@@ -5,6 +5,7 @@ import { dirtySignal } from './dirty.js';
 import { getCurrentConsumer } from './consumer.js';
 import { scheduleListeners } from './scheduling.js';
 import { FALSE_EQUALS } from './utils/equals.js';
+import { setSub } from './utils/subs.js';
 
 let STATE_ID = 0;
 
@@ -70,7 +71,7 @@ export class StateSignal<T> implements Signal<T> {
           },
         });
       }
-      this._subs.set(currentConsumer.ref, currentConsumer.computedCount);
+      setSub(this._subs, currentConsumer.ref, currentConsumer.computedCount);
     }
   }
 

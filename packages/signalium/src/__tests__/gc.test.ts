@@ -435,4 +435,43 @@ describe('Garbage Collection', () => {
 
     expect(keys).not.toContain(compute);
   });
+
+  it('drops collected consumers from the subscriber maps of long-lived dependencies', () => {
+    let refs: Array<{ target: object | undefined }> = [];
+    class FakeWeakRef<T extends object> {
+      constructor(public target: T | undefined) {
+        refs.push(this);
+      }
+      deref() {
+        return this.target;
+      }
+    }
+    vi.stubGlobal('WeakRef', FakeWeakRef);
+
+    try {
+      const state = signal(1);
+      const base = reactive(() => state.value);
+      const consumer = reactive((id: number) => base() + id);
+
+      base();
+      const baseSignal = getSignalsMap(getGlobalScope()).values().next().value!.deref() as ReactiveSignal<any, any>;
+      refs = [];
+
+      for (let id = 0; id < 10_000; id++) {
+        const previous = refs;
+        refs = [];
+        consumer(id);
+        // Nothing holds earlier consumers, so the engine may collect them.
+        for (const ref of previous) ref.target = undefined;
+      }
+
+      expect(baseSignal.subs.size).toBeLessThan(200);
+      expect((state as unknown as { _subs: Map<unknown, unknown> })._subs.size).toBeLessThan(200);
+
+      state.value = 2;
+      expect(consumer(-1)).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

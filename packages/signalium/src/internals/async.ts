@@ -17,6 +17,7 @@ import { createEdge, EdgeType, findAndRemoveDirty, PromiseEdge } from './edge.js
 import { SignalScope } from './contexts.js';
 import { signal } from './signal.js';
 import { DEFAULT_EQUALS, equalsFrom } from './utils/equals.js';
+import { setSub } from './utils/subs.js';
 import { getCurrentConsumer } from './consumer.js';
 import { createCallback } from './callback.js';
 import { addPausedHold } from './watch.js';
@@ -292,7 +293,7 @@ export class ReactivePromiseImpl<T> {
     const subs = this._stateSubs;
 
     const subbedFlags = subs.get(ref) ?? 0;
-    subs.set(ref, subbedFlags | flags);
+    setSub(subs, ref, subbedFlags | flags);
   }
 
   private _connect() {
@@ -315,7 +316,7 @@ export class ReactivePromiseImpl<T> {
 
         const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, signal.updatedCount, computedCount);
 
-        signal.subs.set(ref, newEdge);
+        setSub(signal.subs, ref, newEdge);
         deps.set(signal, newEdge);
       }
     } else {
