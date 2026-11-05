@@ -19,6 +19,7 @@ import { signal } from './signal.js';
 import { DEFAULT_EQUALS, equalsFrom } from './utils/equals.js';
 import { getCurrentConsumer } from './consumer.js';
 import { createCallback } from './callback.js';
+import { addPausedHold } from './watch.js';
 import { getTracerProxy, TracerEventType } from './trace.js';
 
 const enum AsyncFlags {
@@ -311,7 +312,7 @@ export class ReactivePromiseImpl<T> {
 
       if (prevEdge?.consumedAt !== computedCount) {
         if (prevEdge === undefined && currentConsumer._isPausedHeld) {
-          signal.pausedCount++;
+          addPausedHold(signal);
         }
 
         const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, signal.updatedCount, computedCount);

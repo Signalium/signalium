@@ -331,6 +331,99 @@ describe('relay deactivate distinguishes pause from cleanup', () => {
       await nextTick();
       expect(r2.deactivations).toEqual([true, true, false]);
     });
+    describe('and starts reading a signal over a relay', () => {
+      const setupThroughSignal = () => {
+        const r = createRelay();
+        const read = signal(false);
+        const inner = reactive(() => r.sub.value);
+        const a = watcher(() => (read.value ? inner() : 0));
+        const b = watcher(() => r.sub.value);
+        const unsubA = a.addListener(() => {});
+        const unsubB = b.addListener(() => {});
+        const readInner = () => {
+          read.value = true;
+          void a.value;
+        };
+        return { r, a, b, unsubA, unsubB, readInner };
+      };
+
+      test('keeps the relay paused after another paused reader is released', async () => {
+        const { r, a, b, unsubA, unsubB, readInner } = setupThroughSignal();
+        await nextTick();
+
+        pause(a, b);
+        await nextTick();
+
+        readInner();
+        await nextTick();
+
+        unsubB();
+        await nextTick();
+        expect(r.deactivations).toEqual([true]);
+
+        unsubA();
+        await nextTick();
+        expect(r.deactivations).toEqual([true, false]);
+      });
+
+      test('pauses the relay when its active reader leaves', async () => {
+        const { r, a, unsubA, unsubB, readInner } = setupThroughSignal();
+        await nextTick();
+
+        pause(a);
+        await nextTick();
+
+        readInner();
+        await nextTick();
+
+        unsubB();
+        await nextTick();
+        expect(r.deactivations).toEqual([true]);
+
+        unsubA();
+        await nextTick();
+        expect(r.deactivations).toEqual([true, false]);
+      });
+    });
+
+    test('and reads a signal that throws leaves no hold on it', async () => {
+      const r = createRelay();
+      const read = signal(false);
+      const fail = signal(true);
+      const inner = reactive(() => {
+        const value = r.sub.value;
+        if (fail.value) throw new Error('fail');
+        return value;
+      });
+      const a = watcher(() => {
+        if (!read.value) return 0;
+        try {
+          return inner();
+        } catch {
+          return -1;
+        }
+      });
+      const unsubA = a.addListener(() => {});
+      await nextTick();
+
+      pause(a);
+      await nextTick();
+
+      read.value = true;
+      void a.value;
+      await nextTick();
+
+      fail.value = false;
+      const c = watcher(() => inner());
+      const unsubC = c.addListener(() => {});
+      await nextTick();
+
+      unsubC();
+      await nextTick();
+      expect(r.deactivations).toEqual([false]);
+
+      unsubA();
+    });
   });
 
   test('a reader recomputed after its last listener leaves keeps the watches of the relays it starts reading', async () => {

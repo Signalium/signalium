@@ -46,6 +46,19 @@ export function activateSignal(signal: ReactiveSignal<any, any>): void {
   }
 }
 
+/** Adds a paused hold. A signal that held nothing starts holding its deps, so the relays it reads stay held. */
+export function addPausedHold(signal: ReactiveSignal<any, any>) {
+  signal.pausedCount++;
+
+  if (!signal._isActive && !signal._isPausedHeld) {
+    signal._isPausedHeld = true;
+
+    for (const dep of signal.deps.keys()) {
+      addPausedHold(dep);
+    }
+  }
+}
+
 /** Drops one paused hold; returns true if it was the last hold on a paused-off signal. */
 export function dropPausedHold(signal: ReactiveSignal<any, any>): boolean {
   if (IS_DEV && signal.pausedCount === 0) {

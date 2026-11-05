@@ -7,7 +7,7 @@ import { ReactiveFnState, isRelay, ReactiveSignal } from './reactive.js';
 import { scheduleDeactivate, scheduleListeners, scheduleTracer } from './scheduling.js';
 import { getTracerProxy, SignalType, TracerEventType } from './trace.js';
 import { isGeneratorResult, isPromise } from './utils/type-utils.js';
-import { dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
+import { addPausedHold, dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
 
 export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, Args>): ReactiveValue<T> {
   const currentConsumer = getCurrentConsumer();
@@ -33,8 +33,6 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
         // Not `watchCount`: a deactivation still pending will unwatch every dep.
         if (currentConsumer._isActive) {
           watchSignal(signal);
-        } else if (currentConsumer._isPausedHeld) {
-          signal.pausedCount++;
         }
       }
 
@@ -43,6 +41,11 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
 
       signal.subs.set(ref, newEdge);
       deps.set(signal, newEdge);
+
+      // After `deps.set`: a dep that throws gets no edge, so a hold taken before would never be dropped.
+      if (prevEdge === undefined && currentConsumer._isPausedHeld) {
+        addPausedHold(signal);
+      }
     } else {
       const updatedAt = checkSignal(signal);
 
