@@ -49,7 +49,10 @@ export class StateDelivery {
   forceUpdate: () => void;
   /** In the pending-delivery queue. */
   queued = false;
-  /** A `setState` was delivered and its render has not committed yet. */
+  /**
+   * A default-priority `setState` was delivered and its render has not committed yet. Transition
+   * deliveries don't set it: a suspended transition keeps the old UI and runs no effect to clear it.
+   */
   awaitingCommit = false;
   /** Visible: between the subscription layout effect's setup and cleanup. Only visible readers get deliveries. */
   mounted = false;
@@ -156,13 +159,13 @@ function enqueueDelivery(delivery: StateDelivery) {
 
 function flushDeliveries() {
   if (performance.now() < transitionDeliveryUntil) {
-    startTransition(deliver);
+    startTransition(() => deliver(false));
   } else {
-    deliver();
+    deliver(true);
   }
 }
 
-function deliver() {
+function deliver(awaitCommit: boolean) {
   deliveryScheduled = false;
 
   const deliveries = PENDING_DELIVERIES;
@@ -175,7 +178,7 @@ function deliver() {
       // Re-check: the reader may have unmounted, or re-rendered for another reason and already
       // committed the latest version, since it was queued.
       if (delivery.mounted && delivery.signal.updatedCount !== delivery.committed) {
-        delivery.awaitingCommit = true;
+        if (awaitCommit) delivery.awaitingCommit = true;
         delivery.forceUpdate();
       }
     }

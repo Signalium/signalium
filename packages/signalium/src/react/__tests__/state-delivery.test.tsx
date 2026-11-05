@@ -579,6 +579,60 @@ describe('React > state delivery', () => {
       await sleep(WINDOW);
     });
 
+    test('a later change reaches a reader whose transition delivery suspended', async () => {
+      const { step, result } = renderSuspendingReader();
+      await expect.element(result.getByTestId('leaf')).toHaveTextContent('0');
+
+      deliverAsTransitionsFor(WINDOW);
+      step.value = 1;
+      await settle();
+      expect(result.container.textContent).toBe('0');
+
+      step.value = 2;
+      await expect.element(result.getByTestId('leaf')).toHaveTextContent('2');
+      result.unmount();
+      await sleep(WINDOW);
+    });
+
+    test('readers sharing a suspended transition delivery all catch up once it stops suspending', async () => {
+      const step = signal(0);
+      const other = signal(0);
+      const pending = new Promise<never>(() => {});
+
+      function Show({ value }: { value: number }) {
+        return <span data-testid="leaf">{value === 1 ? use(pending) : value}</span>;
+      }
+
+      function Leaf() {
+        return <Show value={useReactive(() => step.value, { delivery: 'state' })} />;
+      }
+
+      function Other() {
+        return <span data-testid="other">{useReactive(() => other.value, { delivery: 'state' })}</span>;
+      }
+
+      const result = render(
+        <Suspense fallback={<span>loading</span>}>
+          <Leaf />
+          <Other />
+        </Suspense>,
+      );
+      await expect.element(result.getByTestId('leaf')).toHaveTextContent('0');
+
+      deliverAsTransitionsFor(WINDOW);
+      step.value = 1;
+      other.value = 1;
+      await settle();
+      expect(result.container.textContent).toBe('00');
+
+      other.value = 2;
+      step.value = 2;
+      await expect.element(result.getByTestId('leaf')).toHaveTextContent('2');
+      await expect.element(result.getByTestId('other')).toHaveTextContent('2');
+      result.unmount();
+      await sleep(WINDOW);
+    });
+
     test('deliveries after the window render at default priority', async () => {
       const { step, result } = renderSuspendingReader();
       await expect.element(result.getByTestId('leaf')).toHaveTextContent('0');

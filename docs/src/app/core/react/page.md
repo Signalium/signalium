@@ -401,6 +401,8 @@ function onTabPress(tab: string) {
 }
 ```
 
+As with any transition, a `'sync'` update or user input during the window restarts transition deliveries that are still rendering.
+
 Hidden content behaves like it does under `'sync'`. A Suspense boundary that hides already-revealed content (as `react-freeze` does for inactive screens) keeps a `'state'` reader subscribed, so its relays stay active, but does not render it for changes it cannot show. `<Activity mode="hidden">` and unmounting release the subscription. When the content is revealed, the reader re-validates its signal and, if anything changed while it was hidden, renders once before the revealing commit paints, so it never shows a stale value; a reveal with nothing changed renders nothing. The same holds for content first rendered inside a hidden `<Activity>`. A first mount is not a reveal: a change between a reader's render and its commit (data ticking while a screen mounts, or a transition that waited to commit) arrives as an ordinary default-priority update right after that commit, rather than as a second, synchronous render before it paints.
 
 ## Contexts
