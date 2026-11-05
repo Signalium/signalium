@@ -598,4 +598,219 @@ describe('React > Pause Signals', () => {
     // Render count should not have changed
     expect(Child.renderCount).toBe(initialRenderCount);
   });
+
+  test('a relay shared by paused readers is cleaned up once the last one unmounts', async () => {
+    const deactivations: boolean[] = [];
+    const source = reactive(() =>
+      relay<string>(state => {
+        state.value = 'r';
+        return {
+          deactivate: ({ isPausing = false } = {}) => {
+            deactivations.push(isPausing);
+          },
+        };
+      }),
+    );
+    // Two thunks, so each reader has its own signal over the one relay.
+    const readA = () => source().value;
+    const readB = () => source().value;
+    const A = () => <span data-testid="a">{useReactiveShallow(readA)}</span>;
+    const B = () => <span data-testid="b">{useReactiveShallow(readB)}</span>;
+
+    const controls = { paused: (_: boolean) => {}, shown: (_: { a: boolean; b: boolean }) => {} };
+
+    function Host() {
+      const [paused, setPaused] = useState(false);
+      const [shown, setShown] = useState({ a: true, b: true });
+      controls.paused = setPaused;
+      controls.shown = setShown;
+      return (
+        <PauseSignalsProvider value={paused}>
+          {shown.a && <A />}
+          {shown.b && <B />}
+        </PauseSignalsProvider>
+      );
+    }
+
+    const { getByTestId } = render(<Host />);
+    await expect.element(getByTestId('a')).toHaveTextContent('r');
+    await expect.element(getByTestId('b')).toHaveTextContent('r');
+
+    React.act(() => controls.paused(true));
+    await sleep(50);
+    expect(deactivations).toEqual([true]);
+
+    React.act(() => controls.shown({ a: false, b: true }));
+    await sleep(50);
+    expect(deactivations).toEqual([true]);
+
+    React.act(() => controls.shown({ a: false, b: false }));
+    await sleep(50);
+    expect(deactivations).toEqual([true, false]);
+  });
+  test('a paused reader that rerenders onto a relay a paused sibling reads leaves it paused when it unmounts', async () => {
+    const log: string[] = [];
+    const source = reactive((id: string) =>
+      relay<string>(state => {
+        state.value = id;
+        return {
+          deactivate: ({ isPausing = false } = {}) => {
+            log.push(`${id}:${isPausing ? 'pause' : 'clean'}`);
+          },
+        };
+      }),
+    );
+    const selected = signal('one');
+    const readA = () => source(selected.value).value;
+    const readB = () => source('two').value;
+    const A = () => <span data-testid="a">{useReactive(readA)}</span>;
+    const B = () => <span data-testid="b">{useReactive(readB)}</span>;
+
+    const controls = {
+      paused: (_: boolean) => {},
+      shown: (_: { a: boolean; b: boolean }) => {},
+      rerender: () => {},
+    };
+
+    function Host() {
+      const [paused, setPaused] = useState(false);
+      const [shown, setShown] = useState({ a: true, b: true });
+      const [, setTick] = useState(0);
+      controls.paused = setPaused;
+      controls.shown = setShown;
+      controls.rerender = () => setTick(t => t + 1);
+      return (
+        <PauseSignalsProvider value={paused}>
+          {shown.a && <A />}
+          {shown.b && <B />}
+        </PauseSignalsProvider>
+      );
+    }
+
+    const { getByTestId } = render(<Host />);
+    await expect.element(getByTestId('a')).toHaveTextContent('one');
+    await expect.element(getByTestId('b')).toHaveTextContent('two');
+
+    React.act(() => controls.paused(true));
+    await sleep(50);
+    expect(log).toEqual(['one:pause', 'two:pause']);
+
+    selected.value = 'two';
+    React.act(() => controls.rerender());
+    await expect.element(getByTestId('a')).toHaveTextContent('two');
+    await sleep(50);
+    expect(log).toEqual(['one:pause', 'two:pause', 'one:clean']);
+
+    React.act(() => controls.shown({ a: false, b: true }));
+    await sleep(50);
+    expect(log).toEqual(['one:pause', 'two:pause', 'one:clean']);
+
+    React.act(() => controls.shown({ a: false, b: false }));
+    await sleep(50);
+    expect(log).toEqual(['one:pause', 'two:pause', 'one:clean', 'two:clean']);
+  });
+  test('a paused reader that rerenders onto a detail signal over a relay a paused sibling reads leaves it paused when the sibling unmounts', async () => {
+    const log: string[] = [];
+    const query = reactive((id: string) =>
+      relay<string>(state => {
+        state.value = id;
+        return {
+          deactivate: ({ isPausing = false } = {}) => {
+            log.push(`${id}:${isPausing ? 'pause' : 'clean'}`);
+          },
+        };
+      }),
+    );
+    const detail = reactive((id: string) => query(id).value);
+    const selected = signal('one');
+    const readA = () => detail(selected.value);
+    const readB = () => query('two').value;
+    const A = () => <span data-testid="a">{useReactive(readA)}</span>;
+    const B = () => <span data-testid="b">{useReactive(readB)}</span>;
+
+    const controls = {
+      paused: (_: boolean) => {},
+      shown: (_: { a: boolean; b: boolean }) => {},
+      rerender: () => {},
+    };
+
+    function Host() {
+      const [paused, setPaused] = useState(false);
+      const [shown, setShown] = useState({ a: true, b: true });
+      const [, setTick] = useState(0);
+      controls.paused = setPaused;
+      controls.shown = setShown;
+      controls.rerender = () => setTick(t => t + 1);
+      return (
+        <PauseSignalsProvider value={paused}>
+          {shown.a && <A />}
+          {shown.b && <B />}
+        </PauseSignalsProvider>
+      );
+    }
+
+    const { getByTestId } = render(<Host />);
+    await expect.element(getByTestId('a')).toHaveTextContent('one');
+    await expect.element(getByTestId('b')).toHaveTextContent('two');
+
+    React.act(() => controls.paused(true));
+    await sleep(50);
+    expect(log).toEqual(['one:pause', 'two:pause']);
+
+    selected.value = 'two';
+    React.act(() => controls.rerender());
+    await expect.element(getByTestId('a')).toHaveTextContent('two');
+    await sleep(50);
+    expect(log).toEqual(['one:pause', 'two:pause', 'one:clean']);
+
+    React.act(() => controls.shown({ a: true, b: false }));
+    await sleep(50);
+    expect(log).toEqual(['one:pause', 'two:pause', 'one:clean']);
+
+    React.act(() => controls.shown({ a: false, b: false }));
+    await sleep(50);
+    expect(log).toEqual(['one:pause', 'two:pause', 'one:clean', 'two:clean']);
+  });
+  test('a reader that mounts under a paused provider keeps a relay paused after an active reader unmounts', async () => {
+    const log: string[] = [];
+    const source = relay<string>(state => {
+      state.value = 'r';
+      return {
+        deactivate: ({ isPausing = false } = {}) => {
+          log.push(isPausing ? 'pause' : 'clean');
+        },
+      };
+    });
+    const readA = () => source.value;
+    const readB = () => source.value;
+    const A = () => <span data-testid="a">{useReactive(readA)}</span>;
+    const B = () => <span data-testid="b">{useReactive(readB)}</span>;
+
+    const controls = { shown: (_: { a: boolean; b: boolean }) => {} };
+
+    function Host() {
+      const [shown, setShown] = useState({ a: true, b: false });
+      controls.shown = setShown;
+      return (
+        <>
+          {shown.a && <A />}
+          <PauseSignalsProvider value={true}>{shown.b && <B />}</PauseSignalsProvider>
+        </>
+      );
+    }
+
+    const { getByTestId } = render(<Host />);
+    await expect.element(getByTestId('a')).toHaveTextContent('r');
+
+    React.act(() => controls.shown({ a: true, b: true }));
+    await expect.element(getByTestId('b')).toHaveTextContent('r');
+
+    React.act(() => controls.shown({ a: false, b: true }));
+    await sleep(50);
+    expect(log).toEqual(['pause']);
+
+    React.act(() => controls.shown({ a: false, b: false }));
+    await sleep(50);
+    expect(log).toEqual(['pause', 'clean']);
+  });
 });

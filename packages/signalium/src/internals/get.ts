@@ -4,10 +4,10 @@ import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
 import { createEdge, Edge, EdgeType } from './edge.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
 import { ReactiveFnState, isRelay, ReactiveSignal } from './reactive.js';
-import { scheduleListeners, scheduleTracer } from './scheduling.js';
+import { scheduleDeactivate, scheduleListeners, scheduleTracer } from './scheduling.js';
 import { getTracerProxy, SignalType, TracerEventType } from './trace.js';
 import { isGeneratorResult, isPromise } from './utils/type-utils.js';
-import { unwatchSignal, watchSignal } from './watch.js';
+import { addPausedHold, dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
 
 export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, Args>): ReactiveValue<T> {
   const currentConsumer = getCurrentConsumer();
@@ -30,7 +30,8 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
           });
         }
 
-        if (currentConsumer.watchCount > 0) {
+        // Not `watchCount`: a deactivation still pending will unwatch every dep.
+        if (currentConsumer._isActive) {
           watchSignal(signal);
         }
       }
@@ -40,6 +41,11 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
 
       signal.subs.set(ref, newEdge);
       deps.set(signal, newEdge);
+
+      // After `deps.set`: a dep that throws gets no edge, so a hold taken before would never be dropped.
+      if (prevEdge === undefined && currentConsumer._isPausedHeld) {
+        addPausedHold(signal);
+      }
     } else {
       const updatedAt = checkSignal(signal);
 
@@ -210,7 +216,12 @@ export function disconnectSignal(signal: ReactiveSignal<any, any>, computedCount
 
   for (const [dep, edge] of deps) {
     if (edge.consumedAt !== computedCount) {
-      unwatchSignal(dep);
+      if (signal._isActive) {
+        unwatchSignal(dep);
+      } else if (signal._isPausedHeld && dropPausedHold(dep)) {
+        scheduleDeactivate(dep);
+      }
+
       dep.subs.delete(ref);
       deps.delete(dep);
       // Mark disconnected dep as Dirty so it revalidates when re-read.

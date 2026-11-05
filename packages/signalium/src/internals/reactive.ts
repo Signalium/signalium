@@ -4,11 +4,11 @@ import { getUnknownSignalFnName } from './utils/debug-name.js';
 import { SignalScope } from './contexts.js';
 import { getSignal } from './get.js';
 import { Edge } from './edge.js';
-import { cancelPull, schedulePull } from './scheduling.js';
+import { cancelPull, schedulePull, scheduleRelease } from './scheduling.js';
 import { hashValue } from './utils/hash.js';
 import { stringifyValue } from './utils/stringify.js';
 import { Callback } from './callback.js';
-import { unwatchSignal, watchSignal } from './watch.js';
+import { addPausedHold, deactivateSignal, dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
 import { equalsFrom } from './utils/equals.js';
 import { dirtySignal } from './dirty.js';
 import { addLease, removeLease } from './lease.js';
@@ -47,6 +47,10 @@ export const enum ReactiveFnFlags {
   isLeased = 0b10000000,
   // The listener status holds a watch. Clear while paused.
   isListenerWatched = 0b100000000,
+  // The listener status holds a paused hold instead of a watch; see `pausedCount`.
+  isListenerPaused = 0b1000000000,
+  // Deactivated while it had paused holders: holds a paused hold on each dep until rewatched or released.
+  isPausedHeld = 0b10000000000,
 }
 
 let ID = 0;
@@ -123,6 +127,8 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   computedCount: number = 0;
 
   watchCount: number = 0;
+  // Paused-off subs that depend on this, plus a paused listener. While any remain, deactivation pauses.
+  pausedCount: number = 0;
 
   key: SignalId | undefined;
   args: Args;
@@ -176,6 +182,18 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       this.flags |= ReactiveFnFlags.isActive;
     } else {
       this.flags &= ~ReactiveFnFlags.isActive;
+    }
+  }
+
+  get _isPausedHeld() {
+    return (this.flags & ReactiveFnFlags.isPausedHeld) !== 0;
+  }
+
+  set _isPausedHeld(isPausedHeld: boolean) {
+    if (isPausedHeld) {
+      this.flags |= ReactiveFnFlags.isPausedHeld;
+    } else {
+      this.flags &= ~ReactiveFnFlags.isPausedHeld;
     }
   }
 
@@ -270,11 +288,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
           cancelPull(this);
           this.flags = flags & ~(ReactiveFnFlags.isListener | ReactiveFnFlags.isListenerWatched);
-
-          if ((flags & ReactiveFnFlags.isListenerWatched) !== 0) {
-            unwatchSignal(this);
-          }
-
+          this._dropListenerHold(flags);
           meta.updatedAt = 0;
         } else if (meta.pausedReaders >= current.size) {
           this._pauseListenerWatch();
@@ -293,12 +307,12 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     const flags = this.flags;
 
     if ((flags & ReactiveFnFlags.isListener) === 0) {
+      this.flags |= ReactiveFnFlags.isListener | ReactiveFnFlags.isLeased;
+
       if (watch) {
-        // `watchSignal` writes `flags`, so set ours after it.
-        watchSignal(this);
-        this.flags |= ReactiveFnFlags.isListener | ReactiveFnFlags.isLeased | ReactiveFnFlags.isListenerWatched;
+        this._takeListenerWatch();
       } else {
-        this.flags |= ReactiveFnFlags.isListener | ReactiveFnFlags.isLeased;
+        this._pauseWatch();
       }
 
       addLease(this);
@@ -308,9 +322,8 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     ) {
       // Extend the lease, or lease a watch on a signal only paused readers subscribe to: an
       // unpaused render that suspends on it never subscribes, so it must start the relays itself.
-      if (watch && (flags & ReactiveFnFlags.isListenerWatched) === 0) {
-        watchSignal(this);
-        this.flags |= ReactiveFnFlags.isListenerWatched;
+      if (watch) {
+        this._takeListenerWatch();
       }
 
       this.flags |= ReactiveFnFlags.isLeased;
@@ -320,13 +333,21 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     return this.listeners.cachedBoundAdd;
   }
 
-  /** Drops the listener watch; listeners stay subscribed. */
+  /** Swaps the listener watch for a paused hold, or takes one if it held nothing; listeners stay subscribed. */
   _pauseWatch() {
     const flags = this.flags;
 
     if ((flags & ReactiveFnFlags.isListenerWatched) !== 0) {
-      this.flags = flags & ~ReactiveFnFlags.isListenerWatched;
-      unwatchSignal(this, { isPausing: true });
+      this.flags = (flags & ~ReactiveFnFlags.isListenerWatched) | ReactiveFnFlags.isListenerPaused;
+      this.pausedCount++;
+      unwatchSignal(this);
+    } else if (
+      (flags & (ReactiveFnFlags.isListener | ReactiveFnFlags.isListenerPaused)) ===
+      ReactiveFnFlags.isListener
+    ) {
+      // A reader that subscribed while paused never had a watch to swap.
+      this.flags = flags | ReactiveFnFlags.isListenerPaused;
+      addPausedHold(this);
     }
   }
 
@@ -344,8 +365,40 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
     // `watchSignal` writes `flags`, so set ours after it.
     watchSignal(this);
-    this.flags |= ReactiveFnFlags.isListenerWatched;
+
+    const flags = this.flags;
+    this.flags = (flags & ~ReactiveFnFlags.isListenerPaused) | ReactiveFnFlags.isListenerWatched;
+
+    if ((flags & ReactiveFnFlags.isListenerPaused) !== 0) {
+      dropPausedHold(this);
+    }
+
     return true;
+  }
+
+  /** Drops the hold the listener status had in `flags`. A paused hold waits for the flush, so a listener can reclaim it. */
+  private _dropListenerHold(flags: number) {
+    if ((flags & ReactiveFnFlags.isListenerWatched) !== 0) {
+      unwatchSignal(this);
+    } else if ((flags & ReactiveFnFlags.isListenerPaused) !== 0) {
+      scheduleRelease(this);
+    }
+  }
+
+  /** Releases a dropped paused hold that no listener has reclaimed. */
+  _releasePausedHold() {
+    const flags = this.flags;
+
+    if (
+      (flags & (ReactiveFnFlags.isListener | ReactiveFnFlags.isListenerPaused)) ===
+      ReactiveFnFlags.isListenerPaused
+    ) {
+      this.flags = flags & ~ReactiveFnFlags.isListenerPaused;
+
+      if (dropPausedHold(this)) {
+        deactivateSignal(this);
+      }
+    }
   }
 
   /** `deferred` reconciles in a microtask, for a reader that unregisters before it unsubscribes. */
@@ -406,10 +459,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
     }
 
     cancelPull(this);
-
-    if ((flags & ReactiveFnFlags.isListenerWatched) !== 0) {
-      unwatchSignal(this);
-    }
+    this._dropListenerHold(flags);
   }
 }
 

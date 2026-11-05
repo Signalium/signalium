@@ -22,17 +22,20 @@ export interface Notifier {
 export type Equals<T> = (prev: T, next: T) => boolean;
 
 /**
- * Context passed to {@link RelayHooks.deactivate} (and threaded through
- * signalium's internal deactivation path). An options object rather than a
- * positional flag so more context can be added without a breaking change.
+ * Context passed to {@link RelayHooks.deactivate}. An options object rather
+ * than a positional flag so more context can be added without a breaking
+ * change.
  */
 export interface DeactivateOptions {
   /**
-   * `true` when the relay is being torn down by a temporary pause (e.g. via
-   * `PauseSignalsProvider`) that will likely resume, and `false`/absent for a
-   * genuine cleanup (no remaining watchers). Relays should avoid scheduling
-   * destructive work like garbage collection while pausing, so that resuming
-   * can reuse the existing state.
+   * `true` when the relay loses its last watcher while a paused reader (e.g.
+   * under `PauseSignalsProvider`) that will likely resume still depends on it,
+   * and `false`/absent for a genuine cleanup (no remaining readers). Relays
+   * should avoid scheduling destructive work like garbage collection while
+   * pausing, so that resuming can reuse the existing state.
+   *
+   * If every paused reader is then released without resuming, the relay gets a
+   * second call with `isPausing: false` and no `activate` in between.
    */
   isPausing?: boolean;
 }
@@ -42,6 +45,10 @@ export type RelayHooks = {
   /**
    * Called when the relay is torn down. See {@link DeactivateOptions.isPausing}
    * for distinguishing a temporary pause from a genuine cleanup.
+   *
+   * One activation can get two calls: `{ isPausing: true }`, then
+   * `{ isPausing: false }` once its paused readers are released. The hook must
+   * accept the second call after the first has already torn down.
    */
   deactivate?(options?: DeactivateOptions): void;
 };

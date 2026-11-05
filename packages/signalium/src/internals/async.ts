@@ -19,6 +19,7 @@ import { signal } from './signal.js';
 import { DEFAULT_EQUALS, equalsFrom } from './utils/equals.js';
 import { getCurrentConsumer } from './consumer.js';
 import { createCallback } from './callback.js';
+import { addPausedHold } from './watch.js';
 import { getTracerProxy, TracerEventType } from './trace.js';
 
 const enum AsyncFlags {
@@ -305,11 +306,15 @@ export class ReactivePromiseImpl<T> {
     // isPending/value). Skip self-subscription to avoid a dependency cycle.
     if (currentConsumer === signal) return;
 
-    if (currentConsumer?.watchCount === 0) {
+    if (currentConsumer !== undefined && !currentConsumer._isActive) {
       const { ref, computedCount, deps } = currentConsumer;
       const prevEdge = deps.get(signal);
 
       if (prevEdge?.consumedAt !== computedCount) {
+        if (prevEdge === undefined && currentConsumer._isPausedHeld) {
+          addPausedHold(signal);
+        }
+
         const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, signal.updatedCount, computedCount);
 
         signal.subs.set(ref, newEdge);
@@ -739,12 +744,22 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
 
   let active = false;
   let currentSub: RelayHooks | (() => void) | undefined | void;
+  // A pausing consumer skips its final cleanup, so it is owed one if the relay is released without resuming.
+  let pausedSub: RelayHooks | undefined;
 
   const unsubscribe = (options?: DeactivateOptions) => {
+    // A release after a pause that left no deactivate hook owes nothing.
+    if (!active && pausedSub === undefined) return;
+
     if (typeof currentSub === 'function') {
       currentSub();
     } else if (currentSub !== undefined) {
       currentSub.deactivate?.(options);
+      if (options?.isPausing) pausedSub = currentSub;
+    } else if (pausedSub !== undefined && !options?.isPausing) {
+      const sub = pausedSub;
+      pausedSub = undefined;
+      sub.deactivate?.(options);
     }
 
     const signal = p['_signal'] as ReactiveSignal<any, any>;
@@ -781,6 +796,7 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
   const def: ReactiveDefinition<(options?: DeactivateOptions) => void, unknown[]> = {
     compute: () => {
       if (active === false) {
+        pausedSub = undefined;
         currentSub = activate(state);
         active = true;
       } else if (typeof currentSub === 'function' || currentSub === undefined) {
