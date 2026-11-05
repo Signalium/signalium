@@ -423,4 +423,14 @@ describe('Garbage Collection', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('keys a scoped signal without adding its compute function to a WeakMap of its own', () => {
+    const fns = Array.from({ length: 10 }, (_, i) => reactive(() => i));
+    const set = vi.spyOn(WeakMap.prototype, 'set');
+    for (const fn of fns) fn();
+    const calls = set.mock.calls.length;
+    set.mockRestore();
+
+    expect(calls).toBe(0);
+  });
 });
