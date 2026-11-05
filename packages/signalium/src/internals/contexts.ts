@@ -121,7 +121,7 @@ export class SignalScope {
 
     if (signal === undefined) {
       signal = createReactiveSignal(def, args, key, this);
-      this.signals.set(key, new WeakRef(signal));
+      this.signals.set(key, signal.ref);
     }
 
     return signal;
