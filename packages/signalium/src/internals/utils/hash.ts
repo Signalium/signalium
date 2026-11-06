@@ -265,19 +265,14 @@ export function getObjectHash(obj: object): number {
 
 const EMPTY_ARRAY_HASH = hashArray([], []);
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-export function hashReactiveFn(fn: Function, args: unknown[]) {
-  return hashWithArgs(getObjectHash(fn), args);
-}
-
-export function hashWithArgs(fnHash: number, args: unknown[]) {
+export function hashWithArgs(defHash: number, args: unknown[]) {
   const argsHash = args.length > 0 ? hashArray(args, []) : EMPTY_ARRAY_HASH;
-  // Mix argsHash into fnHash using a single MurmurHash3 block round,
-  // avoiding the XOR cancellation that occurs when fnHash === argsHash.
+  // Mix argsHash into defHash using a single MurmurHash3 block round,
+  // avoiding the XOR cancellation that occurs when defHash === argsHash.
   let k = imul(argsHash, 0xcc9e2d51);
   k = (k << 15) | (k >>> 17);
   k = imul(k, 0x1b873593);
-  let h = fnHash;
+  let h = defHash;
   h ^= k;
   h = (h << 13) | (h >>> 19);
   return (imul(h, 5) + 0xe6546b64) >>> 0;

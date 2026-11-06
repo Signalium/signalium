@@ -401,6 +401,7 @@ describe('Garbage Collection', () => {
 
     unwatchTop();
   });
+
   it("keys the scope entry by the signal's own WeakRef", () => {
     let created = 0;
     class CountingWeakRef<T extends object> extends WeakRef<T> {
@@ -424,13 +425,14 @@ describe('Garbage Collection', () => {
     }
   });
 
-  it('keys a scoped signal without adding its compute function to a WeakMap of its own', () => {
-    const fns = Array.from({ length: 10 }, (_, i) => reactive(() => i));
+  it('caches a scoped signal without hashing its compute function', () => {
+    const compute = () => 1;
+    const fn = reactive(compute);
     const set = vi.spyOn(WeakMap.prototype, 'set');
-    for (const fn of fns) fn();
-    const calls = set.mock.calls.length;
+    fn();
+    const keys = set.mock.calls.map(([key]) => key);
     set.mockRestore();
 
-    expect(calls).toBe(0);
+    expect(keys).not.toContain(compute);
   });
 });

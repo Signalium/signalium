@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { hashValue, registerCustomHash } from 'signalium/utils';
-import { hashReactiveFn } from '../internals/utils/hash.js';
+import { hashWithArgs, nextReferenceHash } from '../internals/utils/hash.js';
 
 describe('hashValue', () => {
   describe('basic types', () => {
@@ -305,36 +305,29 @@ describe('hashValue', () => {
     });
   });
 
-  describe('hashReactiveFn', () => {
-    test('same function and same args produce the same hash', () => {
-      const fn = () => {};
-      expect(hashReactiveFn(fn, [1, 2])).toBe(hashReactiveFn(fn, [1, 2]));
+  describe('hashWithArgs', () => {
+    test('same definition hash and same args produce the same hash', () => {
+      const def = nextReferenceHash();
+      expect(hashWithArgs(def, [1, 2])).toBe(hashWithArgs(def, [1, 2]));
     });
 
-    test('same function with no args is deterministic', () => {
-      const fn = () => {};
-      expect(hashReactiveFn(fn, [])).toBe(hashReactiveFn(fn, []));
+    test('different definition hashes with same args produce different hashes', () => {
+      expect(hashWithArgs(nextReferenceHash(), [1])).not.toBe(hashWithArgs(nextReferenceHash(), [1]));
     });
 
-    test('different functions with same args produce different hashes', () => {
-      const fn1 = () => {};
-      const fn2 = () => {};
-      expect(hashReactiveFn(fn1, [1])).not.toBe(hashReactiveFn(fn2, [1]));
-    });
-
-    test('same function with different args produces different hashes', () => {
-      const fn = () => {};
-      expect(hashReactiveFn(fn, [1])).not.toBe(hashReactiveFn(fn, [2]));
+    test('same definition hash with different args produces different hashes', () => {
+      const def = nextReferenceHash();
+      expect(hashWithArgs(def, [1])).not.toBe(hashWithArgs(def, [2]));
     });
 
     test('args are order-sensitive', () => {
-      const fn = () => {};
-      expect(hashReactiveFn(fn, [1, 2])).not.toBe(hashReactiveFn(fn, [2, 1]));
+      const def = nextReferenceHash();
+      expect(hashWithArgs(def, [1, 2])).not.toBe(hashWithArgs(def, [2, 1]));
     });
 
     test('empty args and non-empty args are distinct', () => {
-      const fn = () => {};
-      expect(hashReactiveFn(fn, [])).not.toBe(hashReactiveFn(fn, [1]));
+      const def = nextReferenceHash();
+      expect(hashWithArgs(def, [])).not.toBe(hashWithArgs(def, [1]));
     });
   });
 

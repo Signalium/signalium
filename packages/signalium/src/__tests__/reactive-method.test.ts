@@ -75,6 +75,29 @@ describe('reactiveMethod', () => {
     expect(computeCount).toBe(2);
   });
 
+  test('each reactiveMethod call caches separately, even for the same function', () => {
+    const OwnerCtx = context<object | null>(null, 'owner');
+
+    let computeCount = 0;
+    const double = (x: number) => {
+      computeCount++;
+      return x * 2;
+    };
+    const owner = {};
+
+    withContexts([[OwnerCtx, owner]], () => {});
+
+    const a = reactiveMethod(owner, double);
+    const b = reactiveMethod(owner, double);
+
+    expect(a(1)).toBe(2);
+    expect(b(1)).toBe(2);
+    expect(computeCount).toBe(2);
+
+    expect(a(1)).toBe(2);
+    expect(computeCount).toBe(2);
+  });
+
   test('different owners have independent scopes and caches', () => {
     const OwnerCtx = context<object | null>(null, 'owner');
     const LabelCtx = context('default', 'label');
