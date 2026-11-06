@@ -1,5 +1,5 @@
-import { ReactiveSignal, ReactiveDefinition, createReactiveSignal } from './reactive.js';
-import { hashReactiveFn, hashValue } from './utils/hash.js';
+import { ReactiveSignal, ScopedDefinition, createReactiveSignal } from './reactive.js';
+import { hashValue, hashWithArgs } from './utils/hash.js';
 import { getCurrentConsumer } from './consumer.js';
 import { Context } from '../types.js';
 import { dirtySignal } from './dirty.js';
@@ -114,9 +114,9 @@ export class SignalScope {
     return this.contexts[context._key] as T | undefined;
   }
 
-  get<T, Args extends unknown[]>(def: ReactiveDefinition<T, Args>, args: Args): ReactiveSignal<T, Args> {
+  get<T, Args extends unknown[]>(def: ScopedDefinition<T, Args>, args: Args): ReactiveSignal<T, Args> {
     const paramKey = def.paramKey?.(...args);
-    const key = hashReactiveFn(def.compute, paramKey ? [paramKey] : args);
+    const key = hashWithArgs(def.hash, paramKey ? [paramKey] : args);
     let signal = this.signals.get(key)?.deref() as ReactiveSignal<T, Args> | undefined;
 
     if (signal === undefined) {

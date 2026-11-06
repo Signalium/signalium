@@ -10,21 +10,17 @@ import {
   ReadonlySignal,
 } from '../types.js';
 import { getCurrentScope, getScopeOwner, SignalScope } from './contexts.js';
-import {
-  createReactiveDefinition,
-  createReactiveSignal,
-  ReactiveDefinition as ReactiveDefinition,
-} from './reactive.js';
+import { createReactiveDefinition, createReactiveSignal, ScopedDefinition } from './reactive.js';
 import { createRelay, createTask } from './async.js';
 import type { Tracer } from './trace.js';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-export const DERIVED_DEFINITION_MAP = new WeakMap<Function, [(...args: any) => any, ReactiveDefinition<any, any>]>();
+export const DERIVED_DEFINITION_MAP = new WeakMap<Function, [(...args: any) => any, ScopedDefinition<any, any>]>();
 
 export function getReactiveFnAndDefinition<T, Args extends unknown[]>(
   fn: (...args: Args) => T,
   opts?: ReactiveOptions<T, Args>,
-): [(...args: Args) => ReactiveValue<T>, ReactiveDefinition<T, Args>] {
+): [(...args: Args) => ReactiveValue<T>, ScopedDefinition<T, Args>] {
   let fnAndDef = DERIVED_DEFINITION_MAP.get(fn);
 
   if (!fnAndDef) {

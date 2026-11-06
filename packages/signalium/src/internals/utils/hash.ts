@@ -249,10 +249,15 @@ export function hashValue(node: unknown, seen: unknown[] = []) {
 const objectToHashMap = new WeakMap<object, number>();
 let nextHashMapId = 1;
 
+/** A reference hash for an object that stores its own instead of keying `objectToHashMap`. */
+export function nextReferenceHash(): number {
+  return hashNumber(nextHashMapId++, HashType.REFERENCE);
+}
+
 export function getObjectHash(obj: object): number {
   let id = objectToHashMap.get(obj);
   if (id === undefined) {
-    id = hashNumber(nextHashMapId++, HashType.REFERENCE);
+    id = nextReferenceHash();
     objectToHashMap.set(obj, id);
   }
   return id;
@@ -260,15 +265,14 @@ export function getObjectHash(obj: object): number {
 
 const EMPTY_ARRAY_HASH = hashArray([], []);
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-export function hashReactiveFn(fn: Function, args: unknown[]) {
+export function hashWithArgs(defHash: number, args: unknown[]) {
   const argsHash = args.length > 0 ? hashArray(args, []) : EMPTY_ARRAY_HASH;
-  // Mix argsHash into fnHash using a single MurmurHash3 block round,
-  // avoiding the XOR cancellation that occurs when fnHash === argsHash.
+  // Mix argsHash into defHash using a single MurmurHash3 block round,
+  // avoiding the XOR cancellation that occurs when defHash === argsHash.
   let k = imul(argsHash, 0xcc9e2d51);
   k = (k << 15) | (k >>> 17);
   k = imul(k, 0x1b873593);
-  let h = getObjectHash(fn);
+  let h = defHash;
   h ^= k;
   h = (h << 13) | (h >>> 19);
   return (imul(h, 5) + 0xe6546b64) >>> 0;

@@ -5,7 +5,7 @@ import { SignalScope } from './contexts.js';
 import { getSignal } from './get.js';
 import { Edge } from './edge.js';
 import { cancelPull, schedulePull, scheduleRelease } from './scheduling.js';
-import { hashValue } from './utils/hash.js';
+import { hashValue, nextReferenceHash } from './utils/hash.js';
 import { stringifyValue } from './utils/stringify.js';
 import { Callback } from './callback.js';
 import { addPausedHold, deactivateSignal, dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
@@ -80,6 +80,12 @@ export interface ReactiveDefinition<T, Args extends unknown[]> extends ReactiveO
   tracer: Tracer | undefined;
 }
 
+/** A definition `SignalScope.get` can cache signals for. */
+export interface ScopedDefinition<T, Args extends unknown[]> extends ReactiveDefinition<T, Args> {
+  /** Identifies the definition in scope keys. */
+  hash: number;
+}
+
 /**
  * Unified way to create a reactive definition (protects shaping)
  */
@@ -91,8 +97,9 @@ export function createReactiveDefinition<T, Args extends unknown[]>(
   isRelay: boolean,
   paramKey: ((...args: Args) => string | number) | undefined,
   tracer: Tracer | undefined,
-): ReactiveDefinition<T, Args> {
-  const def: ReactiveDefinition<T, Args> = {
+): ScopedDefinition<T, Args> {
+  const def: ScopedDefinition<T, Args> = {
+    hash: nextReferenceHash(),
     compute,
     equals: equalsFrom(equals),
     isRelay,
@@ -153,7 +160,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 
     if (IS_DEV) {
       this.tracerMeta = {
-        id: def.id ?? key ?? hashValue([def.compute, ID++]),
+        id: def.id ?? key ?? hashValue(this.id),
         desc: def.desc ?? def.compute.name ?? getUnknownSignalFnName(def.compute),
         params: args.map(arg => stringifyValue(arg)).join(', '),
         tracer: def.tracer,
