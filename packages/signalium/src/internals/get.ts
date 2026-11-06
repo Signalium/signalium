@@ -40,7 +40,7 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
       const updatedAt = checkSignal(signal);
       const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, updatedAt, computedCount);
 
-      setSub(signal.subs, ref, newEdge);
+      signal.subsPruneAt = setSub(signal.subs, ref, newEdge, signal.subsPruneAt);
       deps.set(signal, newEdge);
 
       // After `deps.set`: a dep that throws gets no edge, so a hold taken before would never be dropped.
@@ -106,7 +106,7 @@ export function checkSignal(signal: ReactiveSignal<any, any>): number {
       const dep = edge.dep;
       const updatedAt = checkSignal(dep);
 
-      setSub(dep.subs, ref, edge);
+      dep.subsPruneAt = setSub(dep.subs, ref, edge, dep.subsPruneAt);
 
       if (edge.updatedAt !== updatedAt) {
         signal.dirtyHead = edge.nextDirty;

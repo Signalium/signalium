@@ -474,4 +474,47 @@ describe('Garbage Collection', () => {
       vi.unstubAllGlobals();
     }
   });
+  it('does not rescan a subscriber map that hovers at a prune boundary', () => {
+    let refs: Array<{ target: object | undefined }> = [];
+    let derefs = 0;
+    class FakeWeakRef<T extends object> {
+      constructor(public target: T | undefined) {
+        refs.push(this);
+      }
+      deref() {
+        derefs++;
+        return this.target;
+      }
+    }
+    vi.stubGlobal('WeakRef', FakeWeakRef);
+
+    try {
+      const state = signal(1);
+      const base = reactive(() => state.value);
+      const consumer = reactive((id: number) => base() + id);
+
+      base();
+      const baseSignal = getSignalsMap(getGlobalScope()).values().next().value!.deref() as ReactiveSignal<any, any>;
+
+      // 62 live consumers and one collected one: each new consumer brings the map to 64.
+      for (let id = 0; id < 62; id++) consumer(id);
+      refs = [];
+      consumer(62);
+      for (const ref of refs) ref.target = undefined;
+      expect(baseSignal.subs.size).toBe(63);
+
+      derefs = 0;
+      for (let id = 63; id < 1_063; id++) {
+        refs = [];
+        consumer(id);
+        // The newest consumer is collected before the next one subscribes.
+        for (const ref of refs) ref.target = undefined;
+      }
+
+      // Rescanning all 64 entries on every subscription would be 64,000 derefs.
+      expect(derefs).toBeLessThan(5_000);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

@@ -5,7 +5,7 @@ import { dirtySignal } from './dirty.js';
 import { getCurrentConsumer } from './consumer.js';
 import { scheduleListeners } from './scheduling.js';
 import { FALSE_EQUALS } from './utils/equals.js';
-import { setSub } from './utils/subs.js';
+import { MIN_PRUNE_SIZE, setSub } from './utils/subs.js';
 
 let STATE_ID = 0;
 
@@ -20,6 +20,7 @@ export class StateSignal<T> implements Signal<T> {
   private _value: T;
   private _equals: Equals<T>;
   private _subs = new Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, number>();
+  private _subsPruneAt = MIN_PRUNE_SIZE;
   _desc!: string;
   _id!: number;
 
@@ -71,7 +72,7 @@ export class StateSignal<T> implements Signal<T> {
           },
         });
       }
-      setSub(this._subs, currentConsumer.ref, currentConsumer.computedCount);
+      this._subsPruneAt = setSub(this._subs, currentConsumer.ref, currentConsumer.computedCount, this._subsPruneAt);
     }
   }
 
