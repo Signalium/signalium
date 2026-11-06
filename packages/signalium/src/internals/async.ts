@@ -17,7 +17,7 @@ import { createEdge, EdgeType, findAndRemoveDirty, PromiseEdge } from './edge.js
 import { SignalScope } from './contexts.js';
 import { signal } from './signal.js';
 import { DEFAULT_EQUALS, equalsFrom } from './utils/equals.js';
-import { MIN_PRUNE_SIZE, setSub } from './utils/subs.js';
+import { MIN_PRUNE_SIZE, pruneSubs } from './utils/subs.js';
 import { getCurrentConsumer } from './consumer.js';
 import { createCallback } from './callback.js';
 import { addPausedHold } from './watch.js';
@@ -294,7 +294,8 @@ export class ReactivePromiseImpl<T> {
     const subs = this._stateSubs;
 
     const subbedFlags = subs.get(ref) ?? 0;
-    this._stateSubsPruneAt = setSub(subs, ref, subbedFlags | flags, this._stateSubsPruneAt);
+    subs.set(ref, subbedFlags | flags);
+    if (subs.size >= this._stateSubsPruneAt) this._stateSubsPruneAt = pruneSubs(subs);
   }
 
   private _connect() {
@@ -317,7 +318,8 @@ export class ReactivePromiseImpl<T> {
 
         const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, signal.updatedCount, computedCount);
 
-        signal.subsPruneAt = setSub(signal.subs, ref, newEdge, signal.subsPruneAt);
+        signal.subs.set(ref, newEdge);
+        if (signal.subs.size >= signal.subsPruneAt) signal.subsPruneAt = pruneSubs(signal.subs);
         deps.set(signal, newEdge);
       }
     } else {

@@ -5,7 +5,7 @@ import { dirtySignal } from './dirty.js';
 import { getCurrentConsumer } from './consumer.js';
 import { scheduleListeners } from './scheduling.js';
 import { FALSE_EQUALS } from './utils/equals.js';
-import { MIN_PRUNE_SIZE, setSub } from './utils/subs.js';
+import { MIN_PRUNE_SIZE, pruneSubs } from './utils/subs.js';
 
 let STATE_ID = 0;
 
@@ -72,7 +72,8 @@ export class StateSignal<T> implements Signal<T> {
           },
         });
       }
-      this._subsPruneAt = setSub(this._subs, currentConsumer.ref, currentConsumer.computedCount, this._subsPruneAt);
+      this._subs.set(currentConsumer.ref, currentConsumer.computedCount);
+      if (this._subs.size >= this._subsPruneAt) this._subsPruneAt = pruneSubs(this._subs);
     }
   }
 
