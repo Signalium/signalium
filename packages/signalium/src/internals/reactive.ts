@@ -6,6 +6,7 @@ import { getSignal } from './get.js';
 import { Edge } from './edge.js';
 import { cancelPull, schedulePull, scheduleRelease } from './scheduling.js';
 import { hashValue, nextReferenceHash } from './utils/hash.js';
+import { MIN_PRUNE_SIZE } from './utils/subs.js';
 import { stringifyValue } from './utils/stringify.js';
 import { Callback } from './callback.js';
 import { addPausedHold, deactivateSignal, dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
@@ -124,6 +125,7 @@ export class ReactiveSignal<T, Args extends unknown[]> {
   id = ++ID;
 
   subs = new Map<WeakRef<ReactiveSignal<any, any>>, Edge>();
+  subsPruneAt = MIN_PRUNE_SIZE;
   deps = new Map<ReactiveSignal<any, any>, Edge>();
 
   ref: WeakRef<ReactiveSignal<T, Args>> = new WeakRef(this);
