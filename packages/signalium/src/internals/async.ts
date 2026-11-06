@@ -92,8 +92,6 @@ export class ReactivePromiseImpl<T> {
   private run: ((...args: unknown[]) => ReactivePromiseImpl<T>) | undefined = undefined;
 
   constructor(executor?: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason: unknown) => void) => void) {
-    setReactivePromise(this);
-
     // If an executor is provided, behave like Promise constructor
     if (executor) {
       const resolve = (value: T | PromiseLike<T>) => {
@@ -721,7 +719,8 @@ export function setReactivePromise(value: object) {
 }
 
 export function isReactivePromise(value: object): value is ReactivePromiseImpl<unknown> {
-  return REACTIVE_PROMISE_SET.has(value);
+  // `instanceof` keeps the set to values marked from outside, such as proxies wrapping a promise.
+  return value instanceof ReactivePromiseImpl || REACTIVE_PROMISE_SET.has(value);
 }
 
 export function isRelay<T>(obj: object): obj is ReactivePromiseImpl<T> {
