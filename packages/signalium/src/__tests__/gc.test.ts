@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { reactive, context, withContexts, watcher, signal } from '../index.js';
 import { getGlobalScope, clearGlobalContexts, getSignalsMap, SignalScope } from '../internals/contexts.js';
 import { watchSignal, unwatchSignal } from '../internals/watch.js';
@@ -400,5 +400,27 @@ describe('Garbage Collection', () => {
     expect(evalCount).toBe(2);
 
     unwatchTop();
+  });
+  it("keys the scope entry by the signal's own WeakRef", () => {
+    let created = 0;
+    class CountingWeakRef<T extends object> extends WeakRef<T> {
+      constructor(target: T) {
+        super(target);
+        created++;
+      }
+    }
+    vi.stubGlobal('WeakRef', CountingWeakRef);
+
+    try {
+      const byId = reactive((id: number) => id);
+      for (let id = 0; id < 10; id++) byId(id);
+
+      expect(created).toBe(10);
+      for (const ref of getSignalsMap(getGlobalScope()).values()) {
+        expect(ref).toBe((ref.deref() as ReactiveSignal<any, any>).ref);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
