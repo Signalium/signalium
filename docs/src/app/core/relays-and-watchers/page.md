@@ -295,6 +295,8 @@ When we flush Watchers, we do them together in the same browser task in a way th
 
 That said, the call order for Watchers is still from _changed state_ outward, toward the Watcher. This means that the Watcher will only rerun if any of its direct dependencies have _also_ changed, following the same rules discussed in the [Reactive Functions section](/core/signals-and-reactive-functions). In addition, listeners added with `addListener` will not run if the value returned from the Watcher itself has not updated.
 
+Async Watchers are the exception. A Watcher whose function returns a promise keeps the same `ReactivePromise` as its value across reruns, so its listeners also run whenever that promise settles to a new value or rejects. They do not run when a rerun puts the promise back into a pending state, so only the first call can see `isPending: true`.
+
 ### Timing, caching, and immediacy
 
 On occasion, you might want to write to a Signal and then immediately read from a Reactive Function that consumed that signal. As noted in the previous section on Signals and Reactive Functions, this is perfectly valid and will work as expected.
