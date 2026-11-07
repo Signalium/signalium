@@ -62,6 +62,14 @@ export const scheduleListeners = (signal: ReactiveSignal<any, any> | StateSignal
   scheduleFlush(flushWatchers);
 };
 
+// Queues a derived signal's listeners at most once per flush.
+export const scheduleDerivedListeners = (signal: ReactiveSignal<any, any>) => {
+  if (!signal._isListenerScheduled) {
+    signal._isListenerScheduled = true;
+    scheduleListeners(signal);
+  }
+};
+
 export const scheduleTracer = (tracer: Tracer) => {
   if (IS_DEV) {
     PENDING_TRACERS!.push(tracer);

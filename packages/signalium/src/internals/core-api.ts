@@ -86,7 +86,10 @@ export function watcher<T>(fn: () => T, opts?: SignalOptions<T> & { isolate?: bo
 
   const scope = opts?.isolate ? new SignalScope([]) : getCurrentScope();
 
-  return createReactiveSignal(def, undefined, undefined, scope);
+  const signal = createReactiveSignal(def, undefined, undefined, scope);
+  signal._markWatcher();
+
+  return signal;
 }
 
 /**

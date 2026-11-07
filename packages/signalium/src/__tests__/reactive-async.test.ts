@@ -570,6 +570,233 @@ describe('async computeds', () => {
     expect(outerCount).toBe(1);
   });
 
+  test('watcher wrapping an async function notifies listeners when the result settles', async () => {
+    const name = signal('world');
+    const w = watcher(async () => `hello ${name.value}`);
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(() => {
+      seen.push(w.value.value);
+    });
+
+    await asyncSettled();
+    expect(seen).toEqual(['hello world']);
+
+    name.value = 'developers';
+    await asyncSettled();
+    expect(seen).toEqual(['hello world', 'hello developers']);
+
+    unsub();
+  });
+
+  test('watcher wrapping a slow async function notifies listeners when it settles', async () => {
+    const name = signal('world');
+    const w = watcher(async () => {
+      const value = `hello ${name.value.toLowerCase()}`;
+      await sleep(10);
+      return value;
+    });
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(() => {
+      seen.push(w.value.value);
+    });
+
+    await asyncSettled();
+    // The initial run sees the pending promise, then the listener runs again once it resolves
+    expect(seen).toEqual([undefined, 'hello world']);
+
+    name.value = 'developers';
+    await asyncSettled();
+    expect(seen).toEqual([undefined, 'hello world', 'hello developers']);
+
+    // Rerunning and settling to an equal value does not notify again
+    name.value = 'DEVELOPERS';
+    await asyncSettled();
+    expect(seen).toEqual([undefined, 'hello world', 'hello developers']);
+
+    unsub();
+  });
+
+  test('watcher wrapping an async function notifies listeners on rejection', async () => {
+    const shouldThrow = signal(false);
+    const w = watcher(async () => {
+      if (shouldThrow.value) {
+        throw new Error('boom');
+      }
+
+      return 'ok';
+    });
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(() => {
+      seen.push(w.value.isRejected ? (w.value.error as Error).message : w.value.value);
+    });
+
+    await asyncSettled();
+    expect(seen).toEqual(['ok']);
+
+    shouldThrow.value = true;
+    await asyncSettled();
+    expect(seen).toEqual(['ok', 'boom']);
+
+    unsub();
+  });
+
+  test('watcher wrapping an async function notifies listeners on a rejection with undefined', async () => {
+    const shouldThrow = signal(false);
+    const w = watcher(async () => {
+      if (shouldThrow.value) {
+        throw undefined;
+      }
+
+      return 'ok';
+    });
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(() => {
+      seen.push(w.value.isRejected ? 'rejected' : w.value.value);
+    });
+
+    await asyncSettled();
+    expect(seen).toEqual(['ok']);
+
+    shouldThrow.value = true;
+    await asyncSettled();
+    expect(seen).toEqual(['ok', 'rejected']);
+
+    shouldThrow.value = false;
+    await asyncSettled();
+    expect(seen).toEqual(['ok', 'rejected', 'ok']);
+
+    unsub();
+  });
+
+  test('watcher returning Promise.reject() notifies listeners', async () => {
+    // Created outside the watcher so the test transform leaves it a native promise
+    const rejectWithNothing = () => Promise.reject();
+    const shouldReject = signal(false);
+    const w = watcher(async () => {
+      if (shouldReject.value) {
+        return rejectWithNothing();
+      }
+
+      return 'ok';
+    });
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(() => {
+      seen.push(w.value.isRejected ? 'rejected' : w.value.value);
+    });
+
+    await asyncSettled();
+    expect(seen).toEqual(['ok']);
+
+    shouldReject.value = true;
+    await asyncSettled();
+    // The returned promise rejects after the flush that reran the watcher, so wait for the next flush too
+    await nextTick();
+    expect(seen).toEqual(['ok', 'rejected']);
+
+    unsub();
+  });
+
+  test('reading an async watcher before addListener notifies listeners once', async () => {
+    const w = watcher(async () => 'ok');
+
+    expect(w.value.isPending).toBe(true);
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(() => {
+      seen.push(w.value.value);
+    });
+
+    await asyncSettled();
+    expect(seen).toEqual(['ok']);
+
+    unsub();
+  });
+
+  test('reading an async watcher before addListener with skipInitial skips the initial result', async () => {
+    const name = signal('world');
+    const w = watcher(async () => `hello ${name.value}`);
+
+    expect(w.value.isPending).toBe(true);
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(
+      () => {
+        seen.push(w.value.value);
+      },
+      { skipInitial: true },
+    );
+
+    await asyncSettled();
+    expect(seen).toEqual([]);
+
+    name.value = 'developers';
+    await asyncSettled();
+    expect(seen).toEqual(['hello developers']);
+
+    unsub();
+  });
+
+  test('a promise the watcher has replaced does not notify listeners when it settles', async () => {
+    const enabled = signal(true);
+    let resolvePending!: (value: string) => void;
+    const pendingPromise = new Promise<string>(r => (resolvePending = r));
+
+    const w = watcher(() => (enabled.value ? pendingPromise : 'disabled'));
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(() => {
+      const value = w.value;
+      seen.push(typeof value === 'string' ? value : 'promise');
+    });
+
+    await nextTick();
+    expect(seen).toEqual(['promise']);
+
+    enabled.value = false;
+    await nextTick();
+    expect(seen).toEqual(['promise', 'disabled']);
+
+    resolvePending('resolved');
+    await pendingPromise;
+    await nextTick();
+    expect(seen).toEqual(['promise', 'disabled']);
+
+    unsub();
+  });
+
+  test('async watcher listeners run when a rerun settles, not when it goes back to pending', async () => {
+    const name = signal('world');
+    const w = watcher(async () => {
+      const value = `hello ${name.value}`;
+      await sleep(10);
+      return value;
+    });
+
+    const seen: unknown[] = [];
+    const unsub = w.addListener(() => {
+      seen.push(w.value.isPending ? 'pending' : w.value.value);
+    });
+
+    await asyncSettled();
+    // Only the first call can see the pending state, because the watcher's value itself changed
+    expect(seen).toEqual(['pending', 'hello world']);
+
+    name.value = 'developers';
+    await nextTick();
+    expect(w.value.isPending).toBe(true);
+    expect(seen).toEqual(['pending', 'hello world']);
+
+    await asyncSettled();
+    expect(seen).toEqual(['pending', 'hello world', 'hello developers']);
+
+    unsub();
+  });
+
   describe('dependency pruning during async rerun', () => {
     test('dependencies consumed after an await are NOT disconnected when the function reruns due to being directly dirtied', async () => {
       // This test verifies that dependencies consumed after an await point are not

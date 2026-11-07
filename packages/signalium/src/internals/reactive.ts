@@ -51,6 +51,10 @@ export const enum ReactiveFnFlags {
   isListenerPaused = 0b1000000000,
   // Deactivated while it had paused holders: holds a paused hold on each dep until rewatched or released.
   isPausedHeld = 0b10000000000,
+  // Created by `watcher()`; its listeners also run when its own async result settles.
+  isWatcher = 0b100000000000,
+  // Queued in PENDING_LISTENERS for the next flush; cleared when its listeners run.
+  isListenerScheduled = 0b1000000000000,
 }
 
 let ID = 0;
@@ -201,6 +205,26 @@ export class ReactiveSignal<T, Args extends unknown[]> {
       this.flags |= ReactiveFnFlags.isPausedHeld;
     } else {
       this.flags &= ~ReactiveFnFlags.isPausedHeld;
+    }
+  }
+
+  get _isWatcher() {
+    return (this.flags & ReactiveFnFlags.isWatcher) !== 0;
+  }
+
+  _markWatcher() {
+    this.flags |= ReactiveFnFlags.isWatcher;
+  }
+
+  get _isListenerScheduled() {
+    return (this.flags & ReactiveFnFlags.isListenerScheduled) !== 0;
+  }
+
+  set _isListenerScheduled(isListenerScheduled: boolean) {
+    if (isListenerScheduled) {
+      this.flags |= ReactiveFnFlags.isListenerScheduled;
+    } else {
+      this.flags &= ~ReactiveFnFlags.isListenerScheduled;
     }
   }
 
@@ -471,6 +495,8 @@ export class ReactiveSignal<T, Args extends unknown[]> {
 }
 
 export const runListeners = (signal: ReactiveSignal<any, any>) => {
+  signal._isListenerScheduled = false;
+
   const { listeners } = signal;
 
   if (listeners === null) {

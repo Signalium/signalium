@@ -4,7 +4,7 @@ import { getCurrentConsumer, setCurrentConsumer } from './consumer.js';
 import { createEdge, Edge, EdgeType } from './edge.js';
 import { generatorResultToPromiseWithConsumer } from './generators.js';
 import { ReactiveFnState, isRelay, ReactiveSignal } from './reactive.js';
-import { scheduleDeactivate, scheduleListeners, scheduleTracer } from './scheduling.js';
+import { scheduleDeactivate, scheduleDerivedListeners, scheduleTracer } from './scheduling.js';
 import { getTracerProxy, SignalType, TracerEventType } from './trace.js';
 import { isGeneratorResult, isPromise } from './utils/type-utils.js';
 import { addPausedHold, dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
@@ -241,7 +241,7 @@ export function checkAndRunListeners(signal: ReactiveSignal<any, any>) {
   if (listeners !== null && listeners.updatedAt !== updatedCount) {
     listeners.updatedAt = updatedCount;
 
-    scheduleListeners(signal);
+    scheduleDerivedListeners(signal);
   }
 
   return updatedCount;
