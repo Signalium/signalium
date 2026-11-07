@@ -1,4 +1,4 @@
-import { useEffect, useInsertionEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
+import { startTransition, useEffect, useInsertionEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import type { ReactiveSignal } from '../internals/reactive.js';
 import { checkSignal } from '../internals/get.js';
 import { getReactDelivery, runBatch, scheduleReactDelivery, type ReactDelivery } from '../internals/config.js';
@@ -49,7 +49,10 @@ export class StateDelivery {
   forceUpdate: () => void;
   /** In the pending-delivery queue. */
   queued = false;
-  /** A `setState` was delivered and its render has not committed yet. */
+  /**
+   * A default-priority `setState` was delivered and its render has not committed yet. Transition
+   * deliveries don't set it: a suspended transition keeps the old UI and runs no effect to clear it.
+   */
   awaitingCommit = false;
   /** Visible: between the subscription layout effect's setup and cleanup. Only visible readers get deliveries. */
   mounted = false;
@@ -132,6 +135,18 @@ export class StateDelivery {
 let PENDING_DELIVERIES: StateDelivery[] = [];
 let deliveryScheduled = false;
 
+let transitionDeliveryUntil = 0;
+
+/**
+ * For the next `ms` milliseconds, renders `'state'` deliveries inside `startTransition`, where React
+ * time-slices them instead of blocking frames. A call never shortens an open window. `'sync'` readers
+ * are unaffected.
+ */
+export function deliverAsTransitionsFor(ms: number): void {
+  const until = performance.now() + ms;
+  if (until > transitionDeliveryUntil) transitionDeliveryUntil = until;
+}
+
 function enqueueDelivery(delivery: StateDelivery) {
   delivery.queued = true;
   PENDING_DELIVERIES.push(delivery);
@@ -143,6 +158,14 @@ function enqueueDelivery(delivery: StateDelivery) {
 }
 
 function flushDeliveries() {
+  if (performance.now() < transitionDeliveryUntil) {
+    startTransition(() => deliver(false));
+  } else {
+    deliver(true);
+  }
+}
+
+function deliver(awaitCommit: boolean) {
   deliveryScheduled = false;
 
   const deliveries = PENDING_DELIVERIES;
@@ -155,7 +178,7 @@ function flushDeliveries() {
       // Re-check: the reader may have unmounted, or re-rendered for another reason and already
       // committed the latest version, since it was queued.
       if (delivery.mounted && delivery.signal.updatedCount !== delivery.committed) {
-        delivery.awaitingCommit = true;
+        if (awaitCommit) delivery.awaitingCommit = true;
         delivery.forceUpdate();
       }
     }
@@ -184,7 +207,8 @@ export function useStateDeliveryState(signal: ReactiveSignal<any, any>): StateDe
  * compares the version it rendered with the signal's current one, so a change that landed between
  * render and subscribe is never lost. Notifications are coalesced per reader and flushed together,
  * in one `runBatch`, on `scheduleReactDelivery`. The `setState` runs outside any transition, at
- * React's default priority, which waits for an in-progress transition rather than restarting it.
+ * React's default priority, which waits for an in-progress transition rather than restarting it;
+ * inside a {@link deliverAsTransitionsFor} window it runs in a transition.
  *
  * Revealing. When the subscription layout effect connects a reader that was hidden after it
  * rendered, the reader pulls the signal and, if it moved since that render, updates with a

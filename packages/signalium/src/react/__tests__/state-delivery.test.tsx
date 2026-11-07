@@ -1,10 +1,16 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
-import React, { Profiler, startTransition, StrictMode, useLayoutEffect, useState } from 'react';
+import React, { Profiler, startTransition, StrictMode, Suspense, use, useLayoutEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { reactive, relay, signal } from 'signalium';
 import { setConfig } from 'signalium/config';
-import { component, useReactive, useReactiveShallow, type ReactDelivery } from 'signalium/react';
+import {
+  component,
+  deliverAsTransitionsFor,
+  useReactive,
+  useReactiveShallow,
+  type ReactDelivery,
+} from 'signalium/react';
 import { getRenderLeaseCount } from 'signalium/debug';
 import { sleep } from '../../__tests__/utils/async.js';
 
@@ -531,5 +537,112 @@ describe('React > state delivery', () => {
         result.unmount();
       });
     }
+  });
+
+  describe('transition window', () => {
+    const WINDOW = 200;
+
+    // A suspending update keeps revealed content on screen only when it renders in a transition.
+    function renderSuspendingReader() {
+      const step = signal(0);
+      const pending = new Promise<never>(() => {});
+
+      function Show({ value }: { value: number }) {
+        return <span data-testid="leaf">{value === 1 ? use(pending) : value}</span>;
+      }
+
+      function Leaf() {
+        return <Show value={useReactive(() => step.value, { delivery: 'state' })} />;
+      }
+
+      const result = render(
+        <Suspense fallback={<span>loading</span>}>
+          <Leaf />
+        </Suspense>,
+      );
+
+      return { step, result };
+    }
+
+    test('deliveries inside the window render in a transition', async () => {
+      const { step, result } = renderSuspendingReader();
+      await expect.element(result.getByTestId('leaf')).toHaveTextContent('0');
+
+      deliverAsTransitionsFor(WINDOW);
+      // A shorter call leaves the open window in place.
+      deliverAsTransitionsFor(0);
+      step.value = 1;
+      await settle();
+
+      expect(result.container.textContent).toBe('0');
+      result.unmount();
+      await sleep(WINDOW);
+    });
+
+    test('a later change reaches a reader whose transition delivery suspended', async () => {
+      const { step, result } = renderSuspendingReader();
+      await expect.element(result.getByTestId('leaf')).toHaveTextContent('0');
+
+      deliverAsTransitionsFor(WINDOW);
+      step.value = 1;
+      await settle();
+      expect(result.container.textContent).toBe('0');
+
+      step.value = 2;
+      await expect.element(result.getByTestId('leaf')).toHaveTextContent('2');
+      result.unmount();
+      await sleep(WINDOW);
+    });
+
+    test('readers sharing a suspended transition delivery all catch up once it stops suspending', async () => {
+      const step = signal(0);
+      const other = signal(0);
+      const pending = new Promise<never>(() => {});
+
+      function Show({ value }: { value: number }) {
+        return <span data-testid="leaf">{value === 1 ? use(pending) : value}</span>;
+      }
+
+      function Leaf() {
+        return <Show value={useReactive(() => step.value, { delivery: 'state' })} />;
+      }
+
+      function Other() {
+        return <span data-testid="other">{useReactive(() => other.value, { delivery: 'state' })}</span>;
+      }
+
+      const result = render(
+        <Suspense fallback={<span>loading</span>}>
+          <Leaf />
+          <Other />
+        </Suspense>,
+      );
+      await expect.element(result.getByTestId('leaf')).toHaveTextContent('0');
+
+      deliverAsTransitionsFor(WINDOW);
+      step.value = 1;
+      other.value = 1;
+      await settle();
+      expect(result.container.textContent).toBe('00');
+
+      other.value = 2;
+      step.value = 2;
+      await expect.element(result.getByTestId('leaf')).toHaveTextContent('2');
+      await expect.element(result.getByTestId('other')).toHaveTextContent('2');
+      result.unmount();
+      await sleep(WINDOW);
+    });
+
+    test('deliveries after the window render at default priority', async () => {
+      const { step, result } = renderSuspendingReader();
+      await expect.element(result.getByTestId('leaf')).toHaveTextContent('0');
+
+      deliverAsTransitionsFor(20);
+      await sleep(50);
+      step.value = 1;
+
+      await expect.element(result.getByText('loading')).toBeInTheDocument();
+      result.unmount();
+    });
   });
 });
