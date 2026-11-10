@@ -80,6 +80,7 @@ export class ReactivePromiseImpl<T> {
   private _stateSubs = new Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, number>();
   private _stateSubsPruneAt = MIN_PRUNE_SIZE;
   _awaitSubs = new Map<WeakRef<ReactiveSignal<unknown, unknown[]>>, PromiseEdge>();
+  private _awaitSubsPruneAt = MIN_PRUNE_SIZE;
 
   _updatedCount = 0;
 
@@ -367,6 +368,7 @@ export class ReactivePromiseImpl<T> {
         subs.delete(signalRef);
       }
     }
+    this._stateSubsPruneAt = MIN_PRUNE_SIZE;
 
     this._version.update(v => v + 1);
 
@@ -474,6 +476,7 @@ export class ReactivePromiseImpl<T> {
     }
 
     this._awaitSubs = awaitSubs = new Map();
+    this._awaitSubsPruneAt = MIN_PRUNE_SIZE;
 
     this._setFlags(AsyncFlags.Resolved | AsyncFlags.Ready, AsyncFlags.Pending | AsyncFlags.Rejected, notifyFlags);
 
@@ -515,6 +518,7 @@ export class ReactivePromiseImpl<T> {
     }
 
     this._awaitSubs = awaitSubs = new Map();
+    this._awaitSubsPruneAt = MIN_PRUNE_SIZE;
 
     this._setFlags(AsyncFlags.Rejected, AsyncFlags.Pending | AsyncFlags.Resolved, notifyFlags);
 
@@ -682,7 +686,9 @@ export class ReactivePromiseImpl<T> {
         }
 
         if (ref) {
-          this._awaitSubs.set(ref, edge!);
+          const awaitSubs = this._awaitSubs;
+          awaitSubs.set(ref, edge!);
+          if (awaitSubs.size >= this._awaitSubsPruneAt) this._awaitSubsPruneAt = pruneSubs(awaitSubs);
         }
       }
     });
@@ -769,6 +775,7 @@ export function createRelay<T>(activate: RelayActivate<T>, scope: SignalScope, o
 
     // Reset the signal state, preparing it for next activation
     signal.subs = new Map();
+    signal.subsPruneAt = MIN_PRUNE_SIZE;
     signal._state = ReactiveFnState.Dirty;
     active = false;
     currentSub = undefined;

@@ -91,6 +91,7 @@ export class StateSignal<T> implements Signal<T> {
     }
 
     this._subs.clear();
+    this._subsPruneAt = MIN_PRUNE_SIZE;
 
     scheduleListeners(this);
   }
