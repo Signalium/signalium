@@ -7,6 +7,7 @@ import { ReactiveFnState, isRelay, ReactiveSignal } from './reactive.js';
 import { scheduleDeactivate, scheduleListeners, scheduleTracer } from './scheduling.js';
 import { getTracerProxy, SignalType, TracerEventType } from './trace.js';
 import { isGeneratorResult, isPromise } from './utils/type-utils.js';
+import { pruneSubs } from './utils/subs.js';
 import { addPausedHold, dropPausedHold, unwatchSignal, watchSignal } from './watch.js';
 
 export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, Args>): ReactiveValue<T> {
@@ -40,6 +41,7 @@ export function getSignal<T, Args extends unknown[]>(signal: ReactiveSignal<T, A
       const newEdge = createEdge(prevEdge, EdgeType.Signal, signal, updatedAt, computedCount);
 
       signal.subs.set(ref, newEdge);
+      if (signal.subs.size >= signal.subsPruneAt) signal.subsPruneAt = pruneSubs(signal.subs);
       deps.set(signal, newEdge);
 
       // After `deps.set`: a dep that throws gets no edge, so a hold taken before would never be dropped.
@@ -105,6 +107,7 @@ export function checkSignal(signal: ReactiveSignal<any, any>): number {
       const dep = edge.dep;
       const updatedAt = checkSignal(dep);
 
+      // No prune check: this re-adds a live consumer, so it can't grow the map with collected ones.
       dep.subs.set(ref, edge);
 
       if (edge.updatedAt !== updatedAt) {

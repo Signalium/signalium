@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { reactive, context, withContexts, watcher, signal } from '../index.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { reactive, relay, context, withContexts, watcher, signal } from '../index.js';
 import { getGlobalScope, clearGlobalContexts, getSignalsMap, SignalScope } from '../internals/contexts.js';
 import { watchSignal, unwatchSignal } from '../internals/watch.js';
 import { schedulePull } from '../internals/scheduling.js';
@@ -26,9 +26,48 @@ const resume = (w: unknown) => {
   schedulePull(signal);
 };
 
+type Internals = {
+  _subs: Map<unknown, unknown>;
+  _stateSubs: Map<unknown, unknown>;
+  _awaitSubs: Map<unknown, unknown>;
+  _signal: ReactiveSignal<any, any>;
+};
+const internals = (value: unknown) => value as Internals;
+
+// Replaces WeakRef so a test decides when a consumer is collected.
+const stubWeakRef = () => {
+  const refs: Array<{ target: object | undefined }> = [];
+  const stub = {
+    derefs: 0,
+    // Runs `fn`, then collects every object it gave a WeakRef.
+    collect(fn: () => void) {
+      const start = refs.length;
+      fn();
+      for (const ref of refs.splice(start)) ref.target = undefined;
+    },
+  };
+  vi.stubGlobal(
+    'WeakRef',
+    class {
+      constructor(public target: object | undefined) {
+        refs.push(this);
+      }
+      deref() {
+        stub.derefs++;
+        return this.target;
+      }
+    },
+  );
+  return stub;
+};
+
 describe('Garbage Collection', () => {
   beforeEach(() => {
     clearGlobalContexts();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('unwatched signals are deactivated and marked dirty for revalidation', async () => {
@@ -434,5 +473,103 @@ describe('Garbage Collection', () => {
     set.mockRestore();
 
     expect(keys).not.toContain(compute);
+  });
+
+  it('drops collected readers of a signal and a reactive, including after a notify', () => {
+    const weakRefs = stubWeakRef();
+    const state = signal(1);
+    const base = reactive(() => state.value);
+    const reader = reactive((id: number) => base() + state.value + id);
+
+    base();
+    const baseSignal = getSignalsMap(getGlobalScope()).values().next().value!.deref() as ReactiveSignal<any, any>;
+
+    // Readers alive at the same time raise the prune size; the notify clears both maps.
+    weakRefs.collect(() => {
+      for (let id = 0; id < 2_000; id++) reader(id);
+    });
+    state.value = 2;
+    expect(reader(-1)).toBe(3);
+    for (let id = 2_000; id < 3_000; id++) weakRefs.collect(() => reader(id));
+
+    expect(baseSignal.subs.size).toBeLessThan(200);
+    expect(internals(state)._subs.size).toBeLessThan(200);
+
+    // The live reader kept its entries through the prunes.
+    state.value = 3;
+    expect(reader(-1)).toBe(5);
+  });
+
+  it('drops collected readers of a relay, including after it updates and deactivates', async () => {
+    const weakRefs = stubWeakRef();
+    let setValue!: (value: number) => void;
+    const source = relay<number>(state => {
+      state.value = 0;
+      setValue = value => (state.value = value);
+    });
+    const unwatch = watcher(() => source.value).addListener(() => {});
+    await nextTick();
+    const reader = reactive((id: number) => (source.value ?? 0) + id);
+
+    weakRefs.collect(() => {
+      for (let id = 0; id < 2_000; id++) reader(id);
+    });
+    setValue(1);
+    unwatch();
+    await nextTick();
+    for (let id = 2_000; id < 3_000; id++) weakRefs.collect(() => reader(id));
+
+    expect(internals(source)._signal.subs.size).toBeLessThan(200);
+    expect(internals(source)._stateSubs.size).toBeLessThan(200);
+  });
+
+  it('drops collected awaiters of a settled promise, including after it settles again', async () => {
+    const weakRefs = stubWeakRef();
+    const state = signal(1);
+    const value = reactive(async () => {
+      if (state.value === 2) throw new Error('rejected');
+      return state.value;
+    });
+    // The generator form the Babel preset gives an `await`; this file imports the untransformed `reactive`.
+    const awaiter = reactive(function* (id: number) {
+      return ((yield value()) as number) + id;
+    });
+
+    await value();
+
+    let id = 0;
+    // 2 rejects the promise and 3 resolves it.
+    for (const next of [2, 3]) {
+      weakRefs.collect(() => {
+        for (const end = id + 2_000; id < end; id++) awaiter(id);
+      });
+      state.value = next;
+      value();
+      await sleep();
+      for (const end = id + 1_000; id < end; id++) weakRefs.collect(() => awaiter(id));
+
+      expect(internals(value())._awaitSubs.size).toBeLessThan(200);
+    }
+  });
+
+  it('does not rescan a subscriber map that hovers at a prune boundary', () => {
+    const weakRefs = stubWeakRef();
+    const state = signal(1);
+    const base = reactive(() => state.value);
+    const reader = reactive((id: number) => base() + id);
+
+    base();
+    const baseSignal = getSignalsMap(getGlobalScope()).values().next().value!.deref() as ReactiveSignal<any, any>;
+
+    // 62 live readers and one collected one: each new reader brings the map to 64.
+    for (let id = 0; id < 62; id++) reader(id);
+    weakRefs.collect(() => reader(62));
+    expect(baseSignal.subs.size).toBe(63);
+
+    weakRefs.derefs = 0;
+    for (let id = 63; id < 1_063; id++) weakRefs.collect(() => reader(id));
+
+    // Rescanning all 64 entries on every subscription would be 64,000 derefs.
+    expect(weakRefs.derefs).toBeLessThan(5_000);
   });
 });

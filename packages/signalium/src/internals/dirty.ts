@@ -2,6 +2,7 @@ import { scheduleAsyncPull, schedulePull } from './scheduling.js';
 import { ReactiveSignal, isRelay, ReactiveFnState } from './reactive.js';
 import { getCurrentConsumer } from './consumer.js';
 import { Edge } from './edge.js';
+import { MIN_PRUNE_SIZE } from './utils/subs.js';
 
 export function dirtySignal(signal: ReactiveSignal<any, any>) {
   const prevState = signal._state;
@@ -37,6 +38,7 @@ function propagateDirty(signal: ReactiveSignal<any, any>) {
 
     dirtySignalConsumers(signal.subs);
     signal.subs.clear();
+    signal.subsPruneAt = MIN_PRUNE_SIZE;
   }
 }
 
