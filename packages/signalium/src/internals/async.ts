@@ -12,7 +12,7 @@ import {
 import { createReactiveSignal, ReactiveSignal, ReactiveDefinition, ReactiveFnState } from './reactive.js';
 import { disconnectSignal, getSignal } from './get.js';
 import { dirtySignal, dirtySignalConsumers } from './dirty.js';
-import { scheduleAsyncPull, trackPendingStart, trackPendingEnd } from './scheduling.js';
+import { scheduleAsyncPull, scheduleDerivedListeners, trackPendingStart, trackPendingEnd } from './scheduling.js';
 import { createEdge, EdgeType, findAndRemoveDirty, PromiseEdge } from './edge.js';
 import { SignalScope } from './contexts.js';
 import { signal } from './signal.js';
@@ -353,6 +353,21 @@ export class ReactivePromiseImpl<T> {
 
     if ((allChanged & (AsyncFlags.Value | AsyncFlags.Error)) !== 0) {
       this._updatedCount++;
+    }
+
+    // A watcher keeps this promise as its value, so its own updatedCount never changes.
+    // Settled covers a rejection with `undefined`, which changes neither Value nor Error.
+    if ((allChanged & (AsyncFlags.Value | AsyncFlags.Error | AsyncFlags.Settled)) !== 0) {
+      const owner = this._signal;
+
+      // Skip a promise the watcher has since replaced with another value.
+      if (owner !== undefined && owner._isWatcher && owner._value === this) {
+        const listeners = owner._listeners;
+
+        if (listeners !== null && listeners.current.size > 0) {
+          scheduleDerivedListeners(owner);
+        }
+      }
     }
 
     const subs = this._stateSubs;
